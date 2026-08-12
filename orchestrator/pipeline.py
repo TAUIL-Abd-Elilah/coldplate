@@ -208,13 +208,21 @@ class ColdPlate:
             # an untested, further-halved step when the search failed, which
             # let |F| jump back up by an order of magnitude and made the whole
             # Newton loop thrash instead of converge.
+            # Merit function is the 2-norm, while convergence is tested on the
+            # inf-norm. Using inf-norm for both is too harsh: a good step often
+            # reduces the overall residual while raising a single worst cell,
+            # which rejects the step and stalls Newton on designs that are
+            # perfectly solvable.
+            merit = float(jnp.linalg.norm(F))
             step, accepted = 1.0, False
             for _ in range(6):
                 T_try = T + step * d
-                r_try = float(jnp.max(jnp.abs(self.phi(T_try, alpha, k) - T_try)))
+                F_try = self.phi(T_try, alpha, k) - T_try
                 self.stats["phi_calls"] += 1
-                if r_try < res:
-                    T, res, accepted = T_try, r_try, True
+                if float(jnp.linalg.norm(F_try)) < merit:
+                    T = T_try
+                    res = float(jnp.max(jnp.abs(F_try)))
+                    accepted = True
                     break
                 step *= 0.5
 

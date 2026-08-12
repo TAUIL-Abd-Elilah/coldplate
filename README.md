@@ -273,7 +273,8 @@ composition is checked against a monolithic reference.
 | C++ solver & hand-derived adjoint vs JAX autodiff (forward, JVP, VJP, adjoint identity) | 1.1 × 10⁻¹² |
 | JAX thermal: sparse assembly vs residual, JVP/VJP vs autodiff, adjoint identity | 3.2 × 10⁻¹⁵ |
 | PyTorch material map vs finite differences, adjoint identity | 4.4 × 10⁻¹⁰ |
-| Composed Tesseracts vs monolithic JAX reference (per block and full loop) | 2.4 × 10⁻¹² |
+| Composed Tesseracts vs monolithic JAX reference (per block and full loop) | 2.5 × 10⁻¹² |
+| Converged **coupled state** T\* vs the reference's, reached by a different nonlinear solver (5 Newton iterations vs 21 Picard) | 1.5 × 10⁻¹² |
 | Conduction-only energy balance, flux in vs flux out | 5.3 × 10⁻¹⁵ |
 | Composed end-to-end gradient vs finite differences (directional derivative) | 8.3 × 10⁻⁶ |
 | Sparse thermal assembly vs the JAX residual it must reproduce | 1.4 × 10⁻¹⁶ |

@@ -31,6 +31,8 @@ from reference_jax import (  # noqa: E402
     solve_thermal,
 )
 from reference_jax import coupled_step as ref_phi  # noqa: E402
+from reference_jax import objective as objective_ref  # noqa: E402
+from reference_jax import solve_coupled as solve_coupled_ref  # noqa: E402
 
 
 def relerr(a, b):
@@ -79,13 +81,27 @@ def main(N=16):
         phi_r = ref_phi(T0, cfg, rho)
         print(f"[phi    ] rel err {relerr(phi_t, phi_r):.3e}")
 
-        # ---- and the converged fixed point ----
+        # ---- the converged coupled state, end to end ----
+        # Done at Ra = 1e3 rather than 3e4: this unfiltered, high-contrast
+        # design has no readily reachable steady state at 3e4 (see
+        # probe_startpoint.py), and the point here is to compare two
+        # implementations of the same solve, not to stress the solver.
+        cfg_lo = Config(Nx=N, Ny=N, Ra=1.0e3, Pr=Pr)
+        cp.params.Ra = 1.0e3
+        cp._T_warm = None
         T_star, info = cp.solve_coupled(alpha, k)
-        print(f"\n[fixed point] iters={info['iters']} residual={info['residual']:.3e} "
-              f"ok={info['ok']}")
-        print(f"[fixed point] J = {float(cp.objective(T_star)):.6f}")
+        T_star_ref, ref_info = solve_coupled_ref(rho, cfg_lo)
+        print(f"\n[coupled] Tesseracts: {info['iters']} Newton iters, "
+              f"residual {info['residual']:.2e}, ok={info['ok']}")
+        print(f"[coupled] reference:  {ref_info['iters']} Picard iters, "
+              f"residual {ref_info['residual']:.2e}")
+        e_coupled = relerr(T_star, T_star_ref)
+        print(f"[coupled] T* rel err {e_coupled:.3e}   "
+              f"J tess {float(cp.objective(T_star)):.6f} vs "
+              f"ref {float(objective_ref(T_star_ref, cfg_lo)):.6f}")
 
-    worst = max(relerr(flow["u"], u_ref), relerr(th["T"], T_ref), relerr(phi_t, phi_r))
+    worst = max(relerr(flow["u"], u_ref), relerr(th["T"], T_ref),
+                relerr(phi_t, phi_r), e_coupled)
     print(f"\nworst block-level rel err: {worst:.3e}")
     print("PASS" if worst < 1e-9 else "FAIL")
     return 0 if worst < 1e-9 else 1
