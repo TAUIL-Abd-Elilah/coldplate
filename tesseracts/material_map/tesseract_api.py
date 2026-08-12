@@ -149,8 +149,8 @@ def jacobian_vector_product(
     jvp_outputs: set[str],
     tangent_vector: dict[str, Any],
 ):
-    rho = torch.as_tensor(np.asarray(inputs.rho_raw, dtype=np.float64))
-    tan = torch.as_tensor(np.asarray(tangent_vector["rho_raw"], dtype=np.float64))
+    rho = torch.as_tensor(np.array(inputs.rho_raw, dtype=np.float64))
+    tan = torch.as_tensor(np.array(tangent_vector["rho_raw"], dtype=np.float64))
     _, jvp_out = torch.autograd.functional.jvp(_fn(inputs), rho, tan, create_graph=False)
     named = dict(zip(_OUTS, jvp_out))
     return {n: named[n].detach().numpy() for n in jvp_outputs}
@@ -162,7 +162,9 @@ def vector_jacobian_product(
     vjp_outputs: set[str],
     cotangent_vector: dict[str, Any],
 ):
-    rho = torch.as_tensor(np.asarray(inputs.rho_raw, dtype=np.float64)).requires_grad_(True)
+    # np.array, not asarray: torch refuses to take a non-writable buffer, and
+    # arrays arriving from JAX are read-only.
+    rho = torch.as_tensor(np.array(inputs.rho_raw, dtype=np.float64)).requires_grad_(True)
     k, alpha, rho_phys = _fn(inputs)(rho)
     outs = {"k": k, "alpha": alpha, "rho_phys": rho_phys}
 
