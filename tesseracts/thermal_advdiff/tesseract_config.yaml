@@ -1,0 +1,23 @@
+name: "thermal_advdiff"
+version: "1.0.0"
+description: |
+  Steady advection-diffusion for temperature on a staggered MAC grid, given a
+  velocity field and a conductivity map:
+
+      div(u T) - div(k grad T) = 0
+
+  with a chip heat flux on part of the bottom wall, a cold sink on top and
+  adiabatic sides. Linear in T, so A(u, v, k) T = b.
+
+  Differentiation strategy: JAX autodiff. The operator is a 5-point stencil
+  (~0.8% dense) so the linear algebra uses a sparse LU, but every parameter
+  derivative -- through the upwind switch and the face-averaged conductivity --
+  comes from jax.jvp / jax.vjp of the residual. The implicit-function step is
+  explicit:
+
+      JVP  A dT = -(dR/dtheta) dtheta
+      VJP  lam  = A^{-T} Tbar,  dtheta_bar = -(dR/dtheta)^T lam
+
+build_config:
+  base_image: "debian:bookworm-slim"
+  target_platform: "linux/amd64"

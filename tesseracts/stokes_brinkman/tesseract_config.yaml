@@ -1,0 +1,39 @@
+name: "stokes_brinkman"
+version: "1.0.0"
+description: |
+  Steady Stokes-Brinkman flow with Boussinesq buoyancy on a staggered MAC grid,
+  implemented in C++ with Eigen's sparse LU.
+
+  Derivatives are HAND-DERIVED, not produced by any AD tool. The system is
+  linear in the unknown w = (u, v, p):
+
+      A(alpha) w = b(T)
+
+  so the exact JVP and VJP are extra solves against the same factorisation:
+
+      JVP  dw  = A^{-1} ( db/dT dT - (dA/dalpha dalpha) w )
+      VJP  lam = A^{-T} wbar, then scatter against dA/dalpha and db/dT
+
+  This is deliberately a different differentiation strategy from the JAX and
+  PyTorch components it composes with, and validated against JAX autodiff to
+  ~1e-12 on forward, JVP, VJP and the adjoint dot-product identity.
+
+build_config:
+  base_image: "debian:bookworm-slim"
+  target_platform: "linux/amd64"
+
+  extra_packages:
+    - g++
+    - libeigen3-dev
+
+  package_data:
+    - ["src/stokes_brinkman.cpp", "src/stokes_brinkman.cpp"]
+
+  custom_build_steps:
+    - |
+      RUN mkdir -p /tesseract/lib && \
+          g++ -O3 -DNDEBUG -fPIC -shared -fvisibility=hidden \
+              -I/usr/include/eigen3 \
+              /tesseract/src/stokes_brinkman.cpp \
+              -o /tesseract/lib/libstokes_brinkman.so && \
+          test -f /tesseract/lib/libstokes_brinkman.so

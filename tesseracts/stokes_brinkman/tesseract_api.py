@@ -1,0 +1,232 @@
+# Copyright 2026 Coldplate contributors.
+# SPDX-License-Identifier: Apache-2.0
+"""Tesseract wrapping a C++/Eigen Stokes-Brinkman-Boussinesq solver.
+
+Derivatives here come from a hand-derived discrete adjoint, not from an AD
+tool. The system is linear in the unknown w = (u, v, p):
+
+    A(alpha) w = b(T)
+
+so the exact derivative of the solve is a transpose solve against the same
+sparse factorisation:
+
+    VJP   lam = A^{-T} wbar ,  then scatter lam against dA/dalpha and db/dT
+    JVP   dw  = A^{-1} ( db/dT dT - (dA/dalpha dalpha) w )
+
+The factorisation is cached across endpoint calls keyed on the design field, so
+within one optimisation step the forward solve, the tangent and the adjoint all
+share a single LU. This is the component that "disagrees" with the JAX thermal
+block it is composed with: different language, different memory layout,
+different derivative strategy.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import hashlib
+from collections import OrderedDict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from pydantic import BaseModel, Field
+from tesseract_core.runtime import Array, Differentiable, Float64, ShapeDType
+
+# --------------------------------------------------------------------------
+# shared library
+# --------------------------------------------------------------------------
+
+_LIB_PATH = Path(__file__).parent / "lib" / "libstokes_brinkman.so"
+if not _LIB_PATH.exists():  # inside the built container
+    _LIB_PATH = Path("/tesseract/lib/libstokes_brinkman.so")
+_lib = ctypes.CDLL(str(_LIB_PATH))
+
+_dp = ctypes.POINTER(ctypes.c_double)
+
+_lib.sb_create.restype = ctypes.c_void_p
+_lib.sb_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double, ctypes.c_double, _dp]
+_lib.sb_destroy.restype = None
+_lib.sb_destroy.argtypes = [ctypes.c_void_p]
+_lib.sb_apply.restype = ctypes.c_int
+_lib.sb_apply.argtypes = [ctypes.c_void_p, _dp, _dp, _dp, _dp]
+_lib.sb_jvp.restype = ctypes.c_int
+_lib.sb_jvp.argtypes = [ctypes.c_void_p, _dp, _dp, _dp, _dp, _dp, _dp]
+_lib.sb_vjp.restype = ctypes.c_int
+_lib.sb_vjp.argtypes = [ctypes.c_void_p, _dp, _dp, _dp, _dp, _dp, _dp, _dp]
+
+
+def _p(a: np.ndarray):
+    return a.ctypes.data_as(_dp)
+
+
+def _c(a) -> np.ndarray:
+    return np.ascontiguousarray(a, dtype=np.float64)
+
+
+# --------------------------------------------------------------------------
+# factorisation cache
+# --------------------------------------------------------------------------
+
+_CACHE: OrderedDict[str, Any] = OrderedDict()
+_CACHE_MAX = 4
+
+
+class _Handle:
+    """Owns a C++ solver handle and frees it when evicted."""
+
+    def __init__(self, ptr, Nx, Ny):
+        self.ptr, self.Nx, self.Ny = ptr, Nx, Ny
+
+    def __del__(self):
+        if getattr(self, "ptr", None):
+            _lib.sb_destroy(ctypes.c_void_p(self.ptr))
+            self.ptr = None
+
+
+def _solver(alpha: np.ndarray, Pr: float, Ra: float) -> _Handle:
+    """Assemble+factorise A(alpha), reusing the LU when the design repeats."""
+    Ny, Nx = alpha.shape
+    key = hashlib.blake2b(
+        alpha.tobytes() + np.array([Pr, Ra, Nx, Ny], dtype=np.float64).tobytes(),
+        digest_size=16,
+    ).hexdigest()
+    if key in _CACHE:
+        _CACHE.move_to_end(key)
+        return _CACHE[key]
+
+    ptr = _lib.sb_create(Nx, Ny, ctypes.c_double(Pr), ctypes.c_double(Ra), _p(alpha))
+    if not ptr:
+        raise RuntimeError(
+            "Stokes-Brinkman factorisation failed (singular system). "
+            "Check that alpha is finite and the grid is at least 3x3."
+        )
+    h = _Handle(ptr, Nx, Ny)
+    _CACHE[key] = h
+    if len(_CACHE) > _CACHE_MAX:
+        _CACHE.popitem(last=False)
+    return h
+
+
+# --------------------------------------------------------------------------
+# schemas
+# --------------------------------------------------------------------------
+
+
+class InputSchema(BaseModel):
+    """Design field and temperature; grid size is inferred from the shapes."""
+
+    alpha: Differentiable[Array[(None, None), Float64]] = Field(
+        description="Cell-centred Brinkman drag coefficient, shape (Ny, Nx). "
+        "Large inside solid material (blocks flow), ~0 in open fluid."
+    )
+    T: Differentiable[Array[(None, None), Float64]] = Field(
+        description="Cell-centred temperature driving buoyancy, shape (Ny, Nx)."
+    )
+    Ra: Float64 = Field(default=3.0e4, description="Rayleigh number.")
+    Pr: Float64 = Field(default=7.0, description="Prandtl number.")
+
+
+class OutputSchema(BaseModel):
+    u: Differentiable[Array[(None, None), Float64]] = Field(
+        description="x-velocity on vertical faces, shape (Ny, Nx+1). Zero on walls."
+    )
+    v: Differentiable[Array[(None, None), Float64]] = Field(
+        description="y-velocity on horizontal faces, shape (Ny+1, Nx). Zero on walls."
+    )
+
+
+# --------------------------------------------------------------------------
+# endpoints
+# --------------------------------------------------------------------------
+
+
+def _forward(alpha: np.ndarray, T: np.ndarray, Pr: float, Ra: float):
+    Ny, Nx = alpha.shape
+    h = _solver(alpha, Pr, Ra)
+    u = np.zeros((Ny, Nx + 1), dtype=np.float64)
+    v = np.zeros((Ny + 1, Nx), dtype=np.float64)
+    p = np.zeros((Ny, Nx), dtype=np.float64)
+    if _lib.sb_apply(ctypes.c_void_p(h.ptr), _p(T), _p(u), _p(v), _p(p)):
+        raise RuntimeError("Stokes-Brinkman forward solve failed.")
+    return u, v
+
+
+def apply(inputs: InputSchema) -> OutputSchema:
+    alpha, T = _c(inputs.alpha), _c(inputs.T)
+    u, v = _forward(alpha, T, float(inputs.Pr), float(inputs.Ra))
+    return OutputSchema(u=u, v=v)
+
+
+def abstract_eval(abstract_inputs):
+    """Output shapes follow from the grid, with no solve required."""
+    Ny, Nx = abstract_inputs.alpha.shape
+    return {
+        "u": ShapeDType(shape=(Ny, Nx + 1), dtype="float64"),
+        "v": ShapeDType(shape=(Ny + 1, Nx), dtype="float64"),
+    }
+
+
+def jacobian_vector_product(
+    inputs: InputSchema,
+    jvp_inputs: set[str],
+    jvp_outputs: set[str],
+    tangent_vector: dict[str, Any],
+):
+    alpha, T = _c(inputs.alpha), _c(inputs.T)
+    Pr, Ra = float(inputs.Pr), float(inputs.Ra)
+    Ny, Nx = alpha.shape
+
+    u, v = _forward(alpha, T, Pr, Ra)
+    h = _solver(alpha, Pr, Ra)
+
+    d_alpha = _c(tangent_vector["alpha"]) if "alpha" in jvp_inputs else None
+    d_T = _c(tangent_vector["T"]) if "T" in jvp_inputs else None
+
+    du = np.zeros((Ny, Nx + 1), dtype=np.float64)
+    dv = np.zeros((Ny + 1, Nx), dtype=np.float64)
+    if _lib.sb_jvp(
+        ctypes.c_void_p(h.ptr),
+        _p(u),
+        _p(v),
+        _p(d_alpha) if d_alpha is not None else None,
+        _p(d_T) if d_T is not None else None,
+        _p(du),
+        _p(dv),
+    ):
+        raise RuntimeError("Stokes-Brinkman JVP solve failed.")
+
+    return {k: {"u": du, "v": dv}[k] for k in jvp_outputs}
+
+
+def vector_jacobian_product(
+    inputs: InputSchema,
+    vjp_inputs: set[str],
+    vjp_outputs: set[str],
+    cotangent_vector: dict[str, Any],
+):
+    alpha, T = _c(inputs.alpha), _c(inputs.T)
+    Pr, Ra = float(inputs.Pr), float(inputs.Ra)
+    Ny, Nx = alpha.shape
+
+    u, v = _forward(alpha, T, Pr, Ra)
+    h = _solver(alpha, Pr, Ra)
+
+    ubar = _c(cotangent_vector["u"]) if "u" in vjp_outputs else np.zeros((Ny, Nx + 1))
+    vbar = _c(cotangent_vector["v"]) if "v" in vjp_outputs else np.zeros((Ny + 1, Nx))
+    ubar, vbar = _c(ubar), _c(vbar)
+
+    alphabar = np.zeros((Ny, Nx), dtype=np.float64)
+    Tbar = np.zeros((Ny, Nx), dtype=np.float64)
+    if _lib.sb_vjp(
+        ctypes.c_void_p(h.ptr),
+        _p(u),
+        _p(v),
+        _p(ubar),
+        _p(vbar),
+        None,
+        _p(alphabar),
+        _p(Tbar),
+    ):
+        raise RuntimeError("Stokes-Brinkman VJP solve failed.")
+
+    return {k: {"alpha": alphabar, "T": Tbar}[k] for k in vjp_inputs}

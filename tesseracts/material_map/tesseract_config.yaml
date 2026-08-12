@@ -1,0 +1,18 @@
+name: "material_map"
+version: "1.0.0"
+description: |
+  Maps raw design variables to physical material properties:
+
+      rho_raw --cone filter--> rho_f --Heaviside--> rho_phys --SIMP--> (k, alpha)
+
+  The density filter imposes a minimum length scale and suppresses the
+  checkerboard instability; the projection drives the design toward a genuine
+  0/1 solid-fluid layout; SIMP/RAMP interpolation maps that to conductivity and
+  Brinkman drag.
+
+  Differentiation strategy: plain torch.autograd -- the third distinct strategy
+  in the pipeline, alongside the C++ hand-derived adjoint and JAX autodiff.
+
+build_config:
+  base_image: "debian:bookworm-slim"
+  target_platform: "linux/amd64"
