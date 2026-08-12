@@ -1,0 +1,58 @@
+name: "thermal_fortran"
+version: "1.0.0"
+description: |
+  Steady advection-diffusion for temperature, in Fortran, differentiated by
+  Enzyme at the LLVM IR level.
+
+  This is a drop-in replacement for the `thermal_advdiff` Tesseract: identical
+  physics, identical schema, interchangeable in the pipeline. What differs is
+  how the derivatives are produced.
+
+    thermal_advdiff  residual in JAX      -> jax.jvp / jax.vjp
+    thermal_fortran  residual in Fortran  -> flang -> LLVM IR -> Enzyme pass
+
+  No adjoint is written by hand and no AD library is linked into this
+  component. A compiler pass differentiates the Fortran. The sparse operator
+  dR/dT is then recovered *exactly* from nine Enzyme JVPs using a 3x3
+  colouring: the stencil is five-point, so cells whose indices agree mod 3
+  never interact and can be seeded simultaneously.
+
+  Swapping this component for the JAX one leaves the end-to-end gradient
+  unchanged to machine precision, which is the whole point of composing across
+  a boundary rather than through one.
+
+  The compiler toolchain lives in a separate base image (see toolchain/) so its
+  ~200 MB of downloads are paid once rather than on every rebuild. Build it
+  first:
+
+      docker build -t coldplate-enzyme-toolchain:1.0 tesseracts/thermal_fortran/toolchain
+
+build_config:
+  base_image: "coldplate-enzyme-toolchain:1.0"
+  target_platform: "linux/amd64"
+
+  package_data:
+    - ["src/thermal_residual.f90", "src/thermal_residual.f90"]
+    - ["src/wrapper.c", "src/wrapper.c"]
+
+  custom_build_steps:
+    # Fortran -> LLVM IR -> link with the Enzyme wrapper -> Enzyme pass -> .so
+    #
+    # Written inline rather than as a shell script on purpose: a script authored
+    # on Windows carries CRLF line endings, and a shebang ending in \r makes the
+    # kernel look for an interpreter called "bash\r" and fail with a confusing
+    # "not found".
+    #
+    # flang-new is used for the final link so its Fortran runtime is pulled in
+    # automatically.
+    - |
+      RUN set -eux && mkdir -p /tesseract/lib && \
+          flang-new -S -emit-llvm /tesseract/src/thermal_residual.f90 -o /tmp/thermal.ll && \
+          opt -O1 -S /tmp/thermal.ll -o /tmp/thermal_opt.ll && \
+          clang -emit-llvm -S -O1 /tesseract/src/wrapper.c -o /tmp/wrapper.ll && \
+          llvm-link /tmp/wrapper.ll /tmp/thermal_opt.ll -S -o /tmp/combined.ll && \
+          opt --load-pass-plugin="${ENZYME_LIB}" -passes=enzyme \
+              -S /tmp/combined.ll -o /tmp/ad.ll && \
+          flang-new -shared -fPIC -O2 /tmp/ad.ll -o /tesseract/lib/libthermal_ad.so -lm && \
+          test -s /tesseract/lib/libthermal_ad.so && \
+          nm -D --defined-only /tesseract/lib/libthermal_ad.so | grep -E 'th_forward|th_jvp|th_vjp'

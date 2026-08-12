@@ -3,9 +3,15 @@
 **Track: Multi-physics & coupled systems**
 
 End-to-end differentiable topology optimisation of a natural-convection cold
-plate, composed from three Tesseracts that genuinely disagree about how they
+plate, composed from four Tesseracts that genuinely disagree about how they
 compute — a C++/Eigen solver with a hand-derived adjoint, a JAX solver with
-autodiff, and a PyTorch material model.
+autodiff, a PyTorch material model, and a Fortran solver differentiated by
+**Enzyme at the LLVM IR level**.
+
+Two of those are interchangeable. Swapping the JAX thermal solver for the
+Fortran/Enzyme one leaves the end-to-end gradient unchanged to **5.3 × 10⁻¹²**,
+cosine 1.000000000000 — the same physics, reached through a completely
+different derivative technology.
 
 The headline result is not that the composition works. It is a measurement of
 what you lose without it: differentiating the components separately — even
@@ -170,17 +176,48 @@ iterations across the component boundary.
             two-way coupled fixed point
 ```
 
-Three components, three languages, three differentiation strategies:
+Four components, four languages, four differentiation strategies:
 
 | Tesseract | Language | How derivatives are obtained |
 | --- | --- | --- |
 | `stokes_brinkman` | C++ / Eigen | **Hand-derived discrete adjoint.** No AD tool. The system is linear in `w = (u,v,p)`, so the JVP and VJP are extra solves against the *same* sparse LU: `lam = A⁻ᵀ wbar`, then an analytic scatter against `dA/dalpha` and `db/dT`. |
 | `thermal_advdiff` | JAX | **JAX autodiff.** The 5-point operator (~0.8% dense) is solved with a sparse LU, but every parameter derivative — through the Péclet-weighted face values and the face-averaged conductivity — comes from `jax.jvp` / `jax.vjp` of the residual. |
+| `thermal_fortran` | Fortran | **Enzyme, compiler AD.** Same equation as above, written independently in Fortran. flang emits LLVM IR, an Enzyme pass differentiates it, and the result is a `.so` with JVP/VJP entry points. Nothing is hand-derived and no AD library is linked. |
 | `material_map` | PyTorch | **torch.autograd.** Cone filter → Heaviside projection → SIMP/RAMP property maps. |
 
-Nothing about these three is naturally compatible. They disagree on language,
-on memory layout, and on how a derivative is even produced. Tesseract is what
+Nothing about these is naturally compatible. They disagree on language, on
+memory layout, and on how a derivative is even produced. Tesseract is what
 makes them a single differentiable function.
+
+### Interchangeable, not merely composable
+
+`thermal_advdiff` and `thermal_fortran` implement the same equation behind the
+same schema. If the contract means anything, they must be swappable — and they
+are (`compare_thermal_backends.py`, at a converged steady state):
+
+| level | JAX vs Fortran/Enzyme |
+| --- | --- |
+| component `T` | 7.1 × 10⁻¹⁶ |
+| component JVP | 1.4 × 10⁻¹⁵ |
+| component VJP | 4.3 × 10⁻¹⁵ |
+| converged coupled state `T*` | 4.8 × 10⁻¹² |
+| **end-to-end `dJ/drho`** | **5.3 × 10⁻¹²**, cosine 1.000000000000 |
+
+The gradient that comes out of the whole composition — through the C++ fluid
+solver and the PyTorch material map — does not care whether the thermal block
+was differentiated by a Python tracer or by a compiler pass over Fortran.
+
+Two details from building it, since both cost real time:
+
+* flang applies Fortran name mangling, so the subroutine needs
+  `bind(C, name="...")`. Without it the linked module contains a *declaration*
+  with no body and Enzyme reports "failed to find fn to differentiate".
+* LFortran lowers `tanh` into its own runtime as `_lfortran_dtanh`, which
+  Enzyme treats as opaque and refuses to differentiate. Binding straight to
+  libm's `tanh` via `ISO_C_BINDING` fixes it, because Enzyme carries a rule for
+  that. You can see the pass worked in the linked symbols: the library imports
+  `cosh`, which appears nowhere in the source — it is the generated derivative
+  of `tanh`.
 
 ---
 
@@ -294,12 +331,25 @@ Requires Docker and Python 3.10+.
 pip install "tesseract-core[runtime]" tesseract-jax "jax[cpu]" numpy scipy matplotlib
 ```
 
-Build the three Tesseracts:
+Build the Tesseracts. The Fortran one needs its compiler toolchain image first
+(flang + LLVM 19 + the Enzyme plugin); it is split out so its ~200 MB of
+downloads are paid once rather than on every rebuild:
+
+```bash
+docker build -t coldplate-enzyme-toolchain:1.0 tesseracts/thermal_fortran/toolchain
+```
 
 ```bash
 tesseract build tesseracts/stokes_brinkman
 tesseract build tesseracts/thermal_advdiff
+tesseract build tesseracts/thermal_fortran
 tesseract build tesseracts/material_map
+```
+
+Show that the JAX and Fortran/Enzyme thermal blocks are interchangeable:
+
+```bash
+cd orchestrator && python compare_thermal_backends.py 16
 ```
 
 Reproduce the headline claim — the composed gradient matches finite differences
@@ -362,6 +412,8 @@ python tesseracts/material_map/test_material.py
 tesseracts/
   stokes_brinkman/    C++/Eigen fluid solver, hand-derived adjoint
   thermal_advdiff/    JAX advection-diffusion, sparse LU
+  thermal_fortran/    Fortran advection-diffusion, Enzyme compiler AD
+    toolchain/        base image: flang + LLVM 19 + Enzyme plugin
   material_map/       PyTorch filter + projection + property maps
 orchestrator/
   pipeline.py             composes the three; Newton-Krylov forward, GMRES adjoint
