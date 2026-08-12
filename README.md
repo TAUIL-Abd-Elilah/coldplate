@@ -10,7 +10,7 @@ autodiff, and a PyTorch material model.
 The headline result is not that the composition works. It is a measurement of
 what you lose without it: differentiating the components separately — even
 doing everything else exactly right — leaves a gradient that is **wrong by
-40–150%, with the wrong sign on up to 74% of the design variables**, while
+50–150%, with the wrong sign on up to 79% of the design variables**, while
 still looking healthy to an optimiser.
 
 ---
@@ -67,25 +67,26 @@ gradient, once by the naive one, same seed and schedule — and **both succeeded
 
 | driven by | final J | reduction |
 | --- | --- | --- |
-| composed gradient (exact) | 1.2677 | 84.1% |
-| one-way gradient (naive) | 1.2374 | 84.5% |
+| composed gradient (exact) | 1.2588 | 84.6% |
+| one-way gradient (naive) | 1.2576 | 84.6% |
 
-The naive run ended marginally *lower*. We are not going to dress that up. An
-optimiser is not evidence that a gradient is right.
+The naive run ended a hair *lower*. We are not going to dress that up. An
+optimiser is not evidence that a gradient is right. (This replicates: at 48×48
+the same pair came out 1.2677 vs 1.2374.)
 
 The resolution is measurable, and it is the most interesting thing we found.
-Tracking the naive gradient's error along the trajectory (`--diagnose`):
+Tracking the naive gradient's error along the trajectory (`--diagnose`, 96×96):
 
 | iteration | J | loop gain | naive error | cosine | wrong sign |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 7.99 | 0.76 | **153%** | 0.54 | **74%** |
-| 6 | 4.78 | 0.61 | 105% | 0.76 | 35% |
-| 12 | 2.63 | 0.56 | 41% | 0.95 | 6% |
-| 60 | 1.28 | 0.39 | 63% | 0.85 | 8% |
-| 120 | 1.27 | 0.50 | 76% | 0.81 | 7% |
+| 1 | 8.18 | 0.76 | **144%** | 0.57 | **79%** |
+| 6 | 4.72 | 0.55 | 113% | 0.68 | 41% |
+| 12 | 2.31 | 0.43 | 53% | 0.90 | 11% |
+| 60 | 1.19 | 0.64 | 64% | 0.84 | 2% |
+| 120 | 1.26 | 0.59 | 74% | 0.81 | 3% |
 
-The naive gradient is wrong by **40–150% for the entire run** and, at the
-uniform starting design, has the **wrong sign on 74% of all design variables**.
+The naive gradient is wrong by **50–150% for the entire run** and, at the
+uniform starting design, has the **wrong sign on 79% of all design variables**.
 It never becomes correct. What happens is that after a few iterations its
 *direction* recovers (cosine 0.81–0.96) — because as the design solidifies,
 solid material blocks the flow and the coupling weakens — and Adam normalises
@@ -217,10 +218,10 @@ regime.
 
 ## The design it produces
 
-120 design iterations at 48×48, minimising mean chip temperature subject to a
+120 design iterations at 96×96, minimising mean chip temperature subject to a
 35% solid-material budget, with filtering and Heaviside continuation:
 
-**J: 7.99 → 1.27, an 84% reduction in chip temperature.**
+**J: 8.18 → 1.26, an 84.6% reduction in chip temperature.**
 
 The optimiser discovers a branching tree that conducts heat from the chip up
 toward the cold sink while leaving open channels for buoyancy-driven flow to

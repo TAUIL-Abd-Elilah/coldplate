@@ -78,7 +78,11 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
     fig, axes = plt.subplots(1, 3, figsize=(12.2, 4.0))
     fig.subplots_adjust(left=0.04, right=0.98, top=0.86, bottom=0.12, wspace=0.28)
 
-    def draw(fr):
+    def draw(fr, vmax=None):
+        """vmax=None uses the run-wide maximum, which is right for the
+        animation because it shows the temperature actually falling. For the
+        still of the final design that washes everything out, so there we
+        rescale to the frame itself."""
         for a in axes:
             a.clear()
         a0, a1, a2 = axes
@@ -88,7 +92,8 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
         a0.set_title("material layout   (dark = solid)")
         a0.set_xticks([]); a0.set_yticks([])
 
-        im = a1.imshow(T[fr], origin="lower", cmap=CMAP_T, vmin=0, vmax=Tmax,
+        im = a1.imshow(T[fr], origin="lower", cmap=CMAP_T, vmin=0,
+                       vmax=Tmax if vmax is None else vmax,
                        extent=[0, 1, 0, 1], interpolation="bilinear")
         uc, vc = centers(U[fr], V[fr])
         speed = np.hypot(uc, vc)
@@ -114,10 +119,12 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
         )
         return im
 
-    im = draw(len(rho) - 1)
+    last = len(rho) - 1
+    im = draw(last, vmax=float(np.max(T[last])) * 1.02)
     cb = fig.colorbar(im, ax=axes[1], fraction=0.046, pad=0.02)
     cb.set_label("T", rotation=0, labelpad=8)
     fig.savefig(out_png, bbox_inches="tight")
+    cb.remove()
 
     writer = PillowWriter(fps=6)
     with writer.saving(fig, str(out_gif), dpi=110):
