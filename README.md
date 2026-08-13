@@ -13,11 +13,20 @@ Fortran/Enzyme one leaves the end-to-end gradient unchanged to **5.3 × 10⁻¹�
 cosine 1.000000000000 — the same physics, reached through a completely
 different derivative technology.
 
-The headline result is not that the composition works. It is a measurement of
-what you lose without it: differentiating the components separately — even
-doing everything else exactly right — leaves a gradient that is **wrong by
-50–150%, with the wrong sign on up to 79% of the design variables**, while
-still looking healthy to an optimiser.
+Two results, one clean and one uncomfortable.
+
+**The clean one:** the JAX and Fortran blocks are genuinely interchangeable, so
+the end-to-end gradient does not depend on which derivative technology produced
+it. That is what a component boundary is supposed to buy you, measured rather
+than asserted.
+
+**The uncomfortable one:** how much you lose by *not* composing across that
+boundary depends enormously on regime, and you cannot tell which regime you are
+in by looking at the forward solution. In a strongly coupled state the
+component-wise gradient carries **86% error and inverts the sign on a third of
+the design variables**. In the regime this optimiser actually runs in, the same
+approximation is only 4–20% off and works fine. Same code, same physics, two
+orders of magnitude difference in how wrong you are.
 
 ---
 
@@ -80,34 +89,34 @@ The naive run ended a hair *lower*. We are not going to dress that up. An
 optimiser is not evidence that a gradient is right. (This replicates: at 48×48
 the same pair came out 1.2677 vs 1.2374.)
 
-The resolution is measurable, and it is the most interesting thing we found.
-Tracking the naive gradient's error along the trajectory (`--diagnose`, 96×96):
+The reason is measurable. Tracking the naive gradient's error at the designs
+the optimiser actually visits (`--diagnose`, 96×96):
 
 | iteration | J | loop gain | naive error | cosine | wrong sign |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 8.18 | 0.76 | **144%** | 0.57 | **79%** |
-| 6 | 4.72 | 0.55 | 113% | 0.68 | 41% |
-| 12 | 2.31 | 0.43 | 53% | 0.90 | 11% |
-| 60 | 1.19 | 0.64 | 64% | 0.84 | 2% |
-| 120 | 1.26 | 0.59 | 74% | 0.81 | 3% |
+| 1 | 8.18 | 0.759 | 6.3% | 0.9983 | 0% |
+| 12 | 2.31 | 0.428 | 20.1% | 0.9867 | 2% |
+| 60 | 1.19 | 0.640 | 7.6% | 0.9973 | 1% |
+| 120 | 1.26 | 0.587 | 4.1% | 0.9996 | 1% |
 
-The naive gradient is wrong by **50–150% for the entire run** and, at the
-uniform starting design, has the **wrong sign on 79% of all design variables**.
-It never becomes correct. What happens is that after a few iterations its
-*direction* recovers (cosine 0.81–0.96) — because as the design solidifies,
-solid material blocks the flow and the coupling weakens — and Adam normalises
-per coordinate, so it consumes only direction.
+Along this trajectory the naive gradient is only **4–20% off, with a cosine
+above 0.98 and almost no sign errors**. It is a perfectly serviceable search
+direction here, and the optimisation result above is exactly what you would
+expect from that. No mystery.
 
-So the honest statement is: **a wrong gradient can still be a usable search
-direction, and is still a useless sensitivity.** If the gradient is only ever
-fed to a normalised optimiser, this failure can hide indefinitely. If it is
-used as a quantity — sensitivity analysis, uncertainty propagation, deciding
-which design variables matter, anything with a magnitude in it — it is wrong by
-a factor of two and inverted on most variables.
+The interesting part is that this is *not* what the same comparison gives at
+the strongly coupled operating point in the section above, where it is 86%
+wrong with a third of the signs inverted. Two things differ: the Rayleigh
+number, and the fact that filtered, projected designs are smooth while the
+random design used for the gradient study is not.
 
-That is a much easier mistake to make than "my optimiser diverged", and it is
-exactly the kind of thing composing across the boundary buys you protection
-from.
+> **A correction, kept in the open.** An earlier version of this table reported
+> 50–150% error and up to 79% sign flips. That was an artifact: the diagnostic
+> compared the optimiser's *volume-projected* gradient against a *raw* naive
+> one, so it was measuring the mean-removal, not the coupling. The numbers
+> above come from comparing raw against raw. The component-level,
+> substitutability and Rayleigh-sweep results were never affected — none of
+> them pass through that code path.
 
 ### The failure is predictable
 
@@ -124,19 +133,49 @@ Tesseracts by power iteration on JVPs (`sweep_coupling.py`):
 | 3×10⁵ | 0.7686 | 0.6031 | 0.8530 | 4% |
 | **3×10⁴** | **1.1919** | **0.8558** | **0.5335** | **33%** |
 
-The rows are sorted by loop gain, not by Ra, and that is the point. Ra = 3×10⁵
-has a *lower* loop gain than Ra = 3×10⁴ and correspondingly less error, so the
-damage is **not** monotonic in the physical parameter — but it is perfectly
-monotonic in ρ(Φ_T), across 5.5 orders of magnitude of error. The loop gain is
-the controlling variable, which is what makes this transferable to other
-coupled systems: measure ρ(Φ_T) and you know whether you can get away with
-differentiating your components separately.
+The rows are sorted by loop gain, not by Ra, and within this sweep that
+ordering is perfect: Ra = 3×10⁵ has a *lower* loop gain than Ra = 3×10⁴ and
+correspondingly less error, so the damage is not monotonic in the physical
+parameter but is monotonic in ρ(Φ_T), across 5.5 orders of magnitude.
 
-Weak coupling hides the problem completely — at Ra = 10² the naive gradient is
-correct to six digits. That is exactly why it is easy to ship a component-wise
-pipeline and never discover it is wrong. And there is no warning sign in the
-forward solution: J moves by only 13% between Ra = 10² and 3×10⁴ while the
-gradient error goes from 3 × 10⁻⁶ to 0.86.
+**How far that generalises is a question we can answer, and the answer is
+"not far enough to use as a safety check."** Holding the design fixed and
+varying Ra, the loop gain orders the error perfectly. Across *different*
+designs it does not: iteration 1 of the optimisation has ρ(Φ_T) = 0.759 and
+only 6% gradient error, while the sweep's Ra = 3×10⁵ row has essentially the
+same loop gain, 0.769, and 60% error. Same gain, ten-fold different damage.
+
+So the loop gain is a genuine control parameter along a one-parameter family,
+and not a sufficient statistic in general — smoothness of the design matters
+too, and we have not isolated that. We would rather state this than imply a
+diagnostic we have not earned.
+
+What does survive is the practical warning: **there is no sign of any of this
+in the forward solution.** J moves by 13% between Ra = 10² and 3×10⁴ while the
+gradient error goes from 3 × 10⁻⁶ to 0.86. A pipeline can look completely
+healthy and be handing you a gradient that is 86% wrong.
+
+### What the error looks like in space
+
+Holding *one* design fixed and raising only the Rayleigh number
+(`gradient_map_sweep.py`, figure 7):
+
+| Ra | loop gain | naive rel. error | cosine | wrong sign |
+| --- | --- | --- | --- | --- |
+| 10³ | 0.056 | 0.0001 | 1.0000 | 0% |
+| 10⁴ | 0.549 | 0.062 | 0.9983 | 0% |
+| 3×10⁴ | 1.357 | 0.811 | 0.684 | 22% |
+
+The picture is more informative than the numbers. At Ra = 3×10⁴ the exact
+gradient develops a coherent region of *positive* sensitivity in the lower left
+— adding material there makes the chip hotter, because it obstructs the
+convection cell that was carrying heat away. The naive gradient has no such
+region anywhere; it stays negative across the whole domain. The disagreement is
+not scattered noise, it is one contiguous blob, and it is exactly the part of
+the sensitivity that exists only because the flow responds to the design.
+
+That is the clearest statement of what composing across the boundary buys: not
+a small accuracy improvement, but an entire term that is otherwise absent.
 
 ### Why Newton, not Picard
 
@@ -437,7 +476,8 @@ prototype/
 | `fig3_coupling_strength.png` | naive-gradient error vs coupling loop gain |
 | `fig4_opt_comparison.png` | optimisation driven by each gradient |
 | `fig5_architecture.png` | the three components and the adjoint between them |
-| `fig6_trajectory_error.png` | the naive gradient stays wrong but stays pointed downhill |
+| `fig6_trajectory_error.png` | naive-gradient error at the designs the optimiser visits |
+| `fig7_regime_maps.png` | one design, rising coupling: where the two gradients disagree |
 
 ## License
 

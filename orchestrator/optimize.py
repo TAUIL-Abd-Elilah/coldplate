@@ -93,6 +93,7 @@ def run(
 
     history = []
     snaps = []
+    grad_snaps = []
 
     with ColdPlate(params=p, verbose=verbose) as cp:
         for it in range(1, iters + 1):
@@ -118,7 +119,9 @@ def run(
                     cp.__exit__(None, None, None)
                     cp._T_warm = None  # stale warm start after a restart
                     cp.__enter__()
-            g = res["grad"]
+            # Keep the unmodified gradient: the diagnostics below must compare
+            # like with like, and the optimiser is about to project this one.
+            g_raw = res["grad"]
             rho_prev = rho.copy()  # design this gradient belongs to
 
             # Project the gradient onto the volume-preserving subspace before
@@ -127,7 +130,7 @@ def run(
             # has a consistent sign the step is nearly uniform -- and the
             # uniform shift applied by volume_project then cancels it almost
             # exactly. The design freezes while J drifts upward.
-            g = g - g.mean()
+            g = g_raw - g_raw.mean()
 
             m = b1 * m + (1 - b1) * g
             v = b2 * v + (1 - b2) * g**2
@@ -145,7 +148,10 @@ def run(
             diag = {}
             if diagnose and (it % diagnose == 0 or it == 1):
                 gn = cp.one_way_grad(rho_prev)
-                a, b = g.ravel(), gn.ravel()
+                # Compare the RAW gradients. Using the projected `g` here
+                # against a raw naive gradient would be comparing two different
+                # things and would misstate every number below.
+                a, b = g_raw.ravel(), gn.ravel()
                 diag = {
                     "naive_rel_err": float(np.linalg.norm(b - a) / np.linalg.norm(a)),
                     "naive_cos": float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b))),
@@ -154,6 +160,20 @@ def run(
                         spectral_radius(cp, res["T"], *cp_alpha_k(cp, rho_prev))
                     ),
                 }
+                # The same comparison inside the volume-preserving subspace the
+                # optimiser actually steps in, which is what governs whether it
+                # still descends.
+                ap, bp = a - a.mean(), b - b.mean()
+                diag["naive_cos_projected"] = float(
+                    ap @ bp / (np.linalg.norm(ap) * np.linalg.norm(bp))
+                )
+                diag["naive_sign_flip_projected"] = float(np.mean(np.sign(ap) != np.sign(bp)))
+                grad_snaps.append({
+                    "iter": it,
+                    "g_exact": g_raw.copy(),
+                    "g_naive": gn.copy(),
+                    "rho_phys": res["rho_phys"].copy(),
+                })
 
             vol = float(np.mean(res["rho_phys"]))
             rec = {
@@ -198,6 +218,16 @@ def run(
             snapshots_u=np.stack([s["u"] for s in snaps]),
             snapshots_v=np.stack([s["v"] for s in snaps]),
             snapshot_iters=np.array([s["iter"] for s in snaps]),
+            **(
+                {
+                    "grad_iters": np.array([s["iter"] for s in grad_snaps]),
+                    "grad_exact": np.stack([s["g_exact"] for s in grad_snaps]),
+                    "grad_naive": np.stack([s["g_naive"] for s in grad_snaps]),
+                    "grad_rho": np.stack([s["rho_phys"] for s in grad_snaps]),
+                }
+                if grad_snaps
+                else {}
+            ),
         )
         (out / f"history_{tag}_N{N}.json").write_text(json.dumps(history, indent=2))
         print(f"\nsaved -> {out}/run_{tag}_N{N}.npz")

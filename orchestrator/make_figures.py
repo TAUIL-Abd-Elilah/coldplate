@@ -319,13 +319,151 @@ def fig6_trajectory(hist_path, out_png):
     print(f"wrote {out_png}")
 
 
+def fig7_regime_maps(npz_path, out_png):
+    """Same design, rising coupling: where the two gradients start to disagree.
+
+    One row per Rayleigh number. The disagreement is not uniform noise -- it
+    appears in the open fluid where a design change actually moves the flow,
+    and is absent where nothing moves. That spatial structure is the coupling
+    term, made visible.
+    """
+    d = np.load(npz_path)
+    Ra, ge, gn = d["Ra"], d["g_exact"], d["g_naive"]
+    rho, gain, flip = d["rho_phys"], d["loop_gain"], d["flip"]
+    rel, cos = d["rel"], d["cos"]
+    n = len(Ra)
+
+    lim = float(np.percentile(np.abs(np.concatenate([ge.ravel(), gn.ravel()])), 99.0))
+    cmap_g = LinearSegmentedColormap.from_list(
+        "grad", ["#1e3a8a", "#60a5fa", "#f8fafc", "#fca5a5", "#991b1b"]
+    )
+
+    fig, axes = plt.subplots(n, 3, figsize=(9.6, 3.15 * n))
+    axes = np.atleast_2d(axes)
+    kw = dict(origin="lower", extent=[0, 1, 0, 1], interpolation="nearest")
+
+    for r in range(n):
+        for a in axes[r]:
+            a.set_xticks([]); a.set_yticks([])
+
+        axes[r][0].imshow(ge[r], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
+        axes[r][1].imshow(gn[r], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
+
+        fl = np.sign(gn[r]) != np.sign(ge[r])
+        axes[r][2].imshow(rho[r], cmap="Greys", vmin=0, vmax=3.2, **kw)
+        ov = np.zeros((*fl.shape, 4))
+        ov[fl] = [0.86, 0.15, 0.15, 0.92]
+        axes[r][2].imshow(ov, **kw)
+
+        if r == 0:
+            axes[r][0].set_title("exact gradient\n(composed adjoint)",
+                                 fontsize=10.5, color=ACCENT)
+            axes[r][1].set_title("naive gradient\n(feedback loop cut)",
+                                 fontsize=10.5, color=NAIVE)
+            axes[r][2].set_title("sign disagreement", fontsize=10.5, color="#b91c1c")
+
+        axes[r][0].set_ylabel(
+            f"Ra = {Ra[r]:.0e}".replace("e+0", "e") + f"\nloop gain {gain[r]:.2f}",
+            fontsize=10, labelpad=10,
+        )
+        axes[r][2].text(
+            0.5, -0.07,
+            f"{100*flip[r]:.0f}% wrong sign   ·   {100*rel[r]:.0f}% error   ·   cos {cos[r]:.3f}",
+            transform=axes[r][2].transAxes, ha="center", va="top",
+            fontsize=9.2, color="#b91c1c" if flip[r] > 0.02 else MUTED,
+            fontweight="bold" if flip[r] > 0.02 else "normal",
+        )
+
+    fig.suptitle(
+        "One design, rising coupling: component-wise differentiation degrades in place",
+        fontsize=12.5, fontweight="bold", y=0.995,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.985])
+    fig.savefig(out_png, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_png}")
+
+
+def fig7_gradient_map(npz_path, out_gif, out_png):
+    """Where, in space, the naive gradient gets the sign wrong.
+
+    The trajectory plot says a third of the sensitivities are inverted; this
+    shows *which* ones. The disagreement is not scattered noise -- it
+    concentrates in the open fluid, where the flow actually responds to a
+    design change, and vanishes inside solid where nothing moves. That is the
+    coupling term made visible.
+    """
+    d = np.load(npz_path)
+    if "grad_exact" not in d:
+        print(f"no gradient snapshots in {npz_path}; run optimize.py --diagnose")
+        return
+
+    ge, gn = d["grad_exact"], d["grad_naive"]
+    rho = d["grad_rho"]
+    iters = d["grad_iters"]
+
+    # Robust symmetric colour limit, shared by both gradient panels so they are
+    # directly comparable; a couple of outliers would otherwise wash them out.
+    lim = float(np.percentile(np.abs(np.concatenate([ge.ravel(), gn.ravel()])), 99.0))
+    cmap_g = LinearSegmentedColormap.from_list(
+        "grad", ["#1e3a8a", "#60a5fa", "#f8fafc", "#fca5a5", "#991b1b"]
+    )
+
+    fig, axes = plt.subplots(1, 4, figsize=(15.4, 4.15))
+    fig.subplots_adjust(left=0.02, right=0.99, top=0.82, bottom=0.06, wspace=0.16)
+
+    def draw(fr):
+        for a in axes:
+            a.clear()
+            a.set_xticks([]); a.set_yticks([])
+        a0, a1, a2, a3 = axes
+        kw = dict(origin="lower", extent=[0, 1, 0, 1], interpolation="nearest")
+
+        a0.imshow(rho[fr], cmap=CMAP_RHO, vmin=0, vmax=1, **kw)
+        a0.set_title("material layout", fontsize=11)
+
+        a1.imshow(ge[fr], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
+        a1.set_title("exact gradient\n(composed adjoint)", fontsize=11, color=ACCENT)
+
+        im = a2.imshow(gn[fr], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
+        a2.set_title("naive gradient\n(feedback loop cut)", fontsize=11, color=NAIVE)
+
+        flip = np.sign(gn[fr]) != np.sign(ge[fr])
+        a3.imshow(rho[fr], cmap="Greys", vmin=0, vmax=3.2, **kw)
+        overlay = np.zeros((*flip.shape, 4))
+        overlay[flip] = [0.86, 0.15, 0.15, 0.92]
+        a3.imshow(overlay, **kw)
+        a3.set_title(f"wrong sign: {100*flip.mean():.0f}% of cells",
+                     fontsize=11, color="#b91c1c", fontweight="bold")
+
+        fig.suptitle(
+            f"Where component-wise differentiation goes wrong   "
+            f"iteration {int(iters[fr])}",
+            fontsize=13, fontweight="bold", y=0.97,
+        )
+        return im
+
+    im = draw(0)
+    fig.savefig(out_png, bbox_inches="tight")
+
+    writer = PillowWriter(fps=4)
+    with writer.saving(fig, str(out_gif), dpi=105):
+        for fr in range(len(iters)):
+            draw(fr)
+            writer.grab_frame()
+        for _ in range(8):
+            writer.grab_frame()
+    plt.close(fig)
+    print(f"wrote {out_gif} and {out_png}")
+
+
 def fig5_architecture(out_png):
     """Diagram: three components, and the adjoint conversation between them."""
     from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-    fig, ax = plt.subplots(figsize=(9.8, 6.0))
+    fig, ax = plt.subplots(figsize=(10.2, 7.0))
     ax.set_xlim(0, 10)
-    ax.set_ylim(0, 6.4)
+    ax.set_ylim(0, 7.6)
     ax.axis("off")
 
     def box(x, y, w, h, title, sub, strategy, fc):
@@ -339,52 +477,57 @@ def fig5_architecture(out_png):
         ax.text(x + w / 2, y + 0.22, strategy, ha="center", fontsize=8.4,
                 style="italic", color=ACCENT, zorder=3)
 
-    box(0.30, 4.55, 2.85, 1.45, "material_map", "PyTorch", "torch.autograd", "#fdf6ec")
-    box(3.75, 4.55, 2.85, 1.45, "thermal_advdiff", "JAX", "JAX autodiff", "#f0f7f1")
-    box(3.75, 2.00, 2.85, 1.45, "stokes_brinkman", "C++ / Eigen",
+    box(0.30, 5.55, 2.85, 1.40, "material_map", "PyTorch", "torch.autograd", "#fdf6ec")
+    box(3.75, 5.75, 2.85, 1.20, "thermal_advdiff", "JAX", "JAX autodiff", "#f0f7f1")
+    box(3.75, 4.05, 2.85, 1.20, "thermal_fortran", "Fortran",
+        "Enzyme, compiler AD", "#f3f0fa")
+    box(3.75, 1.55, 2.85, 1.30, "stokes_brinkman", "C++ / Eigen",
         "hand-derived adjoint", "#eef4fb")
 
-    def arrow(p0, p1, color, style="-", rad=0.0, lw=1.5, z=4):
+    def arrow(p0, p1, color, style="-", rad=0.0, lw=1.5, z=4, both=False):
         ax.add_patch(FancyArrowPatch(
-            p0, p1, arrowstyle="-|>", mutation_scale=13, linewidth=lw,
-            color=color, linestyle=style,
+            p0, p1, arrowstyle="<|-|>" if both else "-|>", mutation_scale=13,
+            linewidth=lw, color=color, linestyle=style,
             connectionstyle=f"arc3,rad={rad}", zorder=z))
 
-    # design -> properties -> both solvers
-    arrow((3.15, 5.45), (3.75, 5.45), INK)
-    ax.text(3.10, 5.62, "k", fontsize=8.8, color=INK, ha="center")
-    arrow((1.72, 4.55), (3.75, 2.90), INK, rad=-0.18)
-    ax.text(1.95, 3.55, "alpha", fontsize=8.8, color=INK)
+    # the two thermal implementations are drop-in replacements for each other
+    arrow((6.75, 5.90), (6.75, 5.10), "#7c3aed", lw=1.6, both=True)
+    ax.text(6.90, 5.50, "interchangeable\nto 5×10⁻¹²", fontsize=8.4,
+            color="#7c3aed", va="center", fontweight="bold")
 
-    # the two-way coupling
-    arrow((4.75, 3.45), (4.75, 4.55), NAIVE, lw=2.0)
-    ax.text(4.28, 3.92, "u, v", fontsize=9.2, color=NAIVE, fontweight="bold")
-    arrow((5.75, 4.55), (5.75, 3.45), ACCENT, lw=2.0)
-    ax.text(5.88, 3.92, "T", fontsize=9.2, color=ACCENT, fontweight="bold")
-    # below the solver rather than in the gap: anything placed between the
-    # boxes masks the coupling arrowheads
-    ax.text(5.18, 1.72, "two-way coupled fixed point", fontsize=8.6,
+    # design -> properties -> solvers
+    arrow((3.15, 6.35), (3.75, 6.35), INK)
+    ax.text(3.05, 6.52, "k", fontsize=8.8, color=INK, ha="center")
+    arrow((1.72, 5.55), (3.75, 2.45), INK, rad=-0.18)
+    ax.text(1.90, 3.90, "alpha", fontsize=8.8, color=INK)
+
+    # the two-way coupling, drawn to whichever thermal block is active
+    arrow((4.60, 2.85), (4.60, 4.05), NAIVE, lw=2.0)
+    ax.text(4.05, 3.40, "u, v", fontsize=9.2, color=NAIVE, fontweight="bold")
+    arrow((5.75, 4.05), (5.75, 2.85), ACCENT, lw=2.0)
+    ax.text(5.88, 3.40, "T", fontsize=9.2, color=ACCENT, fontweight="bold")
+    ax.text(5.18, 1.30, "two-way coupled fixed point", fontsize=8.6,
             color=MUTED, ha="center", va="top")
 
     # the krylov conversation
-    ax.text(7.05, 5.62, "forward: Newton–Krylov", fontsize=9.6, fontweight="bold")
-    arrow((7.05, 5.34), (9.55, 5.34), NAIVE, lw=1.7)
-    ax.text(7.05, 4.72, "each GMRES matvec = one JVP,\nforward through C++ then JAX",
-            fontsize=8.5, color=MUTED)
+    ax.text(7.05, 3.20, "forward: Newton–Krylov", fontsize=9.6, fontweight="bold")
+    arrow((7.05, 2.92), (9.65, 2.92), NAIVE, lw=1.7)
+    ax.text(7.05, 2.60, "each GMRES matvec = one JVP,\nforward through C++ then thermal",
+            fontsize=8.5, color=MUTED, va="top")
 
-    ax.text(7.05, 3.92, "adjoint: GMRES", fontsize=9.6, fontweight="bold")
-    arrow((9.55, 3.64), (7.05, 3.64), ACCENT, lw=1.7)
-    ax.text(7.05, 3.02, "each matvec = one VJP,\nback through JAX then C++",
-            fontsize=8.5, color=MUTED)
+    ax.text(7.05, 1.85, "adjoint: GMRES", fontsize=9.6, fontweight="bold")
+    arrow((9.65, 1.57), (7.05, 1.57), ACCENT, lw=1.7)
+    ax.text(7.05, 1.25, "each matvec = one VJP,\nback through thermal then C++",
+            fontsize=8.5, color=MUTED, va="top")
 
-    ax.text(0.30, 1.32,
-            "Three languages, three differentiation strategies, one differentiable function.",
+    ax.text(0.30, 0.80,
+            "Four languages, four differentiation strategies, one differentiable function.",
             fontsize=9.8, color=INK, fontweight="bold", va="top")
-    ax.text(0.30, 0.92,
-            "The coupled adjoint exists only as a conversation between the solvers. It cannot\n"
-            "be assembled component by component — and if you try, the resulting gradient\n"
-            "points uphill.",
-            fontsize=9.0, color=MUTED, va="top", linespacing=1.5)
+    ax.text(0.30, 0.44,
+            "The coupled adjoint exists only as a conversation between the solvers — it cannot be\n"
+            "assembled component by component. And the two thermal blocks are interchangeable:\n"
+            "the end-to-end gradient does not depend on which derivative technology produced it.",
+            fontsize=8.8, color=MUTED, va="top", linespacing=1.5)
 
     fig.tight_layout()
     fig.savefig(out_png, bbox_inches="tight")
@@ -422,3 +565,6 @@ if __name__ == "__main__":
     fig5_architecture(R / "fig5_architecture.png")
     if (R / f"history_diag_N{a.N}.json").exists():
         fig6_trajectory(R / f"history_diag_N{a.N}.json", R / "fig6_trajectory_error.png")
+    if (R / f"run_diag_N{a.N}.npz").exists():
+        fig7_gradient_map(R / f"run_diag_N{a.N}.npz",
+                          R / "fig7_gradient_map.gif", R / "fig7_gradient_map.png")
