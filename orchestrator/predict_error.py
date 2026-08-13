@@ -8,21 +8,20 @@ two states with essentially the same loop gain (0.759 and 0.769) differ
 ten-fold in error. So rho is not the right statistic, and the implicit function
 theorem says why.
 
-The exact adjoint solves (I - Phi_T)^T lambda = g, so
-
-    lambda = g + Phi_T^T g + (Phi_T^T)^2 g + ...
-
-while cutting the feedback loop keeps only the first term. The error is
-therefore led by Phi_T^T g -- which depends on the *direction* g, the
-objective's own sensitivity to the coupled state. rho(Phi_T) is a worst case
-over all directions and cannot see this: a large gain along directions g never
-excites costs nothing.
+The exact adjoint solves (I - Phi_T)^T lambda = g. Cutting the feedback loop
+uses lambda_0 = g, whose residual in that equation is exactly Phi_T^T g. This
+depends on the *direction* g, the objective's own sensitivity to the coupled
+state. rho(Phi_T) is a worst case over all directions and cannot see this: a
+large gain along directions g never excites costs nothing. The residual is
+well-defined even when rho(Phi_T) >= 1, where a Neumann expansion would not
+converge.
 
 That suggests a directional gain,
 
     gamma = || Phi_T^T g || / || g ||
 
-which costs exactly one VJP -- far less than the gradient it is judging. This
+which costs exactly one VJP -- far less than the gradient it is screening. It
+is a residual diagnostic, not a universal error bound. This
 script measures gamma, rho(Phi_T) and the actual naive-gradient error across a
 range of designs and Rayleigh numbers, and asks which one predicts the error.
 """
@@ -106,6 +105,15 @@ def main(N=20, out="results/predict_error.json"):
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(rows, indent=2))
 
+    # A high in-sample correlation from fourteen points deserves a stability
+    # check. Ship leave-one-design-family-out and seeded bootstrap statistics
+    # beside the raw measurements every time this experiment runs.
+    if len(rows) > 2:
+        from predictor_statistics import summarize
+
+        stats_path = Path(out).with_name("predictor_statistics.json")
+        stats_path.write_text(json.dumps(summarize(rows), indent=2))
+
     if len(rows) > 2:
         r = np.array([x["rel_err"] for x in rows])
         sr = np.array([x["rho_phi"] for x in rows])
@@ -117,6 +125,8 @@ def main(N=20, out="results/predict_error.json"):
         print(f"  gamma           {np.corrcoef(gm[keep], lr)[0,1]:+.4f}")
         print(f"  log10(gamma)    {np.corrcoef(np.log10(np.maximum(gm[keep],1e-12)), lr)[0,1]:+.4f}")
     print(f"\nwrote {out}")
+    if len(rows) > 2:
+        print(f"wrote {stats_path}")
 
 
 if __name__ == "__main__":

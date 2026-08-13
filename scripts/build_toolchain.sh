@@ -20,8 +20,11 @@ TAG=coldplate-enzyme-toolchain:1.0
 
 for i in $(seq 1 "$ATTEMPTS"); do
     echo "=== toolchain build attempt $i/$ATTEMPTS ==="
-    docker build -t "$TAG" "$ROOT/tesseracts/thermal_fortran/toolchain" 2>&1 | tail -14
-    if docker image inspect "$TAG" >/dev/null 2>&1; then
+    # Test the build command itself. Merely inspecting TAG is insufficient: an
+    # older cached image can still exist after a failed rebuild and would turn
+    # a network/checksum failure into a false success report.
+    if docker build -t "$TAG" "$ROOT/tesseracts/thermal_fortran/toolchain" 2>&1 \
+        | tail -14; then
         echo "built $TAG"
         docker run --rm "$TAG" bash -lc \
             'opt --version | grep -o "LLVM version [0-9.]*"; flang-new --version | head -1'

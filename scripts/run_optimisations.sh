@@ -26,15 +26,27 @@ if [ -z "$PY" ]; then
 fi
 
 cd "$ROOT/orchestrator"
+
+# Tesseract normally tears down what it serves. If a Python process crashes,
+# clean up only containers descended from this project's images. Never remove
+# unrelated containers from the reviewer's Docker daemon.
+cleanup_project_containers() {
+    for image in material_map stokes_brinkman thermal_advdiff thermal_fortran; do
+        ids="$(docker ps -q --filter "ancestor=$image" 2>/dev/null || true)"
+        [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true
+    done
+}
+trap cleanup_project_containers EXIT
+
 for mode in composed one_way; do
     echo "=============== $mode (N=$N, iters=$ITERS) ==============="
     extra=""
     [ "$mode" = "composed" ] && extra="--diagnose 6"
     if ! "$PY" -u optimize.py --N "$N" --iters "$ITERS" --mode "$mode" $extra; then
         echo "  $mode FAILED"
-        docker ps -q | xargs -r docker rm -f >/dev/null 2>&1 || true
+        cleanup_project_containers
         exit 1
     fi
-    docker ps -q | xargs -r docker rm -f >/dev/null 2>&1 || true
+    cleanup_project_containers
 done
 echo "optimisation runs complete"

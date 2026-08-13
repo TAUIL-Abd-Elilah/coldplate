@@ -68,6 +68,7 @@ def run(
     Ra=1.0e3,
     diagnose=0,
     gamma_gate=0.01,
+    result_tag=None,
 ):
     # Ra = 1e3 by default, not the 3e4 used for the gradient study, and this is
     # measured rather than guessed (see probe_startpoint.py). A near-uniform
@@ -82,6 +83,7 @@ def run(
     p = Params(Nx=N, Ny=N, Ra=Ra, beta=1.0)
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
+    tag = result_tag or mode
 
     rng = np.random.default_rng(seed)
     # start from a mild perturbation of the volume fraction so the filter has
@@ -210,7 +212,7 @@ def run(
             )
 
             # Checkpoint every iteration so a crash costs one step, not the run.
-            (out / f"history_{mode}_N{N}.json").write_text(json.dumps(history, indent=2))
+            (out / f"history_{tag}_N{N}.json").write_text(json.dumps(history, indent=2))
 
             if it % snapshot_every == 0 or it == 1 or it == iters:
                 snaps.append(
@@ -223,7 +225,6 @@ def run(
                     }
                 )
 
-        tag = mode
         np.savez_compressed(
             out / f"run_{tag}_N{N}.npz",
             rho_raw=rho,
@@ -282,6 +283,10 @@ if __name__ == "__main__":
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--outdir", default="results")
     ap.add_argument(
+        "--result-tag", default=None,
+        help="filename tag for this run (for example 'diag'); defaults to --mode",
+    )
+    ap.add_argument(
         "--mode",
         default="composed",
         choices=["composed", "one_way", "frozen", "gamma_gated"],
@@ -291,7 +296,8 @@ if __name__ == "__main__":
     ap.add_argument(
         "--gamma-gate", dest="gamma_gate", type=float, default=0.01,
         help="in gamma_gated mode, take the cheap gradient when gamma is below "
-             "this (default 0.01, the SAFE threshold in coupling_check.py)",
+             "this (default 0.01, calibrated on this benchmark; validate it "
+             "before transferring to another problem)",
     )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--verbose", action="store_true", help="print Newton progress")

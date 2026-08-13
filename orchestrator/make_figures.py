@@ -6,11 +6,12 @@
   fig2  gradient validation: composed vs finite differences vs frozen flow
   fig3  coupling strength: loop gain and naive-gradient error vs Rayleigh number
   fig4  optimisation driven by the composed gradient vs the naive one
-  fig5  architecture: the four components and the adjoint between them
+  fig5  architecture: three active components and the selectable thermal slot
   fig6  naive-gradient error along the optimisation trajectory
   fig7  one design, rising coupling: where the two gradients disagree in space
   fig8  which statistic predicts that error -- directional gain, not loop gain
   fig9  attribution: which design cells each gradient says actually matter
+  fig10 equal-budget actions chosen by each gradient, checked by a forward solve
 """
 
 from __future__ import annotations
@@ -94,8 +95,14 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
 
         a0.imshow(rho[fr], origin="lower", cmap=CMAP_RHO, vmin=0, vmax=1,
                   extent=[0, 1, 0, 1], interpolation="nearest")
-        a0.set_title("material layout   (dark = solid)")
+        a0.set_title("material layout   (dark = solid, pale = coolant)")
         a0.set_xticks([]); a0.set_yticks([])
+        a0.plot([0.30, 0.70], [0.015, 0.015], color=ACCENT, lw=3.0,
+                solid_capstyle="butt")
+        a0.text(0.50, 0.035, "heated chip", ha="center", va="bottom",
+                fontsize=7.8, color=ACCENT, fontweight="bold")
+        a0.text(0.50, 0.975, "cold sink", ha="center", va="top",
+                fontsize=7.8, color=NAIVE, fontweight="bold")
 
         im = a1.imshow(T[fr], origin="lower", cmap=CMAP_T, vmin=0,
                        vmax=Tmax if vmax is None else vmax,
@@ -108,6 +115,12 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
         a1.set_title("temperature + coolant flow")
         a1.set_xlim(0, 1); a1.set_ylim(0, 1)
         a1.set_xticks([]); a1.set_yticks([])
+        a1.plot([0.30, 0.70], [0.015, 0.015], color=ACCENT, lw=3.0,
+                solid_capstyle="butt")
+        a1.text(0.50, 0.035, "heat in", ha="center", va="bottom",
+                fontsize=7.8, color=ACCENT, fontweight="bold")
+        a1.text(0.50, 0.975, "cold sink", ha="center", va="top",
+                fontsize=7.8, color=NAIVE, fontweight="bold")
 
         a2.plot(range(1, len(J) + 1), J, color=ACCENT, lw=1.8)
         k = min(int(iters[fr]), len(J)) - 1
@@ -117,9 +130,10 @@ def fig1_animation(npz_path, history_path, out_gif, out_png):
         a2.grid(True, color=GRID, lw=0.6)
         a2.set_xlim(0, len(J) + 1)
 
+        phase = "initial design" if fr == 0 else ("final design" if fr == last else "optimising")
         fig.suptitle(
             f"Differentiable cold-plate topology optimisation   "
-            f"iteration {int(iters[fr])}   J = {J[k]:.4f}",
+            f"{phase} · iteration {int(iters[fr])} · J = {J[k]:.4f}",
             fontsize=12, fontweight="semibold", y=0.97,
         )
         return im
@@ -273,12 +287,10 @@ def fig4_opt_comparison(composed_hist, naive_hist, out_png):
 def fig6_trajectory(hist_path, out_png):
     """How wrong the naive gradient is along the optimisation trajectory.
 
-    This is the resolution of an apparent paradox: the naive gradient carries
-    40-150% error the whole way, yet the optimisation driven by it still
-    succeeds. The reason is that after the first few iterations its *direction*
-    is still roughly right (cosine 0.8-0.96), and a per-coordinate-normalised
-    optimiser like Adam only consumes direction. It is a usable search
-    direction and a useless sensitivity.
+    On the corrected 96x96 diagnostic run it carries 4-20% raw error, while its
+    cosine stays above 0.98 and very few entries change sign. That makes it a
+    usable search direction along this trajectory, without making it a
+    trustworthy sensitivity at a strongly coupled state.
     """
     rows = [r for r in json.loads(Path(hist_path).read_text()) if "naive_rel_err" in r]
     if not rows:
@@ -297,7 +309,8 @@ def fig6_trajectory(hist_path, out_png):
     ax.set_xlabel("design iteration")
     ax.set_ylabel("percent")
     ax.grid(True, color=GRID, lw=0.6)
-    ax.set_ylim(0, max(160, flip.max() * 1.15))
+    ymax = max(25.0, 1.20 * max(float((100 * err).max()), float(flip.max())))
+    ax.set_ylim(0, ymax)
 
     ax2 = ax.twinx()
     ax2.spines["right"].set_visible(True)
@@ -308,19 +321,19 @@ def fig6_trajectory(hist_path, out_png):
     ax2.set_ylim(0, 1.05)
 
     ax.annotate(
-        "uniform design:\n74% wrong sign",
-        xy=(it[0], flip[0]), xytext=(11, 104),
+        f"iteration {it[0]}:\n{100*err[0]:.1f}% error, {flip[0]:.1f}% wrong sign",
+        xy=(it[0], 100 * err[0]), xytext=(it[0] + 9, 0.76 * ymax),
         fontsize=8.8, color="#b91c1c", fontweight="bold",
         arrowprops=dict(arrowstyle="->", color="#b91c1c", lw=1.1),
     )
-    ax.text(it[len(it) // 3], 17,
-            "design solidifies → solid blocks the flow\n→ coupling weakens, direction recovers",
+    ax.text(it[len(it) // 3], 0.12 * ymax,
+            "along this trajectory the shortcut stays pointed downhill",
             fontsize=8.6, color=MUTED)
 
     h1, l1 = ax.get_legend_handles_labels()
     ax.legend(h1 + [lcos], l1 + [lcos.get_label()], loc="upper center",
               bbox_to_anchor=(0.62, 1.0), fontsize=8.8)
-    ax.set_title("The naive gradient stays wrong -- it just stays pointed downhill")
+    ax.set_title("Along the optimisation trajectory, the shortcut remains a usable direction")
     fig.tight_layout()
     fig.savefig(out_png, bbox_inches="tight")
     plt.close(fig)
@@ -462,7 +475,7 @@ def fig7_regime_maps(npz_path, out_png):
 
 
 def fig5_architecture(out_png):
-    """Diagram: three components, and the adjoint conversation between them."""
+    """Three active components, with one of two thermal backends selected."""
     from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
     fig, ax = plt.subplots(figsize=(10.2, 7.0))
@@ -481,34 +494,46 @@ def fig5_architecture(out_png):
         ax.text(x + w / 2, y + 0.22, strategy, ha="center", fontsize=8.4,
                 style="italic", color=ACCENT, zorder=3)
 
-    box(0.30, 5.55, 2.85, 1.40, "material_map", "PyTorch", "torch.autograd", "#fdf6ec")
-    box(3.75, 5.75, 2.85, 1.20, "thermal_advdiff", "JAX", "JAX autodiff", "#f0f7f1")
-    box(3.75, 4.05, 2.85, 1.20, "thermal_fortran", "Fortran",
-        "Enzyme, compiler AD", "#f3f0fa")
-    box(3.75, 1.55, 2.85, 1.30, "stokes_brinkman", "C++ / Eigen",
+    box(0.30, 5.35, 2.85, 1.40, "material_map", "Python · PyTorch",
+        "torch.autograd", "#fdf6ec")
+
+    # A dashed slot makes exclusivity explicit: a run serves one thermal
+    # implementation, never both. Together with material and fluid that is
+    # three active Tesseracts.
+    ax.add_patch(FancyBboxPatch(
+        (3.48, 4.22), 3.35, 2.75, boxstyle="round,pad=0.10,rounding_size=0.12",
+        linewidth=1.2, linestyle="--", edgecolor="#7c3aed",
+        facecolor="none", zorder=1))
+    ax.text(5.15, 7.08, "THERMAL SLOT · SELECT ONE", ha="center", fontsize=8.1,
+            color="#7c3aed", fontweight="bold")
+    box(3.75, 5.55, 2.85, 1.05, "thermal_advdiff", "Python · JAX",
+        "JAX autodiff", "#f0f7f1")
+    ax.text(5.18, 5.39, "OR", ha="center", va="center", fontsize=8.5,
+            color="#7c3aed", fontweight="bold")
+    box(3.75, 4.40, 2.85, 1.05, "thermal_fortran", "Fortran",
+        "Enzyme compiler AD", "#f3f0fa")
+    box(3.75, 1.55, 2.85, 1.30, "stokes_brinkman", "C++ · Eigen",
         "hand-derived adjoint", "#eef4fb")
 
-    def arrow(p0, p1, color, style="-", rad=0.0, lw=1.5, z=4, both=False):
+    def arrow(p0, p1, color, style="-", rad=0.0, lw=1.5, z=4):
         ax.add_patch(FancyArrowPatch(
-            p0, p1, arrowstyle="<|-|>" if both else "-|>", mutation_scale=13,
+            p0, p1, arrowstyle="-|>", mutation_scale=13,
             linewidth=lw, color=color, linestyle=style,
             connectionstyle=f"arc3,rad={rad}", zorder=z))
 
-    # the two thermal implementations are drop-in replacements for each other
-    arrow((6.75, 5.90), (6.75, 5.10), "#7c3aed", lw=1.6, both=True)
-    ax.text(6.90, 5.50, "interchangeable\nto 5×10⁻¹²", fontsize=8.4,
-            color="#7c3aed", va="center", fontweight="bold")
+    ax.text(6.98, 5.63, "same schema\nfull-gradient swap:\n5.3×10⁻¹²",
+            fontsize=8.2, color="#7c3aed", va="center", fontweight="bold")
 
     # design -> properties -> solvers
-    arrow((3.15, 6.35), (3.75, 6.35), INK)
-    ax.text(3.05, 6.52, "k", fontsize=8.8, color=INK, ha="center")
-    arrow((1.72, 5.55), (3.75, 2.45), INK, rad=-0.18)
+    arrow((3.15, 6.05), (3.48, 6.05), INK)
+    ax.text(3.05, 6.22, "k", fontsize=8.8, color=INK, ha="center")
+    arrow((1.72, 5.35), (3.75, 2.45), INK, rad=-0.18)
     ax.text(1.90, 3.90, "alpha", fontsize=8.8, color=INK)
 
-    # the two-way coupling, drawn to whichever thermal block is active
-    arrow((4.60, 2.85), (4.60, 4.05), NAIVE, lw=2.0)
+    # Two-way coupling reaches the selected implementation through the slot.
+    arrow((4.60, 2.85), (4.60, 4.22), NAIVE, lw=2.0)
     ax.text(4.05, 3.40, "u, v", fontsize=9.2, color=NAIVE, fontweight="bold")
-    arrow((5.75, 4.05), (5.75, 2.85), ACCENT, lw=2.0)
+    arrow((5.75, 4.22), (5.75, 2.85), ACCENT, lw=2.0)
     ax.text(5.88, 3.40, "T", fontsize=9.2, color=ACCENT, fontweight="bold")
     ax.text(5.18, 1.30, "two-way coupled fixed point", fontsize=8.6,
             color=MUTED, ha="center", va="top")
@@ -525,14 +550,51 @@ def fig5_architecture(out_png):
             fontsize=8.5, color=MUTED, va="top")
 
     ax.text(0.30, 0.80,
-            "Four languages, four differentiation strategies, one differentiable function.",
+            "Three implementation languages · four derivative stacks · three served components per run.",
             fontsize=9.8, color=INK, fontweight="bold", va="top")
     ax.text(0.30, 0.44,
-            "The coupled adjoint exists only as a conversation between the solvers — it cannot be\n"
-            "assembled component by component. And the two thermal blocks are interchangeable:\n"
-            "the end-to-end gradient does not depend on which derivative technology produced it.",
+            "The coupled adjoint exists only as a conversation between the active solvers — it cannot be\n"
+            "assembled component by component. The thermal slot accepts either backend with no caller\n"
+            "change, and the end-to-end gradient is unchanged to 5.3×10⁻¹².",
             fontsize=8.8, color=MUTED, va="top", linespacing=1.5)
 
+    fig.tight_layout()
+    fig.savefig(out_png, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_png}")
+
+
+def fig10_intervention(json_path, out_png):
+    """Equal-budget actions selected by each gradient, checked by re-solving."""
+    data = json.loads(Path(json_path).read_text())
+    rows = data["rows"]
+    amp = np.array([r["amplitude"] for r in rows])
+    exact = -np.array([r["delta_J_exact_action"] for r in rows])
+    naive = -np.array([r["delta_J_naive_action"] for r in rows])
+
+    fig, ax = plt.subplots(figsize=(9.4, 3.0))
+    x = np.arange(len(rows))
+    width = 0.34
+    ax.bar(x - width / 2, exact, width=width, color=ACCENT,
+           label="cells chosen by composed gradient")
+    ax.bar(x + width / 2, naive, width=width, color=NAIVE,
+           label="cells chosen by loop-cut gradient")
+    for xi, a, b in zip(x, exact, naive):
+        ax.text(xi - width / 2, a + 0.002, f"{a:.3f}", ha="center", fontsize=8)
+        ax.text(xi + width / 2, b + 0.002, f"{b:.3f}", ha="center", fontsize=8)
+    ax.set_xticks(x, [f"{a:.3f}" for a in amp])
+    ax.set_xlabel("material moved into and out of each selected cell")
+    ax.set_ylabel("realised reduction in chip temperature  −ΔJ")
+    ax.set_title("Same material budget, true forward re-solve: exact sensitivity wins 3/3")
+    ax.grid(True, axis="y", color=GRID, lw=0.6)
+    ax.legend(loc="upper left")
+    ax.text(
+        0.98, 0.07,
+        f"Ra={data['Ra']:.0e} · {data['k_each_way']} add + "
+        f"{data['k_each_way']} remove cells\nzero net material · γ={data['gamma']:.3f}",
+        transform=ax.transAxes, ha="right", va="bottom", fontsize=8.2, color=MUTED,
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.82, "pad": 1.5},
+    )
     fig.tight_layout()
     fig.savefig(out_png, bbox_inches="tight")
     plt.close(fig)
@@ -647,7 +709,7 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default="results")
-    ap.add_argument("--N", type=int, default=48)
+    ap.add_argument("--N", type=int, default=96)
     a = ap.parse_args()
     R = Path(a.results)
     R.mkdir(parents=True, exist_ok=True)
@@ -681,3 +743,5 @@ if __name__ == "__main__":
             R / "sensitivity_ranking.npz", R / "sensitivity_ranking.json",
             R / "fig9_attribution.png",
         )
+    if (R / "intervention_test.json").exists():
+        fig10_intervention(R / "intervention_test.json", R / "fig10_intervention.png")

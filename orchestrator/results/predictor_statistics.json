@@ -1,0 +1,50 @@
+{
+  "n_converged": 14,
+  "n_design_families": 4,
+  "design_families": [
+    "near_uniform",
+    "rough",
+    "smooth",
+    "very_smooth"
+  ],
+  "n_rayleigh_levels_represented": 5,
+  "rayleigh_levels_represented": [
+    1000.0,
+    3000.0,
+    10000.0,
+    20000.0,
+    30000.0
+  ],
+  "attempted_configurations": 20,
+  "log_gamma_correlation": 0.9949241733900526,
+  "rho_correlation": 0.8252367046994011,
+  "leave_one_family_out": {
+    "near_uniform": {
+      "n": 9,
+      "log_gamma_correlation": 0.9940331657926604,
+      "rho_correlation": 0.7890517353983617
+    },
+    "rough": {
+      "n": 10,
+      "log_gamma_correlation": 0.9968982311360693,
+      "rho_correlation": 0.783498127631953
+    },
+    "smooth": {
+      "n": 11,
+      "log_gamma_correlation": 0.9950465951185722,
+      "rho_correlation": 0.9315195673932092
+    },
+    "very_smooth": {
+      "n": 12,
+      "log_gamma_correlation": 0.9949866952729238,
+      "rho_correlation": 0.8194551347908469
+    }
+  },
+  "bootstrap_seed": 2026,
+  "bootstrap_samples": 10000,
+  "bootstrap_95_percent_interval": [
+    0.9885218335594181,
+    0.9989354175685341
+  ],
+  "bootstrap_median": 0.9953286762023592
+}

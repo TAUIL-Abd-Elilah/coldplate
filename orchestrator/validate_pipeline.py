@@ -3,9 +3,10 @@
 """End-to-end validation of the composed three-Tesseract gradient.
 
 This is the headline experiment. Everything runs through the real Tesseracts --
-three containers, three languages, three differentiation strategies -- and we
-check that the composed gradient is exact, and that the gradient you would get
-without composing across the boundary is not merely less accurate but wrong.
+three served containers, three derivative strategies, and either of two thermal
+backends -- and we check that the composed gradient is exact, and that the
+gradient you would get without composing across the boundary is not merely less
+accurate but wrong.
 
   [1] composed adjoint   implicit diff of the fixed point, adjoint via GMRES
   [2] finite differences central differences on the whole pipeline
@@ -54,7 +55,7 @@ def main(N: int = 20, backend: str = "thermal_advdiff") -> int:
             f"    Phi evaluations: {cp.stats['phi_calls']}, "
             f"adjoint GMRES matvecs: {cp.stats['vjp_matvecs']}"
         )
-        print("    (each Phi call and each GMRES matvec crosses the C++/JAX boundary)\n")
+        print(f"    (each Phi call and each GMRES matvec crosses the C++/{backend} boundary)\n")
 
         t0 = time.time()
         g_frozen = cp.frozen_flow_grad(rho)

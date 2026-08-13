@@ -303,9 +303,10 @@ class ColdPlate:
             "gamma_gated" -- measure the directional gain first, then decide
 
         The last one is what the diagnostic is *for*. gamma = ||Phi_T^T g||/||g||
-        is the first neglected term of the adjoint Neumann series, so it both
-        estimates what the cheap gradient would cost you and comes free-ish:
-        one VJP, against the tens of VJPs the GMRES adjoint needs. Measuring it
+        is the normalized residual of the loop-cut adjoint lambda_0 = g. It is
+        therefore an inexpensive, objective-aware warning signal: one VJP,
+        against the tens of VJPs the GMRES adjoint needs. It is not a universal
+        error bound; the configured gate is benchmark-calibrated. Measuring it
         before deciding turns a claim about accuracy into a budget decision --
         pay for the exact adjoint on the iterations that need it, take the cheap
         gradient on the ones that do not.
@@ -347,8 +348,8 @@ class ColdPlate:
 
         gamma = None
         if mode == "gamma_gated":
-            # One VJP through the loop gives the first neglected Neumann term.
-            # This is the entire cost of the decision.
+            # One VJP through the loop gives the loop-cut adjoint residual.
+            # This is the entire cost of the calibrated decision.
             self.stats["gamma_vjps"] = self.stats.get("gamma_vjps", 0) + 1
             w = phi_vjp(g)[0]
             gnorm = float(jnp.linalg.norm(g))

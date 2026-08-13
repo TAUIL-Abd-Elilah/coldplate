@@ -1,0 +1,47 @@
+{
+  "N": 20,
+  "Ra": 20000.0,
+  "amplitude": 0.025,
+  "n_seeds": 3,
+  "exact_wins": 3,
+  "all_actions_reduce_J": true,
+  "cases": [
+    {
+      "seed": 1,
+      "gamma": 0.3301022784652648,
+      "naive_relative_error": 0.8593537767064758,
+      "naive_cosine": 0.8037757620170616,
+      "add_set_overlap": 0.7,
+      "remove_set_overlap": 0.05,
+      "delta_J_exact_action": -0.04927419331065419,
+      "delta_J_naive_action": -0.03924675980719483,
+      "exact_advantage": 0.01002743350345936,
+      "extra_cooling_fraction": 0.2554971047984731
+    },
+    {
+      "seed": 3,
+      "gamma": 0.21452551679405799,
+      "naive_relative_error": 0.3320217123605695,
+      "naive_cosine": 0.9693021239316321,
+      "add_set_overlap": 0.9,
+      "remove_set_overlap": 0.65,
+      "delta_J_exact_action": -0.05143348977282969,
+      "delta_J_naive_action": -0.0487291992854062,
+      "exact_advantage": 0.0027042904874234885,
+      "extra_cooling_fraction": 0.05549630461983379
+    },
+    {
+      "seed": 4,
+      "gamma": 0.2007515449460198,
+      "naive_relative_error": 1.1216563138256332,
+      "naive_cosine": -0.07742143074669837,
+      "add_set_overlap": 0.3,
+      "remove_set_overlap": 0.0,
+      "delta_J_exact_action": -0.12221956758241648,
+      "delta_J_naive_action": -0.03251952194458152,
+      "exact_advantage": 0.08970004563783496,
+      "extra_cooling_fraction": 2.758344535036469
+    }
+  ],
+  "selection_note": "Seeds 1, 3, and 4 are a fixed convergence-qualified pilot set; this is robustness evidence, not a population success-rate estimate."
+}

@@ -1,44 +1,36 @@
 # Coldplate
 
-**Track: Multi-physics & coupled systems**
+**Track: Multi-physics & coupled systems · Apache-2.0**
 
-End-to-end differentiable topology optimisation of a natural-convection cold
-plate, composed from four Tesseracts that genuinely disagree about how they
-compute — a C++/Eigen solver with a hand-derived adjoint, a JAX solver with
-autodiff, a PyTorch material model, and a Fortran solver differentiated by
-**Enzyme at the LLVM IR level**.
+A natural-convection cold plate differentiated end to end across three active
+Tesseracts: a PyTorch material map feeds a C++/Eigen fluid solver coupled in
+both directions to a thermal solver. The thermal slot accepts either JAX
+autodiff or an independently written Fortran implementation differentiated by
+**Enzyme at the LLVM IR level**. That is three implementation languages and
+four derivative stacks across the repository, with three containers served in
+any one run.
 
-Four results, in order of how much we trust them.
+![The optimized material, temperature, coolant flow and objective history.](orchestrator/results/fig1_optimisation.gif)
 
-**1. The components are interchangeable.** Swapping the JAX thermal solver for
-the Fortran/Enzyme one leaves the end-to-end gradient unchanged to
-**5.3 × 10⁻¹²**, cosine 1.000000000000 — the same physics, reached through a
-completely different derivative technology. That is what a component boundary
-is supposed to buy you, measured rather than asserted.
+![Three active Tesseracts and one selectable thermal backend.](orchestrator/results/fig5_architecture.png)
 
-**2. Not composing across that boundary costs a lot, but only sometimes.** In a
-strongly coupled state the component-wise gradient carries **86% error and
-inverts the sign on a third of the design variables**. In the regime this
-optimiser actually runs in, the same approximation is 4–20% off and works fine.
-Same code, same physics, two orders of magnitude difference in how wrong you
-are — and nothing in the forward solution tells you which case you are in.
+## Thirty-second result
 
-**3. There is a cheap way to tell.** The implicit function theorem says the
-leading error term is `Φ_Tᵀg`, so the predictor is the directional gain
-`γ = ‖Φ_Tᵀg‖/‖g‖` — **one VJP**. Across four design families and five Rayleigh
-numbers, log₁₀(γ) correlates with log₁₀(error) at **0.995**, while the more
-obvious candidate, the coupling loop gain ρ(Φ_T), manages 0.825 and orders some
-pairs backwards.
+| proof | measured result |
+| --- | --- |
+| Swap JAX autodiff for Fortran/Enzyme | end-to-end gradient changes by **5.3 × 10⁻¹²**, cosine 1.000000000000 |
+| Validate the composed adjoint | directional derivative matches a true coupled finite difference to **8.3 × 10⁻⁶** |
+| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling**, wins **3/3** amplitudes, then wins **3/3** additional converged designs |
+| Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 
-**4. The failure is modal, and γ is cheap enough to act on.** Cutting the loop
-keeps the **sign of all fifty** most influential design variables — which is why
-an optimiser driven by it still succeeds — while ranking them **no better than
-chance** (Spearman −0.011), and promoting into its top fifty a cell truly ranked
-1016th of 1024. Serviceable as a search direction, worthless as a sensitivity.
-And because γ costs one VJP against the ~13 the adjoint needs, it can be used as
-a *budget*: gating the optimiser on γ removes **92% of the cross-boundary adjoint
-work and reaches the same design**, while correctly refusing at the operating
-point where the shortcut carries 115% error.
+The exact and loop-cut gradients can both drive the weakly coupled long
+optimisation, which is why convergence alone is not validation. At a strongly
+coupled state the shortcut is 86% wrong and flips a third of the signs; when it
+chooses where to move a fixed material budget, the true forward solver confirms
+that the composed sensitivity makes the better engineering decision.
+
+**Start here:** [4-page paper](PAPER.pdf) · [video storyboard](DEMO_SCRIPT.md) ·
+[`scripts/judge_demo.sh`](scripts/judge_demo.sh) (safe 1–3 minute warm smoke test)
 
 ---
 
@@ -102,6 +94,45 @@ The naive gradients carry **~85% relative error and point the wrong way on a
 third of all design variables** — despite the one-way version using the C++
 solver's adjoint in full and getting everything right except the feedback loop.
 Cutting that loop is not a small approximation: it is most of the gradient.
+
+### The gradient changes a realised engineering decision
+
+Correctness matters only if acting on it changes the physical outcome. At a
+strongly coupled state (`N=20`, Ra = 3×10⁴), each gradient was given the same
+action: add material to the 5% of cells it calls most beneficial, remove the
+same amount from the 5% it calls least beneficial, and preserve total material
+exactly. We then ignored both predictions and re-solved the true coupled
+forward problem (`intervention_test.py`):
+
+| material moved per selected cell | ΔJ, cells chosen by exact gradient | ΔJ, cells chosen by loop-cut gradient | extra realised cooling |
+| ---: | ---: | ---: | ---: |
+| 0.010 | −0.01715 | −0.01121 | 53% |
+| 0.025 | −0.04322 | −0.02800 | 54% |
+| 0.050 | **−0.08789** | −0.05565 | **58%** |
+
+Both actions use 20 additions and 20 removals with zero net material. The
+composed-gradient action wins all three forward re-solves. At the largest
+amplitude it selects a change that cools **58% more** under the same budget.
+This is the missing link between gradient accuracy and an engineering outcome.
+
+![Equal-budget material interventions selected by each gradient and evaluated by the true coupled solver.](orchestrator/results/fig10_intervention.png)
+
+We also held `Ra=2×10⁴` and the `0.025` action fixed and repeated the true
+forward re-solve on three independently seeded, convergence-qualified designs
+(`intervention_robustness.py`):
+
+| seed | γ | gradient cosine | ΔJ, composed choice | ΔJ, loop-cut choice | extra cooling |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.330 | +0.804 | −0.04927 | −0.03925 | 26% |
+| 3 | 0.215 | +0.969 | −0.05143 | −0.04873 | 6% |
+| 4 | 0.201 | **−0.077** | **−0.12222** | −0.03252 | **276%** |
+
+The composed choice wins **3/3 additional designs**. Seed 4 is especially
+revealing: the loop-cut gradient is globally an ascent direction (negative
+cosine), yet its constrained cell choice still cools; the composed choice
+delivers 3.76× as much cooling. Seeds 1, 3, and 4 are a fixed set selected in a
+convergence pilot, so this is a robustness check—not a population success-rate
+estimate.
 
 ### What we do *not* claim
 
@@ -187,11 +218,11 @@ sensitivity", and it is why we do not treat the successful naive optimisation as
 evidence that cutting the loop is harmless. It is harmless for one of the two
 jobs.
 
-### The failure is predictable
+### Spectral radius helps within one sweep, but is not sufficient
 
-One number governs it: ρ(Φ_T), the spectral radius of the fixed-point Jacobian
-— the gain of a single trip around the coupling loop. Measured through the
-Tesseracts by power iteration on JVPs (`sweep_coupling.py`):
+Along one fixed design family, ρ(Φ_T)—the spectral radius of the fixed-point
+Jacobian—tracks the shortcut's failure. Measured through the Tesseracts by power
+iteration on JVPs (`sweep_coupling.py`):
 
 | Ra | loop gain ρ(Φ_T) | naive rel. error | cosine | wrong sign |
 | --- | --- | --- | --- | --- |
@@ -221,28 +252,29 @@ healthy and be handing you a gradient that is 86% wrong.
 
 ### What actually predicts it: one VJP
 
-The implicit function theorem says what the error should be. The exact adjoint
-solves `(I − Φ_T)ᵀ λ = g`, so
+The implicit function theorem gives an exact cheap diagnostic. The adjoint
+solves `(I − Φ_T)ᵀ λ = g`. Cutting the loop uses the approximation `λ₀ = g`,
+whose residual in that equation is exactly
 
 ```
-lambda = g + Phi_T^T g + (Phi_T^T)^2 g + ...
+r0 = g - (I - Phi_T)^T lambda0 = Phi_T^T g
 ```
 
-and cutting the feedback loop keeps only the first term. The leading error is
-therefore **`Φ_Tᵀ g`** — which depends on the *direction* `g`, the objective's
-own sensitivity to the coupled state. ρ(Φ_T) is a worst case over all
-directions and cannot see this: a large gain along directions the objective
-never excites costs nothing.
+This residual depends on the *direction* `g`, the objective's own sensitivity
+to the coupled state. ρ(Φ_T) is a worst case over all directions and cannot see
+this: a large gain along directions the objective never excites costs nothing.
+Whenever the adjoint system is invertible, the actual error is
+`λ − λ₀ = (I − Φ_Tᵀ)⁻¹r₀`, so conditioning and the parameter map still matter.
 
-That suggests the **directional gain**
+The normalized residual — our **directional gain** — is
 
 ```
 gamma  =  || Phi_T^T g ||  /  || g ||
 ```
 
-which costs exactly one VJP — far less than the gradient it is judging.
-Measured across four design families × five Rayleigh numbers
-(`predict_error.py`, figure 8):
+which costs exactly one VJP — far less than the gradient it screens. Measured
+on **14 converged configurations**, drawn from four design families and five
+attempted Rayleigh levels (`predict_error.py`, figure 8):
 
 | predictor | correlation with log₁₀(naive error) |
 | --- | --- |
@@ -259,15 +291,20 @@ And the case that settles it — two states at the *same* Rayleigh number:
 The smooth design has *half* the spectral radius and *twice* the error. ρ
 orders these backwards; γ orders them correctly, and does so across the whole
 dataset. Empirically `error ≈ γ` for γ ≲ 0.05, growing superlinearly beyond as
-the higher Neumann terms start to matter.
+the inverse and parameter map amplify the residual. Leave-one-design-family-out
+correlations are 0.994–0.997 and a seeded 10,000-sample bootstrap gives a 95%
+interval of 0.989–0.999 (`predictor_statistics.py`).
 
 So there is a usable answer to "can I get away with differentiating my
-components separately?": **compute γ with a single VJP.** Below ~0.01 the
-component-wise gradient is good to about a percent; above ~0.1 it is not worth
-having. This is cheap enough to run as an assertion inside a pipeline, and it
-is a statement about the composition rather than about this particular problem.
-It ships as a standalone module, [`coupling_check.py`](coupling_check.py),
-which needs only a JAX-traceable loop and does not import anything from here.
+components separately?": **compute γ with a single VJP.** On this benchmark,
+values below ~0.01 accompanied roughly percent-level error and values above
+~0.1 flagged danger. Those are calibrated defaults, not transferable
+guarantees. The standalone [`coupling_check.py`](coupling_check.py) exposes
+configurable thresholds and needs only a JAX-traceable loop.
+
+For `ρ(Φ_T) < 1`, the inverse can also be expanded as a convergent Neumann
+series. We do **not** use that expansion at the headline state, where
+`ρ(Φ_T) ≈ 1.19`; the residual identity above remains exact there.
 
 ### The decisive test: hold the physics fixed, change the objective
 
@@ -290,18 +327,17 @@ varies, ρ is structurally incapable of explaining it (`objective_sweep.py`):
 | left-column mean | 0.3879 | 0.3535 |
 
 **ρ(Φ_T) = 0.5481 on every one of those rows, while the error varies by a
-factor of 136.** That settles it: the spectral radius is not a sufficient
-statistic for whether component-wise differentiation is safe, and no amount of
-additional data can rescue it. A constant cannot explain a 136-fold spread.
+factor of 136.** This shows that spectral radius alone is not sufficient for
+objective-specific gradient error: a constant cannot explain a 136-fold spread.
 
 γ does move with the error, and it gets the dangerous case right — 0.388
 against a measured 0.354. But it is a **useful approximation, not a formula**:
 across objectives it correlates at 0.80 (versus 0.995 across designs and
 Rayleigh numbers), and it over-predicts on the domain-mean row and
-under-predicts on the outlet row, each by about 4×. That is expected — γ is the
-leading Neumann term of the error in λ, whereas the quantity you finally care
-about also depends on how `Φ_θᵀ` maps that error into design space. Treat it as
-an order-of-magnitude guide with a real theoretical basis, not as a prediction.
+under-predicts on the outlet row, each by about 4×. That is expected — γ is an
+adjoint-equation residual, whereas its conversion to design-gradient error also
+depends on `(I − Φ_Tᵀ)⁻¹` and on how `Φ_θᵀ` maps state sensitivity into design
+space. Treat it as a screening signal with a theoretical basis, not a formula.
 
 ### What the error looks like in space
 
@@ -372,13 +408,14 @@ version of that sentence is the interesting one:
 - **The gate refuses when it should.** At the 32×32, Ra = 3×10⁴ state used for
   the attribution study above, the shipped `coupling_check.py` returns
   **γ = 0.404 → UNSAFE**, four times the gate, against a measured naive-gradient
-  error of **115%** there. Its Neumann terms barely decay
-  (0.404, 0.211, 0.145, 0.153), which is the signature of a series that must not
-  be truncated. A gate that waved that through would be worthless; this one
-  demands the full adjoint.
+  error of **115%** there. Its repeated VJP norms are
+  (0.404, 0.211, 0.145, 0.153). They are diagnostics, not a convergent Neumann
+  series at this repelling fixed point. A gate that waved this through would be
+  worthless; the benchmark-calibrated threshold demands the full adjoint.
 
-So the claim is not "you always need the coupled adjoint". It is: *you cannot
-tell whether you need it from the forward solution, and one VJP tells you.*
+So the claim is not "you always need the coupled adjoint". It is: *the forward
+solution does not tell you whether the shortcut is accurate, while one VJP
+provides a cheap objective-aware residual screen.*
 
 ### Why Newton, not Picard
 
@@ -418,14 +455,16 @@ iterations across the component boundary.
             two-way coupled fixed point
 ```
 
-Four components, four languages, four differentiation strategies:
+The repository contains **three implementation languages and four derivative
+stacks**. A run serves three Tesseracts: `material_map`, `stokes_brinkman`, and
+exactly one of the two thermal backends.
 
 | Tesseract | Language | How derivatives are obtained |
 | --- | --- | --- |
 | `stokes_brinkman` | C++ / Eigen | **Hand-derived discrete adjoint.** No AD tool. The system is linear in `w = (u,v,p)`, so the JVP and VJP are extra solves against the *same* sparse LU: `lam = A⁻ᵀ wbar`, then an analytic scatter against `dA/dalpha` and `db/dT`. |
-| `thermal_advdiff` | JAX | **JAX autodiff.** The 5-point operator (~0.8% dense) is solved with a sparse LU, but every parameter derivative — through the Péclet-weighted face values and the face-averaged conductivity — comes from `jax.jvp` / `jax.vjp` of the residual. |
+| `thermal_advdiff` | Python / JAX | **JAX autodiff.** The 5-point operator (~0.8% dense) is solved with a sparse LU, but every parameter derivative — through the Péclet-weighted face values and the face-averaged conductivity — comes from `jax.jvp` / `jax.vjp` of the residual. |
 | `thermal_fortran` | Fortran | **Enzyme, compiler AD.** Same equation as above, written independently in Fortran. flang emits LLVM IR, an Enzyme pass differentiates it, and the result is a `.so` with JVP/VJP entry points. Nothing is hand-derived and no AD library is linked. |
-| `material_map` | PyTorch | **torch.autograd.** Cone filter → Heaviside projection → SIMP/RAMP property maps. |
+| `material_map` | Python / PyTorch | **torch.autograd.** Cone filter → Heaviside projection → SIMP/RAMP property maps. |
 
 Nothing about these is naturally compatible. They disagree on language, on
 memory layout, and on how a derivative is even produced. Tesseract is what
@@ -590,9 +629,9 @@ qualitative reproduction of what that literature reports, not a new result.
 **The sensitivity analysis is not new.** Padway and Mavriplis
 ([arXiv:2104.02826](https://arxiv.org/abs/2104.02826), *Numerical Algorithms*
 2021) analyse tangent and adjoint problems for fixed point iterations linearised
-about non-stationary points. Truncating the Neumann series is a severe special
-case of an approximate adjoint, and that Φ_Tᵀg is the leading error term follows
-directly from the expansion.
+about non-stationary points. Here the loop-cut adjoint's exact equation residual
+is `Φ_Tᵀg`; relating that residual to the solution error additionally requires
+the inverse coupled operator.
 
 So what is left?
 
@@ -602,7 +641,8 @@ So what is left?
    solver, a compiler-differentiated Fortran solver, a JAX solver and a PyTorch
    model compose into one differentiable function, and two of them are provably
    interchangeable. That is a statement about *interfaces*, not about physics.
-2. **The refutation of the spectral radius**, which we have not seen stated:
+2. **Showing that spectral radius alone is insufficient**, which we have not
+   seen stated for this decision:
    ρ(Φ_T) is the natural diagnostic for "is my coupling strong enough to matter"
    and it is demonstrably not sufficient — constant while the error moves 136×.
 3. **γ as an operational check.** The analysis behind it is standard; making it
@@ -634,6 +674,17 @@ Both blocks are *linear in their own unknown*; all the nonlinearity lives in
 the composition. That is what makes the per-block adjoints exact and cheap, and
 it isolates the hard part — the coupling — as the only place a gradient can go
 wrong.
+
+### Application scope
+
+This is a **nondimensional research prototype**, not a manufacturing-ready cold
+plate. Its Rayleigh number, conductivity ratio, heat flux, and material budget
+can be mapped to a physical fluid, length scale, and temperature scale, but no
+particular coolant, package geometry, pressure drop, contact resistance, or
+manufacturing constraint is claimed here. A deployable design would need those
+inputs plus three-dimensional finite-Prandtl flow and experimental validation.
+The present model is deliberately small enough to isolate and verify the
+cross-component derivative question.
 
 ---
 
@@ -724,20 +775,34 @@ residual — so that agreement is evidence rather than a shared bug.
 
 ## Reproduce
 
-Requires Docker and Python 3.10+.
+Supported review path: **Linux `amd64`**, or Windows through **WSL2**, with a
+running Docker daemon and Python 3.10+. Native Windows is not the supported
+container path.
 
 ```bash
 pip install -r requirements-orchestrator.txt
 ```
 
+The safe golden path builds only missing project images, never touches
+unrelated containers, checks derivative provenance, and swaps the complete
+thermal backend on an 8×8 smoke grid:
+
+```bash
+scripts/judge_demo.sh
+```
+
+Allow roughly 10–30 minutes and 8–10 GB of free disk for a first source build;
+with images cached, the smoke run normally takes 1–3 minutes. Use
+`scripts/judge_demo.sh --no-build --grid 16` when the four images already exist.
+
 Versions are pinned to what the published numbers were produced with. The
 orchestrator and the Tesseracts deliberately pin *different* versions — the
 driver runs jax 0.11 while the JAX Tesseract runs 0.10.2 inside its image,
-which is the isolation working as intended rather than an oversight. Nothing
-depends on the exact versions; relaxing a pin to `>=` is safe if one becomes
-unavailable.
+which is the isolation working as intended rather than an oversight. Keep the
+published pins for reproduction; update them only with a fresh validation run.
 
-As built: LLVM/flang 19.1.7 with the Enzyme nightly plugin, Eigen 3.4,
+As built: LLVM/flang 19.1.7 with Enzyme release asset `512646543` pinned by
+SHA-256 `5b43014a…69ef031`, Eigen 3.4,
 tesseract-core 1.11.0, tesseract-jax 0.4.1. Regenerate this list with
 `scripts/capture_versions.sh`.
 
@@ -756,6 +821,11 @@ tesseract build tesseracts/thermal_advdiff
 tesseract build tesseracts/thermal_fortran
 tesseract build tesseracts/material_map
 ```
+
+Maintainers can run the manual **publish review images** GitHub workflow to
+push both commit-addressed and `latest` GHCR images. Source builds remain the
+canonical path; the weekly/manual **container integration** workflow exercises
+the real served boundary rather than only importing API modules.
 
 Show that the JAX and Fortran/Enzyme thermal blocks are interchangeable:
 
@@ -782,10 +852,17 @@ Measure where component-wise differentiation breaks down:
 cd orchestrator && python sweep_coupling.py
 ```
 
-Run the optimisation and render every figure:
+Run a reference optimisation:
 
 ```bash
-cd orchestrator && python optimize.py --N 48 --iters 120 && python make_figures.py --N 48
+cd orchestrator && python optimize.py --N 48 --iters 120
+```
+
+Regenerate all figures from the committed evidence (including the corrected
+96² trajectory diagnostics and the intervention):
+
+```bash
+cd orchestrator && python make_figures.py --N 96
 ```
 
 Drive the same optimisation with the naive gradient, for comparison:
@@ -798,7 +875,7 @@ Track how wrong the naive gradient is at each design along the way — this is
 the measurement behind the trajectory table above:
 
 ```bash
-cd orchestrator && python optimize.py --N 48 --iters 120 --diagnose 6 --outdir results_diag
+cd orchestrator && python optimize.py --N 96 --iters 120 --diagnose 6 --result-tag diag
 ```
 
 Test what predicts the error of a component-wise gradient (this is the result
@@ -806,6 +883,19 @@ in figure 8, and it costs one VJP per configuration):
 
 ```bash
 cd orchestrator && python predict_error.py --N 20
+```
+
+Turn both sensitivities into identical material-budget decisions and verify the
+realised outcome with the true forward solver:
+
+```bash
+cd orchestrator && python intervention_test.py --N 20 --Ra 3e4
+```
+
+Repeat a fixed action across three convergence-qualified random designs:
+
+```bash
+cd orchestrator && python intervention_robustness.py
 ```
 
 Run the attribution task — rank design cells by influence with each gradient and
@@ -867,6 +957,9 @@ orchestrator/
   probe_startpoint.py     which Ra keeps the optimiser's designs well posed
   compare_to_reference.py differential test against the monolithic reference
   predict_error.py        what predicts component-wise gradient error (one VJP)
+  predictor_statistics.py holdout + bootstrap robustness of that correlation
+  intervention_test.py    equal-budget sensitivity action, true forward re-solve
+  intervention_robustness.py same action across three converged random designs
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
@@ -883,11 +976,12 @@ prototype/
 | `fig2_gradient_validation.png` | composed vs naive against finite differences |
 | `fig3_coupling_strength.png` | naive-gradient error vs coupling loop gain |
 | `fig4_opt_comparison.png` | optimisation driven by each gradient |
-| `fig5_architecture.png` | the three components and the adjoint between them |
+| `fig5_architecture.png` | three active components and the selectable thermal slot |
 | `fig6_trajectory_error.png` | naive-gradient error at the designs the optimiser visits |
 | `fig7_regime_maps.png` | one design, rising coupling: where the two gradients disagree |
 | `fig8_predictor.png` | the directional gain γ predicts the error; the loop gain does not |
 | `fig9_attribution.png` | which cells each gradient says matter — signs survive, ranking does not |
+| `fig10_intervention.png` | equal material budgets, cells selected by each gradient, true outcome |
 
 ## License
 

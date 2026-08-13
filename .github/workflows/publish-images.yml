@@ -1,0 +1,43 @@
+name: publish review images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-orchestrator.txt
+      - run: scripts/build_toolchain.sh
+      - name: Build Tesseracts
+        run: |
+          for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
+            tesseract build "tesseracts/$component"
+          done
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish immutable images
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
+            target="ghcr.io/$owner/coldplate-$component"
+            docker tag "$component:latest" "$target:$SHA"
+            docker tag "$component:latest" "$target:latest"
+            docker push "$target:$SHA"
+            docker push "$target:latest"
+          done

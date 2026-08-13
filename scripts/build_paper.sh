@@ -28,7 +28,9 @@ pandoc "$ROOT/PAPER.md" --from=markdown+pipe_tables --to=html5 -o "$FRAG"
 
 {
     printf '<!doctype html><html><head><meta charset="utf-8">'
-    printf '<title>Coldplate</title></head><body>\n'
+    printf '<meta name="author" content="TAUIL-Abd-Elilah">'
+    printf '<meta name="description" content="Tesseract Hackathon 2026 multi-physics submission">'
+    printf '<title>When can you differentiate coupled simulation components separately?</title></head><body>\n'
     cat "$FRAG"
     printf '\n</body></html>\n'
 } > "$HTML"

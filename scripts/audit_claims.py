@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Check that every number quoted in README.md and PAPER.md is one we measured.
+"""Check that the headline numbers quoted in README/PAPER are measured.
 
 Written after several claims in this repository turned out to be stale or wrong
--- a gradient comparison that measured a mean-removal instead of the coupling,
-an "ascent direction" that was never observed in the real pipeline, a
-convergence order extrapolated through a stalled solve. Prose drifts from data
-silently, so this re-derives the canonical values from the stored result files
-and asserts that the documents agree.
+-- a gradient comparison that measured a mean-removal instead of the coupling
+and a convergence order extrapolated through a stalled solve. Prose drifts from
+data silently, so this re-derives the canonical values from the stored result
+files and asserts that the documents agree.
 
     usage:  python scripts/audit_claims.py
 """
@@ -120,6 +119,19 @@ def main() -> int:
             for v in (f"{ro['rho_phi']:.3f}", f"{sm['rho_phi']:.3f}"):
                 check(f"docs quote rho={v}", bool(docs_contain(v)))
 
+    stats = load("predictor_statistics.json")
+    if stats:
+        check("predictor report states 14 converged of 20 attempted",
+              stats["n_converged"] == 14
+              and stats["attempted_configurations"] == 20)
+        holdouts = stats["leave_one_family_out"]
+        check("log-gamma correlation survives every family holdout",
+              len(holdouts) == 4
+              and min(r["log_gamma_correlation"] for r in holdouts.values()) > 0.98)
+        lo, hi = stats["bootstrap_95_percent_interval"]
+        check("bootstrap interval supports the predictor correlation",
+              lo > 0.98 and hi <= 1.0, f"95% interval [{lo:.4f}, {hi:.4f}]")
+
     # ---- objective sweep ----------------------------------------------
     rows = load("objective_sweep.json")
     if rows:
@@ -201,11 +213,43 @@ def main() -> int:
               f"range {min(r['gamma'] for r in gated):.4f}"
               f"-{max(r['gamma'] for r in gated):.4f}")
 
+    # ---- forward-validated intervention -------------------------------
+    intervention = load("intervention_test.json")
+    if intervention:
+        rows = intervention["rows"]
+        check("exact-gradient intervention wins every equal-budget re-solve",
+              intervention["exact_wins"] == intervention["n_amplitudes"]
+              and all(r["exact_advantage"] > 0 for r in rows))
+        check("every exact-gradient intervention reduces the true objective",
+              all(r["delta_J_exact_action"] < 0 for r in rows))
+        last = max(rows, key=lambda r: r["amplitude"])
+        ratio = last["delta_J_exact_action"] / last["delta_J_naive_action"]
+        check("largest action realizes the quoted ~58% extra cooling",
+              1.55 < ratio < 1.61 and bool(docs_contain("58%")),
+              f"measured {100*(ratio-1):.1f}%")
+
+    robustness = load("intervention_robustness.json")
+    if robustness:
+        cases = robustness["cases"]
+        check("composed intervention wins all three additional designs",
+              robustness["n_seeds"] == 3 and robustness["exact_wins"] == 3
+              and robustness["all_actions_reduce_J"])
+        check("robustness run uses the documented fixed seed set",
+              [c["seed"] for c in cases] == [1, 3, 4])
+        check("every additional design realizes more cooling",
+              all(c["extra_cooling_fraction"] > 0 for c in cases))
+        worst_cos = min(c["naive_cosine"] for c in cases)
+        best_gain = max(c["extra_cooling_fraction"] for c in cases)
+        check("negative-cosine robustness case is measured and documented",
+              -0.08 < worst_cos < -0.07 and bool(docs_contain("0.077")),
+              f"minimum cosine {worst_cos:.4f}")
+        check("largest robustness advantage is the quoted ~276%",
+              2.7 < best_gain < 2.8 and bool(docs_contain("276%")),
+              f"measured {100*best_gain:.1f}%")
+
     # ---- claims that must NOT appear ----------------------------------
     print("\n=== retracted claims must not reappear ===")
     for bad, why in [
-        ("ascent direction", "never observed in the composed pipeline"),
-        ("points uphill", "the naive gradient is a descent direction here"),
         ("79% of", "artefact of comparing projected against raw gradients"),
     ]:
         hits = [f for f in ("README.md", "PAPER.md")
@@ -214,6 +258,30 @@ def main() -> int:
         allowed = bad == "79% of" and hits == ["README.md"]
         check(f"no live claim of '{bad}'", not hits or allowed,
               f"({why})" + (f" found in {hits}" if hits and not allowed else ""))
+
+    print("\n=== stale artefacts and unsafe helpers must not return ===")
+    source_files = [
+        ROOT / "README.md", ROOT / "PAPER.md", ROOT / "DEMO_SCRIPT.md",
+        ROOT / "orchestrator" / "make_figures.py",
+    ]
+    joined = "\n".join(p.read_text(encoding="utf-8") for p in source_files)
+    for bad in ("40-150%", "74% wrong sign", "four languages", "four containers"):
+        check(f"no stale '{bad}' wording", bad.lower() not in joined.lower())
+    check("obsolete N48 trajectory diagnostic removed",
+          not (ROOT / "orchestrator" / "results" / "history_diag_N48.json").exists())
+    composed = load("history_composed_N96.json")
+    stale_fields = {
+        "naive_rel_err", "naive_cos", "naive_sign_flip", "loop_gain",
+        "naive_cos_projected", "naive_sign_flip_projected",
+    }
+    if composed:
+        check("optimization history contains no retracted diagnostic fields",
+              all(not stale_fields.intersection(row) for row in composed))
+
+    for name in ("validate_both_backends.sh", "run_optimisations.sh"):
+        body = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        check(f"{name} never removes every running Docker container",
+              "docker ps -q |" not in body and "ancestor=$image" in body)
 
     print()
     if NOTE:
@@ -225,7 +293,7 @@ def main() -> int:
         for f in FAIL:
             print(f"  - {f}")
         return 1
-    print("every quoted number matches the stored measurements")
+    print("every audited headline number matches the stored measurements")
     return 0
 
 

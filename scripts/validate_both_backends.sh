@@ -25,6 +25,18 @@ if [ -z "$PY" ]; then
 fi
 
 cd "$ROOT/orchestrator"
+
+# Tesseract normally tears down what it serves. If a Python process crashes,
+# clean up only containers descended from this project's four images. Never
+# touch unrelated containers on the reviewer's machine.
+cleanup_project_containers() {
+    for image in material_map stokes_brinkman thermal_advdiff thermal_fortran; do
+        ids="$(docker ps -q --filter "ancestor=$image" 2>/dev/null || true)"
+        [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true
+    done
+}
+trap cleanup_project_containers EXIT
+
 rc=0
 for backend in thermal_advdiff thermal_fortran; do
     echo "################ $backend ################"
@@ -32,8 +44,7 @@ for backend in thermal_advdiff thermal_fortran; do
         echo "  $backend FAILED"
         rc=1
     fi
-    # reap served containers between runs so they do not accumulate
-    docker ps -q | xargs -r docker rm -f >/dev/null 2>&1 || true
+    cleanup_project_containers
 done
 
 # Report the real outcome. An earlier version printed success unconditionally,

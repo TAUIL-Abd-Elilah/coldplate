@@ -68,7 +68,13 @@ def _paths():
 def stokes_lib(_paths):
     """Compile the C++ solver if the shared library is not already built."""
     libdir = ROOT / "tesseracts" / "stokes_brinkman" / "lib"
-    for name in ("libstokes_brinkman.so", "stokes_brinkman.dll"):
+    # A repository opened through WSL can see ignored DLL build artefacts from
+    # native Windows. Never hand an incompatible PE binary to Linux's dlopen
+    # (or an ELF binary to Windows); select only the platform-native format.
+    candidates = ("stokes_brinkman.dll",) if sys.platform == "win32" else (
+        "libstokes_brinkman.so",
+    )
+    for name in candidates:
         if (libdir / name).exists():
             return libdir / name
 
