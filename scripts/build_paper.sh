@@ -33,6 +33,9 @@ pandoc "$ROOT/PAPER.md" --from=markdown+pipe_tables --to=html5 -o "$FRAG"
     printf '\n</body></html>\n'
 } > "$HTML"
 
-weasyprint "$HTML" "$OUT" --stylesheet "$ROOT/scripts/paper.css"
+# --base-url is not optional: the HTML lives in a temp directory, so without it
+# WeasyPrint resolves the figures relative to /tmp and silently emits a PDF with
+# every image missing rather than failing.
+weasyprint "$HTML" "$OUT" --stylesheet "$ROOT/scripts/paper.css" --base-url "$ROOT/"
 
 echo "wrote $OUT"

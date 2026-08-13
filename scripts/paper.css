@@ -100,12 +100,36 @@ h3 {
 
 p { margin: 0 0 1.5mm 0; text-align: justify; }
 
+/* ---------- figures ---------- */
+
+figure {
+  margin: 2.6mm 0 3.0mm 0;
+  page-break-inside: avoid;
+  text-align: center;
+}
+figure img { width: 100%; height: auto; }
+figcaption {
+  font-family: "DejaVu Sans", sans-serif;
+  font-size: 7.3pt;
+  line-height: 1.35;
+  color: var(--faint);
+  text-align: left;
+  margin-top: 1.1mm;
+  padding-left: 2.2pt;
+  border-left: 2.2pt solid var(--accent);
+  padding-left: 2.4mm;
+}
+
 strong { font-weight: 700; }
 
 /* ---------- the abstract, set apart ---------- */
 
+/* Every paragraph of the abstract, however many there are. CSS has no
+   "until the next heading", so the chain is explicit -- extend it if the
+   abstract grows again, or a new paragraph silently falls outside the tint. */
 #abstract + p,
-#abstract + p + p {
+#abstract + p + p,
+#abstract + p + p + p {
   background: var(--accent-soft);
   border-left: 2.2pt solid var(--accent);
   padding: 1.7mm 2.4mm;

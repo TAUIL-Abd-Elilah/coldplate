@@ -8,7 +8,7 @@ compute — a C++/Eigen solver with a hand-derived adjoint, a JAX solver with
 autodiff, a PyTorch material model, and a Fortran solver differentiated by
 **Enzyme at the LLVM IR level**.
 
-Three results, in order of how much we trust them.
+Four results, in order of how much we trust them.
 
 **1. The components are interchangeable.** Swapping the JAX thermal solver for
 the Fortran/Enzyme one leaves the end-to-end gradient unchanged to
@@ -29,6 +29,16 @@ leading error term is `Φ_Tᵀg`, so the predictor is the directional gain
 numbers, log₁₀(γ) correlates with log₁₀(error) at **0.995**, while the more
 obvious candidate, the coupling loop gain ρ(Φ_T), manages 0.825 and orders some
 pairs backwards.
+
+**4. The failure is modal, and γ is cheap enough to act on.** Cutting the loop
+keeps the **sign of all fifty** most influential design variables — which is why
+an optimiser driven by it still succeeds — while ranking them **no better than
+chance** (Spearman −0.011), and promoting into its top fifty a cell truly ranked
+1016th of 1024. Serviceable as a search direction, worthless as a sensitivity.
+And because γ costs one VJP against the ~13 the adjoint needs, it can be used as
+a *budget*: gating the optimiser on γ removes **92% of the cross-boundary adjoint
+work and reaches the same design**, while correctly refusing at the operating
+point where the shortcut carries 115% error.
 
 ---
 
@@ -135,6 +145,47 @@ random design used for the gradient study is not.
 > above come from comparing raw against raw. The component-level,
 > substitutability and Rayleigh-sweep results were never affected — none of
 > them pass through that code path.
+
+### Serviceable as a direction, worthless as an attribution
+
+The optimisation result above is easy to over-read as "the naive gradient is
+fine". It is fine *for descent*, which needs only a positive inner product with
+the truth. Engineers use gradients for a second thing that has no such slack:
+attribution — *which parts of my design actually drive the objective?* — the
+question behind tolerancing, sensor placement, and mesh refinement. That reads
+the gradient entry by entry, so every entry has to be right individually.
+
+So we ran the attribution task (`sensitivity_ranking.py`, 32×32, Ra = 3×10⁴,
+figure 9), ranking every design cell by `|dJ/dρ|` and asking what the naive
+ranking would have told an engineer:
+
+| | one-way (strong naive) | frozen-flow (weak naive) |
+| --- | --- | --- |
+| Spearman rank corr. of `\|g\|` | **−0.011** | −0.071 |
+| finds the single most influential cell | no (its pick is truly #5) | no (truly #4) |
+| recall of the true top 10 | 70% | 70% |
+| recall of the true top 50 | 56% | 56% |
+| least influential cell promoted into its top 50 | **truly #1016 of 1024** | #919 |
+| sign agreement on the true top 50 | 100% | 100% |
+
+Two things are happening at once, and they explain each other.
+
+**Signs survive; magnitudes do not.** On the cells that genuinely matter, the
+naive gradient gets the direction right every time — which is precisely why the
+optimiser descends. But its ordering of influence across the field is
+statistically indistinguishable from chance (Spearman −0.011). It misses nearly
+half of the fifty most influential cells, and it promotes into its top fifty a
+cell that is truly the 1016th most influential of 1024 — the eighth *least*
+influential in the entire domain.
+
+An engineer who tightened a tolerance on that cell would be spending money on
+the emptiest part of the design. Nothing in the forward solution, the objective
+value, or the optimiser's convergence history would warn them.
+
+This is the concrete content of "usable as a search direction, not as a
+sensitivity", and it is why we do not treat the successful naive optimisation as
+evidence that cutting the loop is harmless. It is harmless for one of the two
+jobs.
 
 ### The failure is predictable
 
@@ -273,6 +324,61 @@ the sensitivity that exists only because the flow responds to the design.
 
 That is the clearest statement of what composing across the boundary buys: not
 a small accuracy improvement, but an entire term that is otherwise absent.
+
+### Letting γ decide: the diagnostic as a budget
+
+A diagnostic that only tells you afterwards how wrong you were is of limited
+use. γ costs one VJP against the tens the adjoint GMRES needs, so it can be
+computed *first* and used to decide whether the exact adjoint is worth paying
+for on this iteration. `optimize.py --mode gamma_gated` does exactly that:
+measure γ, take the cheap component-wise gradient when it is below the gate,
+pay for the full adjoint when it is not.
+
+Run at 48×48 for 80 iterations against the same optimisation driven by the exact
+adjoint throughout, same seed and schedule:
+
+| | always exact | γ-gated (gate 0.10) |
+| --- | --- | --- |
+| final J | 1.3180 | **1.3113** |
+| reduction | 83.5% | 83.6% |
+| adjoint GMRES VJPs across the loop | 1,015 | **0** |
+| γ VJPs (the gate itself) | 0 | 80 |
+| **total cross-boundary VJPs** | **1,015** | **80** |
+
+γ stayed between 0.020 and 0.074 for all 80 iterations — never approaching the
+gate — so the exact adjoint was never purchased, and the design came out
+indistinguishable (0.51% apart in final J, the gated run again marginally
+lower). **92% less adjoint work, same answer.**
+
+Wall clock was 2.05 s/iteration gated against 4.4–5.0 s/iteration exact, i.e.
+roughly 2.4×; we quote the VJP counts as the headline because those are exact
+and machine-independent, while the two timings come from separate runs on a
+machine that was not otherwise idle.
+
+Read that carefully, because it cuts both ways. On this problem the machinery
+this repository is built around turned out to be unnecessary — and the honest
+version of that sentence is the interesting one:
+
+- **γ was right to say so.** The optimisation trajectory is weakly coupled, and
+  the separate always-naive run reaching the same design (above) independently
+  confirms it.
+- **You could not have known without it.** J, the residual, and the convergence
+  history look identical in the regime where the shortcut is fine and the regime
+  where it is 86% wrong. γ is the only thing here that distinguishes them, and
+  it is cheap.
+- **Computing γ requires the composition anyway.** `Φ_Tᵀg` is a VJP *through the
+  loop*, across the C++/JAX boundary. The infrastructure that lets you skip the
+  adjoint is the same infrastructure that would have computed it.
+- **The gate refuses when it should.** At the 32×32, Ra = 3×10⁴ state used for
+  the attribution study above, the shipped `coupling_check.py` returns
+  **γ = 0.404 → UNSAFE**, four times the gate, against a measured naive-gradient
+  error of **115%** there. Its Neumann terms barely decay
+  (0.404, 0.211, 0.145, 0.153), which is the signature of a series that must not
+  be truncated. A gate that waved that through would be worthless; this one
+  demands the full adjoint.
+
+So the claim is not "you always need the coupled adjoint". It is: *you cannot
+tell whether you need it from the forward solution, and one VJP tells you.*
 
 ### Why Newton, not Picard
 
@@ -702,6 +808,20 @@ in figure 8, and it costs one VJP per configuration):
 cd orchestrator && python predict_error.py --N 20
 ```
 
+Run the attribution task — rank design cells by influence with each gradient and
+measure what the naive ranking gets wrong (the table and figure 9 above):
+
+```bash
+cd orchestrator && python sensitivity_ranking.py 32 3e4
+```
+
+Let γ decide, per iteration, whether the exact adjoint is worth paying for:
+
+```bash
+cd orchestrator && python optimize.py --N 48 --iters 80 --mode gamma_gated --gamma-gate 0.10 --outdir results_gate
+cd orchestrator && python optimize.py --N 48 --iters 80 --mode composed --outdir results_gate
+```
+
 Render the spatial maps of where the two gradients disagree:
 
 ```bash
@@ -747,6 +867,7 @@ orchestrator/
   probe_startpoint.py     which Ra keeps the optimiser's designs well posed
   compare_to_reference.py differential test against the monolithic reference
   predict_error.py        what predicts component-wise gradient error (one VJP)
+  sensitivity_ranking.py  the attribution task: which cells each gradient blames
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         figures and animation
@@ -766,6 +887,7 @@ prototype/
 | `fig6_trajectory_error.png` | naive-gradient error at the designs the optimiser visits |
 | `fig7_regime_maps.png` | one design, rising coupling: where the two gradients disagree |
 | `fig8_predictor.png` | the directional gain γ predicts the error; the loop gain does not |
+| `fig9_attribution.png` | which cells each gradient says matter — signs survive, ranking does not |
 
 ## License
 

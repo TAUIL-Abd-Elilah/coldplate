@@ -1,0 +1,105 @@
+{
+  "N": 32,
+  "Ra": 30000.0,
+  "gamma": 0.4042939067703483,
+  "gamma_verdict": "UNSAFE",
+  "naive_rel_err": 1.1494979556412424,
+  "one_way": {
+    "n_cells": 1024,
+    "spearman_magnitude": -0.010572495708461482,
+    "spearman_signed": 0.7049249427794864,
+    "top1_correct": false,
+    "top1_true_rank_of_naive_pick": 4,
+    "per_k": [
+      {
+        "k": 5,
+        "recall": 0.8,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 0,
+        "phantom_frac": 0.0,
+        "worst_true_rank_promoted": 11
+      },
+      {
+        "k": 10,
+        "recall": 0.7,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 0,
+        "phantom_frac": 0.0,
+        "worst_true_rank_promoted": 36
+      },
+      {
+        "k": 25,
+        "recall": 0.68,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 3,
+        "phantom_frac": 0.12,
+        "worst_true_rank_promoted": 364
+      },
+      {
+        "k": 50,
+        "recall": 0.56,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 15,
+        "phantom_frac": 0.3,
+        "worst_true_rank_promoted": 1015
+      },
+      {
+        "k": 100,
+        "recall": 0.53,
+        "sign_agreement_on_true_topk": 0.92,
+        "n_phantom": 46,
+        "phantom_frac": 0.46,
+        "worst_true_rank_promoted": 1015
+      }
+    ]
+  },
+  "frozen": {
+    "n_cells": 1024,
+    "spearman_magnitude": -0.07089903261569272,
+    "spearman_signed": 0.6961674102353193,
+    "top1_correct": false,
+    "top1_true_rank_of_naive_pick": 3,
+    "per_k": [
+      {
+        "k": 5,
+        "recall": 0.8,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 0,
+        "phantom_frac": 0.0,
+        "worst_true_rank_promoted": 10
+      },
+      {
+        "k": 10,
+        "recall": 0.7,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 0,
+        "phantom_frac": 0.0,
+        "worst_true_rank_promoted": 31
+      },
+      {
+        "k": 25,
+        "recall": 0.6,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 7,
+        "phantom_frac": 0.28,
+        "worst_true_rank_promoted": 700
+      },
+      {
+        "k": 50,
+        "recall": 0.56,
+        "sign_agreement_on_true_topk": 1.0,
+        "n_phantom": 14,
+        "phantom_frac": 0.28,
+        "worst_true_rank_promoted": 918
+      },
+      {
+        "k": 100,
+        "recall": 0.45,
+        "sign_agreement_on_true_topk": 0.92,
+        "n_phantom": 54,
+        "phantom_frac": 0.54,
+        "worst_true_rank_promoted": 1015
+      }
+    ]
+  }
+}

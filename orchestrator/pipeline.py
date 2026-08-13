@@ -93,7 +93,15 @@ class ColdPlate:
     _t: dict = field(default_factory=dict, init=False)
     _T_warm: Any = field(default=None, init=False)  # warm start for the next solve
     stats: dict = field(
-        default_factory=lambda: {"phi_calls": 0, "vjp_matvecs": 0, "jvp_matvecs": 0},
+        default_factory=lambda: {
+            "phi_calls": 0,
+            "vjp_matvecs": 0,
+            "jvp_matvecs": 0,
+            # gamma-gated mode only: how many decisions were taken and which way
+            "gamma_vjps": 0,
+            "gate_cheap": 0,
+            "gate_exact": 0,
+        },
         init=False,
     )
 
@@ -282,15 +290,29 @@ class ColdPlate:
 
     # -- end-to-end value and gradient ------------------------------------
 
-    def value_and_grad(self, rho_raw, gmres_tol=1e-10, mode="composed"):
+    def value_and_grad(self, rho_raw, gmres_tol=1e-10, mode="composed",
+                       gamma_gate=0.01):
         """J(rho_raw) and dJ/drho_raw through the whole coupled pipeline.
 
         mode selects how the gradient is obtained, so the optimiser can be
         driven by a deliberately wrong one for comparison without paying for
         the exact adjoint it is not going to use:
-            "composed" -- implicit differentiation of the fixed point (correct)
-            "one_way"  -- full chain, feedback loop cut       (naive, strong)
-            "frozen"   -- velocity held constant              (naive, weak)
+            "composed"    -- implicit differentiation of the fixed point (correct)
+            "one_way"     -- full chain, feedback loop cut       (naive, strong)
+            "frozen"      -- velocity held constant              (naive, weak)
+            "gamma_gated" -- measure the directional gain first, then decide
+
+        The last one is what the diagnostic is *for*. gamma = ||Phi_T^T g||/||g||
+        is the first neglected term of the adjoint Neumann series, so it both
+        estimates what the cheap gradient would cost you and comes free-ish:
+        one VJP, against the tens of VJPs the GMRES adjoint needs. Measuring it
+        before deciding turns a claim about accuracy into a budget decision --
+        pay for the exact adjoint on the iterations that need it, take the cheap
+        gradient on the ones that do not.
+
+        Note the accounting is honest about the gate not being free: the VJP
+        that produces gamma is counted, and on iterations where the gate opens
+        it is pure overhead on top of the full adjoint.
         """
         rho_raw = jnp.asarray(rho_raw)
         n = rho_raw.size
@@ -303,7 +325,7 @@ class ColdPlate:
         # 2. converge the coupled state
         T_star, info = self.solve_coupled(alpha, k)
 
-        if mode != "composed":
+        if mode in ("one_way", "frozen"):
             naive = self.one_way_grad if mode == "one_way" else self.frozen_flow_grad
             p = self.params
             flow = apply_tesseract(
@@ -322,6 +344,39 @@ class ColdPlate:
         # 3. adjoint of the fixed point, solved across the component boundary
         _, phi_vjp = jax.vjp(lambda T, a, kk: self.phi(T, a, kk), T_star, alpha, k)
         g = jax.grad(self.objective)(T_star)
+
+        gamma = None
+        if mode == "gamma_gated":
+            # One VJP through the loop gives the first neglected Neumann term.
+            # This is the entire cost of the decision.
+            self.stats["gamma_vjps"] = self.stats.get("gamma_vjps", 0) + 1
+            w = phi_vjp(g)[0]
+            gnorm = float(jnp.linalg.norm(g))
+            gamma = float(jnp.linalg.norm(w)) / gnorm if gnorm > 0 else 0.0
+            if gamma < gamma_gate:
+                # Cheap path: the loop contributes less than the gate, so the
+                # component-wise gradient is within tolerance and the GMRES
+                # adjoint would be money spent for nothing.
+                self.stats["gate_cheap"] = self.stats.get("gate_cheap", 0) + 1
+                p = self.params
+                flow = apply_tesseract(
+                    self._t["fluid"],
+                    {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr},
+                )
+                return {
+                    "J": float(self.objective(T_star)),
+                    "grad": self.one_way_grad(
+                        rho_raw, _state=(mat, mat_vjp, alpha, k, T_star)
+                    ),
+                    "T": np.asarray(T_star),
+                    "u": np.asarray(flow["u"]),
+                    "v": np.asarray(flow["v"]),
+                    "rho_phys": np.asarray(rho_phys),
+                    "info": info,
+                    "gamma": gamma,
+                    "gate": "cheap",
+                }
+            self.stats["gate_exact"] = self.stats.get("gate_exact", 0) + 1
 
         def matvec(x):
             self.stats["vjp_matvecs"] += 1

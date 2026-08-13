@@ -27,10 +27,10 @@ FAIL: list[str] = []
 NOTE: list[str] = []
 
 
-def load(name):
-    p = RES / name
+def load(name, sub="results"):
+    p = ROOT / "orchestrator" / sub / name
     if not p.exists():
-        NOTE.append(f"missing result file: {name}")
+        NOTE.append(f"missing result file: {sub}/{name}")
         return None
     return json.loads(p.read_text())
 
@@ -145,6 +145,61 @@ def main() -> int:
                   f"{J1:.4f}" == quoted, f"actual {J1:.4f}")
             check(f"{tag} reduction is the quoted 84.6%", abs(red - 84.6) < 0.15,
                   f"{red:.2f}%")
+
+    # ---- sensitivity attribution ---------------------------------------
+    rep = load("sensitivity_ranking.json")
+    if rep:
+        ow = rep["one_way"]
+        by_k = {r["k"]: r for r in ow["per_k"]}
+        sp = ow["spearman_magnitude"]
+        n = ow["n_cells"]
+        print(f"attribution: Spearman(|g|)={sp:+.4f} over {n} cells, "
+              f"recall@50={by_k[50]['recall']:.0%}")
+        check("naive influence ranking is no better than chance",
+              abs(sp) < 0.05, f"Spearman {sp:+.4f}")
+        check("README quotes the measured Spearman", bool(docs_contain("0.011")))
+        check("naive misses the single most influential cell",
+              not ow["top1_correct"],
+              f"its pick is truly #{ow['top1_true_rank_of_naive_pick']+1}")
+        check("recall of the true top 50 is the quoted 56%",
+              abs(by_k[50]["recall"] - 0.56) < 0.01,
+              f"{by_k[50]['recall']:.0%}")
+        check("signs on the true top 50 are all correct",
+              by_k[50]["sign_agreement_on_true_topk"] == 1.0,
+              "this is why descent still works")
+        worst = by_k[50]["worst_true_rank_promoted"] + 1
+        check(f"docs quote the worst promoted cell as #{worst} of {n}",
+              bool(docs_contain(str(worst))) and bool(docs_contain(str(n))),
+              f"measured #{worst} of {n}")
+
+    # ---- gamma-gated adjoint -------------------------------------------
+    # Kept in its own directory: this is an 80-iteration cost comparison, and
+    # writing it into results/ would silently overwrite the 120-iteration
+    # N=48 runs that back the replication claim in the README.
+    gated = load("history_gamma_gated_N48.json", sub="results_gate")
+    base = load("history_composed_N48.json", sub="results_gate")
+    if gated and base:
+        cheap = sum(1 for r in gated if r.get("gate") == "cheap")
+        spent = sum(r.get("adjoint_matvecs", 0) for r in gated)
+        exact_cost = sum(r.get("adjoint_matvecs", 0) for r in base)
+        Jg, Jb = gated[-1]["J"], base[-1]["J"]
+        gap = abs(Jg - Jb) / abs(Jb)
+        print(f"gamma gate: cheap on {cheap}/{len(gated)} iterations, "
+              f"{spent}+{len(gated)} VJPs vs {exact_cost} always-exact, "
+              f"final J {Jg:.4f} vs {Jb:.4f} ({100*gap:.2f}%)")
+        check("the gate reproduces the exact-gradient design",
+              gap < 0.02, f"final J differs by {100*gap:.2f}%")
+        if exact_cost:
+            saved = 1 - (spent + len(gated)) / exact_cost
+            check("the gate costs less than always paying for the adjoint",
+                  saved > 0.5, f"{100*saved:.0f}% fewer VJPs "
+                  f"({spent + len(gated)} vs {exact_cost})")
+        check("every gamma recorded is below the gate that was set",
+              all(r["gamma"] < 0.10 for r in gated if r.get("gate") == "cheap"))
+        check("gamma stays in the MARGINAL band throughout",
+              all(0.001 < r["gamma"] < 0.10 for r in gated),
+              f"range {min(r['gamma'] for r in gated):.4f}"
+              f"-{max(r['gamma'] for r in gated):.4f}")
 
     # ---- claims that must NOT appear ----------------------------------
     print("\n=== retracted claims must not reappear ===")

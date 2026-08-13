@@ -25,7 +25,17 @@ nothing in the forward solution indicates which regime you are in. **Third**,
 the obvious diagnostic is wrong and a better one exists: the spectral radius of
 the fixed-point Jacobian, ρ(Φ_T), cannot predict the error (we exhibit a case
 where it is constant while the error varies 136-fold), whereas the *directional*
-gain γ = ‖Φ_Tᵀg‖/‖g‖ — one vector-Jacobian product — tracks it.
+gain γ = ‖Φ_Tᵀg‖/‖g‖ — one vector-Jacobian product — tracks it (0.995 against
+0.825 in log-log correlation).
+
+Two consequences we test rather than assert. The shortcut's failure is *modal*:
+it keeps the sign of every one of the fifty most influential design variables,
+which is why an optimiser driven by it still succeeds, while ranking those
+variables no better than chance (Spearman −0.011) — serviceable as a search
+direction, worthless as a sensitivity. And γ, being cheap, is usable as a
+budget: gating the optimiser on it removes 92% of the cross-boundary adjoint
+work while reaching the same design, and refuses correctly at the operating
+point where the shortcut carries 115% error.
 
 ---
 
@@ -94,6 +104,13 @@ analytic scatter, by hand. The Fortran component inverts that approach: flang
 emits LLVM IR, an Enzyme pass differentiates it, and ∂R/∂T is recovered
 *exactly* from nine Enzyme JVPs by a 3×3 colouring (the stencil is five-point,
 so cells whose indices agree mod 3 never interact).
+
+![**The composition, and where the derivative information has to travel.** Four
+containers, four languages, four ways of producing a derivative. The design flows
+down through the PyTorch material model into the two-way coupled fluid–thermal
+loop; the adjoint travels back up it. Each arrow crossing a box boundary is a
+container round-trip, and the Krylov iterations in both directions cross those
+boundaries once per matvec.](orchestrator/results/fig5_architecture.png)
 
 Both halves of the gradient are Krylov solves whose matvecs cross the container
 boundary: Newton–Krylov forward, applying (Φ_T − I) via JVPs, and GMRES for the
@@ -220,6 +237,14 @@ one VJP through the loop. Across four design families and five Rayleigh numbers,
 log γ correlates with log error at **0.995**, against 0.825 for ρ
 (`predict_error.py`), and empirically error ≈ γ while γ is small.
 
+![**The directional gain predicts; the spectral radius does not.** Each point is
+one (design, Rayleigh number) configuration, coloured by design family. Left:
+ρ(Φ_T) against the measured relative error of the component-wise gradient —
+log-log correlation 0.825, with visible order reversals, pairs where the
+configuration ρ calls safer is in fact the more damaged one. Right: γ against
+the same errors, correlation 0.995, tracking the dashed error = γ line while γ
+is small.](orchestrator/results/fig8_predictor.png)
+
 γ is a guide, not a formula. Across objectives it correlates at 0.80 and misses
 two rows above by about 4× in each direction — expected, since γ bounds the
 leading error in λ whereas the quantity of interest also depends on how Φ_θᵀ
@@ -227,6 +252,20 @@ maps that error into design space. As an order-of-magnitude test it is
 serviceable: below γ ≈ 0.01 the shortcut costs about a percent; above γ ≈ 0.1 it
 is not worth having. It ships as `coupling_check.py`, which requires only a
 JAX-traceable loop.
+
+**Using it as a budget.** Because γ costs one VJP against the tens the adjoint
+needs, it can be measured *before* deciding whether to pay. Gating the optimiser
+on it (`--mode gamma_gated`, 48², 80 iterations, gate 0.10) gives γ ∈ [0.020,
+0.074] throughout: the exact adjoint is never purchased, cross-boundary VJPs
+fall from 1015 to 80, and the design is unchanged (final J 1.3113 against
+1.3180, 0.5% apart). At the Ra = 3 × 10⁴ state of Section 7 the same gate
+returns γ = 0.404 and refuses, against a measured error of 115% with Neumann
+terms that barely decay (0.404, 0.211, 0.145, 0.153).
+
+The reading that matters is not the speed-up. It is that the two regimes are
+indistinguishable in J, in the residual, and in the convergence history, and
+that one VJP separates them — a VJP obtainable only by differentiating *through*
+the loop, which is to say by the same composition the gate then declines to use.
 
 ## 6. The design problem
 
@@ -237,16 +276,43 @@ that conducts heat toward the sink while leaving channels open for buoyancy to
 carry the remainder — the structure the natural-convection topology optimisation
 literature reports.
 
+![**The converged cold plate.** Material layout (dark = solid metal), the
+resulting temperature field with streamlines of the buoyancy-driven flow, and
+the objective history. The branching conductor reaches from the chip strip on
+the bottom wall toward the cold sink while leaving the convection cells room to
+circulate; both are needed, and the balance between them is what the coupled
+gradient is resolving.](orchestrator/results/fig1_final.png)
+
 ## 7. What we do not claim
 
 We ran that optimisation twice, once with each gradient, and **both succeeded**;
 the shortcut finished marginally lower (1.2576 against 1.2588). We are not going
 to dress that up. An optimiser is not evidence that a gradient is right: Adam
 normalises per coordinate and therefore consumes only direction, and along this
-trajectory the shortcut's cosine stays above 0.98. A wrong gradient can be a
-serviceable search direction and a useless sensitivity at the same time. The
-failure matters when the gradient is used *as a quantity* — sensitivity
-analysis, uncertainty propagation, deciding which variables matter.
+trajectory the shortcut's cosine stays above 0.98.
+
+So we tested the other standard use directly, since it has no such slack.
+Attribution — ranking design cells by |dJ/dρ| to decide where tolerance, sensing
+or mesh refinement should go — reads the gradient entry by entry
+(`sensitivity_ranking.py`, 32², Ra = 3 × 10⁴). The shortcut gets the **sign right
+on all fifty** of the genuinely most influential cells, which is exactly why
+descent works. Its **ranking** of those cells is another matter: Spearman
+correlation with the truth is **−0.011**, indistinguishable from chance; it
+misses 44% of the true top fifty; and it promotes into its top fifty a cell
+truly ranked **1016th of 1024** — the eighth least influential in the domain.
+
+That is the concrete content of the claim that a wrong gradient can be a
+serviceable search direction and a useless sensitivity at once. Signs survive
+the shortcut; magnitudes do not.
+
+![**The same failure, as a map.** Left: |dJ/dρ| from the composed adjoint, rings
+marking the fifty most influential cells. Centre: the shortcut's version of the
+same field. Right: the two top-fifty sets compared. The shortcut misses the
+upper-corner clusters entirely (blue) and fills its budget with cells around the
+chip that carry almost no influence (red), including one truly ranked 1016th of
+1024. An engineer tightening a tolerance there would be spending money on the
+emptiest part of the design, with nothing in the forward solution to warn them.
+](orchestrator/results/fig9_attribution.png)
 
 Further limitations, stated plainly. The physics is two-dimensional and Stokes,
 so inertia is absent; that is what makes the infinite-Prandtl benchmark
@@ -260,10 +326,11 @@ supported by its derivation, not a demonstrated fact.
 ## 8. Reproducibility
 
 Four containerised components with dependencies pinned to the versions that
-produced these numbers; 20 tests running in CI without Docker; one script per
+produced these numbers; 28 tests running in CI without Docker; one script per
 claim (`compare_thermal_backends.py`, `benchmark_critical_rayleigh.py`,
 `grid_convergence.py`, `validate_pipeline.py`, `sweep_coupling.py`,
-`predict_error.py`, `objective_sweep.py`, `optimize.py`); and every headline
+`predict_error.py`, `objective_sweep.py`, `sensitivity_ranking.py`,
+`optimize.py`); and every headline
 number reproduced through *either* thermal backend
 (`scripts/validate_both_backends.sh`), agreeing to nine or ten significant
 figures. The integrity claims of Section 2 are re-checkable against the built

@@ -10,6 +10,7 @@
   fig6  naive-gradient error along the optimisation trajectory
   fig7  one design, rising coupling: where the two gradients disagree in space
   fig8  which statistic predicts that error -- directional gain, not loop gain
+  fig9  attribution: which design cells each gradient says actually matter
 """
 
 from __future__ import annotations
@@ -538,6 +539,109 @@ def fig5_architecture(out_png):
     print(f"wrote {out_png}")
 
 
+def fig9_attribution(npz_path, json_path, out_png, k=50):
+    """Where the naive gradient sends an engineer looking, versus where it matters.
+
+    The ranking table in the README is hard to feel. This is the same data as a
+    map: the k cells that genuinely drive the objective, the k the naive
+    gradient nominates, and the disagreement -- including cells it promotes into
+    the top k that are among the least influential in the whole domain.
+    """
+    import numpy as _np
+
+    d = _np.load(npz_path)
+    rep = json.loads(Path(json_path).read_text())
+    ge, gn = d["g_exact"], d["g_oneway"]
+    shape = ge.shape
+    a, b = _np.abs(ge).ravel(), _np.abs(gn).ravel()
+    n = a.size
+
+    ord_a = _np.argsort(-a, kind="mergesort")
+    ord_b = _np.argsort(-b, kind="mergesort")
+    true_rank = _np.empty(n, dtype=_np.int64)
+    true_rank[ord_a] = _np.arange(n)
+    top_a, top_b = set(ord_a[:k].tolist()), set(ord_b[:k].tolist())
+    cut = max(k, 0.10 * n)
+
+    # 0 background, 1 hit, 2 missed, 3 mild promotion, 4 phantom
+    cat = _np.zeros(n)
+    for i in top_a:
+        cat[i] = 1 if i in top_b else 2
+    for i in top_b:
+        if i not in top_a:
+            cat[i] = 4 if true_rank[i] > cut else 3
+    cat = cat.reshape(shape)
+
+    worst = int(ord_b[:k][_np.argmax(true_rank[ord_b[:k]])])
+    worst_rank = int(true_rank[worst]) + 1
+
+    fig, axes = plt.subplots(1, 3, figsize=(12.6, 4.3))
+
+    def show_mag(ax, g, title, order):
+        m = _np.abs(g)
+        im = ax.imshow(
+            _np.log10(m + 1e-30), origin="lower", cmap="magma", aspect="equal"
+        )
+        js, iss = _np.unravel_index(order[:k], shape)
+        ax.scatter(iss, js, s=13, facecolors="none", edgecolors="#7dd3fc", linewidths=0.9)
+        ax.set_title(title)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        return im
+
+    show_mag(axes[0], ge, f"exact influence |dJ/dρ|, log scale\n"
+                          f"bright = influential; rings: true top {k}", ord_a)
+    show_mag(axes[1], gn, f"naive influence |dJ/dρ|, log scale\n"
+                          f"bright = influential; rings: its top {k}", ord_b)
+
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    # "missed" and "phantom" are the two failure modes and must not read as the
+    # same colour: blue for influence the shortcut overlooked, red for cells it
+    # invented.
+    cmap = ListedColormap(["#f1f3f5", "#0f766e", "#1d4ed8", "#fbbf24", "#b91c1c"])
+    axes[2].imshow(
+        cat, origin="lower", cmap=cmap,
+        norm=BoundaryNorm([-.5, .5, 1.5, 2.5, 3.5, 4.5], cmap.N), aspect="equal",
+    )
+    jw, iw = _np.unravel_index(worst, shape)
+    axes[2].annotate(
+        f"truly #{worst_rank} of {n}",
+        xy=(iw, jw), xytext=(iw + 0.10 * shape[1], jw + 0.20 * shape[0]),
+        fontsize=8.5, color="#b91c1c", fontweight="semibold",
+        arrowprops=dict(arrowstyle="->", color="#b91c1c", lw=1.1),
+    )
+    axes[2].set_title(f"agreement on the top {k}")
+    axes[2].set_xticks([])
+    axes[2].set_yticks([])
+
+    handles = [
+        plt.Line2D([], [], marker="s", ls="", ms=8, mfc=c, mec="none", label=l)
+        for c, l in (
+            ("#0f766e", "found (in both)"),
+            ("#1d4ed8", "missed (truly influential)"),
+            ("#fbbf24", "promoted, mildly wrong"),
+            ("#b91c1c", "phantom (not influential at all)"),
+        )
+    ]
+    axes[2].legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.03),
+                   ncol=2, fontsize=8)
+
+    rho = rep.get("one_way", {})
+    sp = rho.get("spearman_magnitude", float("nan"))
+    row = next((r for r in rho.get("per_k", []) if r["k"] == k), None)
+    recall = row["recall"] if row else float("nan")
+    fig.suptitle(
+        f"Cutting the coupling loop keeps the signs and loses the ranking:  "
+        f"Spearman {sp:+.3f},  {recall:.0%} of the true top {k} recovered",
+        y=1.02, fontsize=11, fontweight="semibold",
+    )
+    fig.tight_layout()
+    fig.savefig(out_png, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_png}")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -572,3 +676,8 @@ if __name__ == "__main__":
         fig7_regime_maps(R / "gradient_maps.npz", R / "fig7_regime_maps.png")
     if (R / "predict_error.json").exists():
         fig8_predictor(R / "predict_error.json", R / "fig8_predictor.png")
+    if (R / "sensitivity_ranking.npz").exists():
+        fig9_attribution(
+            R / "sensitivity_ranking.npz", R / "sensitivity_ranking.json",
+            R / "fig9_attribution.png",
+        )

@@ -67,6 +67,7 @@ def run(
     verbose=False,
     Ra=1.0e3,
     diagnose=0,
+    gamma_gate=0.01,
 ):
     # Ra = 1e3 by default, not the 3e4 used for the gradient study, and this is
     # measured rather than guessed (see probe_startpoint.py). A near-uniform
@@ -106,9 +107,10 @@ def run(
             # OOM and plenty of free memory). Re-serving the containers and
             # retrying the iteration is cheap insurance against losing an hour
             # of optimisation to a transient.
+            mv_before = cp.stats["vjp_matvecs"]
             for attempt in range(3):
                 try:
-                    res = cp.value_and_grad(rho, mode=mode)
+                    res = cp.value_and_grad(rho, mode=mode, gamma_gate=gamma_gate)
                     break
                 except Exception as exc:  # noqa: BLE001 - any transport failure
                     if attempt == 2:
@@ -176,10 +178,22 @@ def run(
                 })
 
             vol = float(np.mean(res["rho_phys"]))
+            # gamma-gated mode: record what the gate decided and what the
+            # decision cost, so the saving can be audited rather than asserted.
+            # Always record the adjoint cost, not just in gated mode: the whole
+            # point of the gate is a cost comparison, and that needs the
+            # always-exact run to have been measured the same way.
+            gate = {"adjoint_matvecs": cp.stats["vjp_matvecs"] - mv_before}
+            if mode == "gamma_gated":
+                gate |= {
+                    "gamma": res.get("gamma"),
+                    "gate": res.get("gate", "exact"),
+                }
             rec = {
                 "iter": it,
                 "J": res["J"],
                 **diag,
+                **gate,
                 "volume": vol,
                 "beta": cp.params.beta,
                 "grad_norm": float(np.linalg.norm(g)),
@@ -234,6 +248,32 @@ def run(
         print(f"J: {history[0]['J']:.6f} -> {history[-1]['J']:.6f} "
               f"({100*(history[0]['J']-history[-1]['J'])/history[0]['J']:.1f}% reduction)")
 
+        if mode == "gamma_gated":
+            cheap = cp.stats["gate_cheap"]
+            exact = cp.stats["gate_exact"]
+            spent = cp.stats["vjp_matvecs"]          # adjoint GMRES matvecs
+            gate_cost = cp.stats["gamma_vjps"]        # one VJP per decision
+            # What always-exact would have cost: the same adjoint solve on
+            # every iteration. Estimate the skipped ones at the mean observed
+            # cost of the ones actually paid for, which is the only honest
+            # figure available without running the counterfactual.
+            per_solve = spent / exact if exact else float("nan")
+            would_have = per_solve * (cheap + exact) if exact else float("nan")
+            total = spent + gate_cost
+            print(
+                f"\ngamma gate (threshold {gamma_gate:g}):\n"
+                f"  cheap gradient taken on {cheap}/{cheap+exact} iterations\n"
+                f"  adjoint VJPs actually spent : {spent}\n"
+                f"  gate VJPs (1 per iteration) : {gate_cost}\n"
+                f"  always-exact would have cost: {would_have:.0f} "
+                f"(at {per_solve:.1f} VJPs/solve)\n"
+                f"  net VJPs: {total:.0f} vs {would_have:.0f} "
+                f"-> {100*(1-total/would_have):.0f}% saved"
+                if exact else
+                f"\ngamma gate: took the cheap gradient on all {cheap} "
+                f"iterations; no adjoint solve was ever needed"
+            )
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -244,8 +284,14 @@ if __name__ == "__main__":
     ap.add_argument(
         "--mode",
         default="composed",
-        choices=["composed", "one_way", "frozen"],
-        help="which gradient drives the optimiser; the naive ones are for comparison",
+        choices=["composed", "one_way", "frozen", "gamma_gated"],
+        help="which gradient drives the optimiser; the naive ones are for "
+             "comparison, gamma_gated decides per iteration",
+    )
+    ap.add_argument(
+        "--gamma-gate", dest="gamma_gate", type=float, default=0.01,
+        help="in gamma_gated mode, take the cheap gradient when gamma is below "
+             "this (default 0.01, the SAFE threshold in coupling_check.py)",
     )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--verbose", action="store_true", help="print Newton progress")
