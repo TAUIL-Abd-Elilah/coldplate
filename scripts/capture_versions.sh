@@ -9,7 +9,15 @@
 #   usage:  scripts/capture_versions.sh
 set -uo pipefail
 
-PY="${PYTHON:-python}"
+# Resolve the interpreter. Defaulting to "python" is wrong on most Linux
+# systems, where only python3 exists -- and with a non-fatal set this script
+# then reported success while running nothing at all.
+PY="${PYTHON:-}"
+if [ -z "$PY" ]; then
+    if command -v python3 >/dev/null 2>&1; then PY=python3
+    elif command -v python >/dev/null 2>&1; then PY=python
+    else echo "no python interpreter found; set PYTHON=..." >&2; exit 1; fi
+fi
 PROBE='import importlib.metadata as m
 for p in ("jax","jaxlib","numpy","scipy","torch"):
     try: print("  %s==%s" % (p, m.version(p)))

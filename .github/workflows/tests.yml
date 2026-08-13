@@ -33,3 +33,13 @@ jobs:
       # by orchestrator/compare_to_reference.py, which does need Docker.
       - name: Run tests
         run: python -m pytest tests -q
+
+      # Prose drifts from data silently. These re-derive every quoted number
+      # from the stored results and verify the repository delivers what the
+      # README says it does, so a stale claim fails the build rather than
+      # sitting there looking plausible.
+      - name: Audit quoted numbers against measurements
+        run: python scripts/audit_claims.py
+
+      - name: Check submission completeness
+        run: python scripts/check_submission.py
