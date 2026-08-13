@@ -1,3 +1,6 @@
+# Pinned to the versions these results were produced with. Nothing here depends
+# on the exact versions -- if a build fails because one is unavailable, relaxing
+# to >= is safe.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0+cpu
-numpy>=1.26
+numpy==2.4.4

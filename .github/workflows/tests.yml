@@ -23,7 +23,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tesseract-core[runtime]" "jax[cpu]" numpy scipy pytest
+          pip install -r requirements-orchestrator.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       # No Docker here on purpose: the Tesseract API endpoints are ordinary

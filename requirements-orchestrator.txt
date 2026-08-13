@@ -1,0 +1,14 @@
+# Environment that drives the composition -- not the Tesseracts themselves,
+# which pin their own dependencies and carry them inside their images.
+#
+# Pinned to the versions the published results were produced with. Note these
+# differ from the in-container versions on purpose: the whole point is that the
+# components are isolated, so the orchestrator running jax 0.11 while the JAX
+# Tesseract runs 0.10.2 is a feature rather than an oversight.
+tesseract-core[runtime]==1.11.0
+tesseract-jax==0.4.1
+jax==0.11.0
+numpy==2.5.1
+scipy==1.18.0
+matplotlib==3.11.1
+pytest>=8.0

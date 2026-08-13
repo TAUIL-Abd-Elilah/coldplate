@@ -1,2 +1,8 @@
-numpy>=1.26
-scipy>=1.11
+# Pinned to the versions these results were produced with. Nothing here depends
+# on the exact versions -- if a build fails because one is unavailable, relaxing
+# to >= is safe.
+#
+# No AD library: every derivative in this component comes from the Enzyme pass
+# baked into the shared library at build time.
+numpy==2.4.6
+scipy==1.17.1

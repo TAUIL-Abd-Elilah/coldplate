@@ -31,15 +31,19 @@ def relerr(a, b):
     return float(np.max(np.abs(a - b)) / max(np.max(np.abs(b)), 1e-300))
 
 
-def main(N: int = 20) -> int:
+def main(N: int = 20, backend: str = "thermal_advdiff") -> int:
     p = Params(Nx=N, Ny=N, Ra=3.0e4)
     rng = np.random.default_rng(0)
     rho = rng.uniform(0.25, 0.75, size=(N, N))
 
+    how = {"thermal_advdiff": "JAX autodiff",
+           "thermal_fortran": "Fortran + Enzyme compiler AD"}.get(backend, backend)
     print(f"grid {N}x{N}, Ra={p.Ra:.0e}, Pr={p.Pr}")
-    print("composing: material_map [PyTorch] -> stokes_brinkman [C++] <-> thermal_advdiff [JAX]\n")
+    print(f"composing: material_map [PyTorch] -> stokes_brinkman [C++] "
+          f"<-> {backend} [{how}]\n")
 
-    with ColdPlate(params=p, verbose=True) as cp:
+    images = {"material": "material_map", "fluid": "stokes_brinkman", "thermal": backend}
+    with ColdPlate(params=p, images=images, verbose=True) as cp:
         t0 = time.time()
         res = cp.value_and_grad(rho)
         t_adj = time.time() - t0
@@ -143,4 +147,7 @@ def main(N: int = 20) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(int(sys.argv[1]) if len(sys.argv) > 1 else 20))
+    # usage: validate_pipeline.py [N] [thermal backend]
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+    be = sys.argv[2] if len(sys.argv) > 2 else "thermal_advdiff"
+    sys.exit(main(n, be))

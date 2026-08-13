@@ -72,6 +72,22 @@ step sizes from 10⁻³ to 10⁻⁴ — that plateau *is* the finite-difference 
 floor, since the fixed point is only converged to ~10⁻¹⁰. The adjoint is exact;
 the difference scheme is the inaccurate one.
 
+**Every number in that table reproduces through either thermal backend**
+(`scripts/validate_both_backends.sh`), which is worth stating because the two
+share no derivative machinery:
+
+| | JAX autodiff | Fortran + Enzyme |
+| --- | --- | --- |
+| J | 2.626343 | 2.626343 |
+| analytic ⟨g, d⟩ | 3.5227189491 × 10⁻² | 3.5227189484 × 10⁻² |
+| directional rel. error | 7.45 × 10⁻⁶ | 7.10 × 10⁻⁶ |
+| one-way naive | 0.856, cos 0.5335, 33% | 0.856, cos 0.5335, 33% |
+| frozen-flow naive | 0.831, cos 0.5604, 27% | 0.831, cos 0.5604, 27% |
+
+Agreement to nine or ten significant figures, and the compiler-differentiated
+path is 3.7× faster here (2.9 s vs 10.7 s) — the sparse operator costs nine
+Enzyme JVPs, against a JAX trace per parameter derivative.
+
 The naive gradients carry **~85% relative error and point the wrong way on a
 third of all design variables** — despite the one-way version using the C++
 solver's adjoint in full and getting everything right except the feedback loop.
@@ -412,8 +428,19 @@ residual — so that agreement is evidence rather than a shared bug.
 Requires Docker and Python 3.10+.
 
 ```bash
-pip install "tesseract-core[runtime]" tesseract-jax "jax[cpu]" numpy scipy matplotlib
+pip install -r requirements-orchestrator.txt
 ```
+
+Versions are pinned to what the published numbers were produced with. The
+orchestrator and the Tesseracts deliberately pin *different* versions — the
+driver runs jax 0.11 while the JAX Tesseract runs 0.10.2 inside its image,
+which is the isolation working as intended rather than an oversight. Nothing
+depends on the exact versions; relaxing a pin to `>=` is safe if one becomes
+unavailable.
+
+As built: LLVM/flang 19.1.7 with the Enzyme nightly plugin, Eigen 3.4,
+tesseract-core 1.11.0, tesseract-jax 0.4.1. Regenerate this list with
+`scripts/capture_versions.sh`.
 
 Build the Tesseracts. The Fortran one needs its compiler toolchain image first
 (flang + LLVM 19 + the Enzyme plugin); it is split out so its ~200 MB of
