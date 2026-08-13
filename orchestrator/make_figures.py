@@ -6,6 +6,10 @@
   fig2  gradient validation: composed vs finite differences vs frozen flow
   fig3  coupling strength: loop gain and naive-gradient error vs Rayleigh number
   fig4  optimisation driven by the composed gradient vs the naive one
+  fig5  architecture: the four components and the adjoint between them
+  fig6  naive-gradient error along the optimisation trajectory
+  fig7  one design, rising coupling: where the two gradients disagree in space
+  fig8  which statistic predicts that error -- directional gain, not loop gain
 """
 
 from __future__ import annotations
@@ -453,79 +457,6 @@ def fig7_regime_maps(npz_path, out_png):
     print(f"wrote {out_png}")
 
 
-def fig7_gradient_map(npz_path, out_gif, out_png):
-    """Where, in space, the naive gradient gets the sign wrong.
-
-    The trajectory plot says a third of the sensitivities are inverted; this
-    shows *which* ones. The disagreement is not scattered noise -- it
-    concentrates in the open fluid, where the flow actually responds to a
-    design change, and vanishes inside solid where nothing moves. That is the
-    coupling term made visible.
-    """
-    d = np.load(npz_path)
-    if "grad_exact" not in d:
-        print(f"no gradient snapshots in {npz_path}; run optimize.py --diagnose")
-        return
-
-    ge, gn = d["grad_exact"], d["grad_naive"]
-    rho = d["grad_rho"]
-    iters = d["grad_iters"]
-
-    # Robust symmetric colour limit, shared by both gradient panels so they are
-    # directly comparable; a couple of outliers would otherwise wash them out.
-    lim = float(np.percentile(np.abs(np.concatenate([ge.ravel(), gn.ravel()])), 99.0))
-    cmap_g = LinearSegmentedColormap.from_list(
-        "grad", ["#1e3a8a", "#60a5fa", "#f8fafc", "#fca5a5", "#991b1b"]
-    )
-
-    fig, axes = plt.subplots(1, 4, figsize=(15.4, 4.15))
-    fig.subplots_adjust(left=0.02, right=0.99, top=0.82, bottom=0.06, wspace=0.16)
-
-    def draw(fr):
-        for a in axes:
-            a.clear()
-            a.set_xticks([]); a.set_yticks([])
-        a0, a1, a2, a3 = axes
-        kw = dict(origin="lower", extent=[0, 1, 0, 1], interpolation="nearest")
-
-        a0.imshow(rho[fr], cmap=CMAP_RHO, vmin=0, vmax=1, **kw)
-        a0.set_title("material layout", fontsize=11)
-
-        a1.imshow(ge[fr], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
-        a1.set_title("exact gradient\n(composed adjoint)", fontsize=11, color=ACCENT)
-
-        im = a2.imshow(gn[fr], cmap=cmap_g, vmin=-lim, vmax=lim, **kw)
-        a2.set_title("naive gradient\n(feedback loop cut)", fontsize=11, color=NAIVE)
-
-        flip = np.sign(gn[fr]) != np.sign(ge[fr])
-        a3.imshow(rho[fr], cmap="Greys", vmin=0, vmax=3.2, **kw)
-        overlay = np.zeros((*flip.shape, 4))
-        overlay[flip] = [0.86, 0.15, 0.15, 0.92]
-        a3.imshow(overlay, **kw)
-        a3.set_title(f"wrong sign: {100*flip.mean():.0f}% of cells",
-                     fontsize=11, color="#b91c1c", fontweight="bold")
-
-        fig.suptitle(
-            f"Where component-wise differentiation goes wrong   "
-            f"iteration {int(iters[fr])}",
-            fontsize=13, fontweight="bold", y=0.97,
-        )
-        return im
-
-    im = draw(0)
-    fig.savefig(out_png, bbox_inches="tight")
-
-    writer = PillowWriter(fps=4)
-    with writer.saving(fig, str(out_gif), dpi=105):
-        for fr in range(len(iters)):
-            draw(fr)
-            writer.grab_frame()
-        for _ in range(8):
-            writer.grab_frame()
-    plt.close(fig)
-    print(f"wrote {out_gif} and {out_png}")
-
-
 def fig5_architecture(out_png):
     """Diagram: three components, and the adjoint conversation between them."""
     from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
@@ -634,6 +565,7 @@ if __name__ == "__main__":
     fig5_architecture(R / "fig5_architecture.png")
     if (R / f"history_diag_N{a.N}.json").exists():
         fig6_trajectory(R / f"history_diag_N{a.N}.json", R / "fig6_trajectory_error.png")
-    if (R / f"run_diag_N{a.N}.npz").exists():
-        fig7_gradient_map(R / f"run_diag_N{a.N}.npz",
-                          R / "fig7_gradient_map.gif", R / "fig7_gradient_map.png")
+    if (R / "gradient_maps.npz").exists():
+        fig7_regime_maps(R / "gradient_maps.npz", R / "fig7_regime_maps.png")
+    if (R / "predict_error.json").exists():
+        fig8_predictor(R / "predict_error.json", R / "fig8_predictor.png")
