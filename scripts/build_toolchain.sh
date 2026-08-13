@@ -2,29 +2,33 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build the Fortran+Enzyme toolchain base image, retrying on the corrupted
-# large downloads this network intermittently produces. Once it succeeds the
-# image is cached and Tesseract rebuilds are fast and offline.
+# Build the compiler toolchain image the Fortran/Enzyme Tesseract is built on:
+# flang + LLVM 19 + the Enzyme plugin.
+#
+# Split out of the Tesseract build because it pulls ~200 MB of compiler across
+# the network. Building it separately means that cost is paid once and cached.
+# Retries because large downloads on some networks arrive corrupted, which
+# surfaces as an apt hash mismatch or a TLS "bad record mac" rather than a
+# clean failure.
+#
+#   usage:  scripts/build_toolchain.sh [attempts]
 set -uo pipefail
 
-SRC=/mnt/d/Competition/pasteurlabs/coldplate/tesseracts/thermal_fortran/toolchain
-WORK=/root/toolchain
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ATTEMPTS="${1:-4}"
 TAG=coldplate-enzyme-toolchain:1.0
 
-systemctl start docker >/dev/null 2>&1 || true
-mkdir -p "$WORK"
-tr -d '\r' < "$SRC/Dockerfile" > "$WORK/Dockerfile"
-
-for i in 1 2 3 4 5; do
-    echo "=== toolchain build attempt $i ==="
-    docker build -t "$TAG" "$WORK" 2>&1 | tail -14
+for i in $(seq 1 "$ATTEMPTS"); do
+    echo "=== toolchain build attempt $i/$ATTEMPTS ==="
+    docker build -t "$TAG" "$ROOT/tesseracts/thermal_fortran/toolchain" 2>&1 | tail -14
     if docker image inspect "$TAG" >/dev/null 2>&1; then
-        echo "TOOLCHAIN_OK"
-        docker run --rm "$TAG" bash -lc 'opt --version | head -2; (flang-new --version || flang --version) | head -1'
+        echo "built $TAG"
+        docker run --rm "$TAG" bash -lc \
+            'opt --version | grep -o "LLVM version [0-9.]*"; flang-new --version | head -1'
         exit 0
     fi
     sleep 20
 done
 
-echo "TOOLCHAIN_FAILED"
+echo "toolchain build failed after $ATTEMPTS attempts"
 exit 1

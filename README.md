@@ -447,7 +447,8 @@ Build the Tesseracts. The Fortran one needs its compiler toolchain image first
 downloads are paid once rather than on every rebuild:
 
 ```bash
-docker build -t coldplate-enzyme-toolchain:1.0 tesseracts/thermal_fortran/toolchain
+scripts/build_toolchain.sh          # or: docker build -t coldplate-enzyme-toolchain:1.0 \
+                                    #       tesseracts/thermal_fortran/toolchain
 ```
 
 ```bash
@@ -461,6 +462,12 @@ Show that the JAX and Fortran/Enzyme thermal blocks are interchangeable:
 
 ```bash
 cd orchestrator && python compare_thermal_backends.py 16
+```
+
+Reproduce the whole gradient validation through *both* backends:
+
+```bash
+scripts/validate_both_backends.sh 16
 ```
 
 Reproduce the headline claim — the composed gradient matches finite differences

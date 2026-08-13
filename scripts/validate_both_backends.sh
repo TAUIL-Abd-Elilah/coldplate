@@ -4,22 +4,23 @@
 #
 # Reproduce the headline gradient validation through BOTH thermal backends, so
 # every number in the README is shown to be independent of which derivative
-# technology produced it.
+# technology produced it: JAX autodiff in one case, an Enzyme compiler pass
+# over Fortran in the other.
+#
+# Expects all four Tesseracts to be built already (see the README).
+#
+#   usage:  scripts/validate_both_backends.sh [N]
 set -uo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 N="${1:-16}"
-WORK=/root/coldplate
+PY="${PYTHON:-python}"
 
-systemctl start docker >/dev/null 2>&1 || true
-rsync -a --exclude '__pycache__' --exclude '*.dll' --exclude '*.obj' \
-    --exclude '*.lib' --exclude '*.exp' --exclude 'results*' \
-    /mnt/d/Competition/pasteurlabs/coldplate/ "$WORK/"
-
-cd "$WORK/orchestrator"
+cd "$ROOT/orchestrator"
 for backend in thermal_advdiff thermal_fortran; do
     echo "################ $backend ################"
-    /root/venv/bin/python -u validate_pipeline.py "$N" "$backend" \
-        2>&1 | grep --line-buffered -vE 'NVIDIA GPU|^ *newton'
+    "$PY" -u validate_pipeline.py "$N" "$backend"
+    # reap served containers between runs so they do not accumulate
     docker ps -q | xargs -r docker rm -f >/dev/null 2>&1 || true
 done
-echo BOTH_BACKENDS_DONE
+echo "both backends validated"
