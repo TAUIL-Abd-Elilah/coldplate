@@ -7,12 +7,20 @@ For a range of Rayleigh numbers, through the real Tesseracts:
   * rho(Phi_T), the spectral radius of the fixed-point Jacobian -- the gain of
     one trip around the coupling loop (power iteration using JVPs, which run
     forward through the C++ block and then the JAX block);
-  * the error and cosine similarity of the frozen-flow gradient against the
+  * the error and cosine similarity of the naive one-way gradient against the
     composed one.
 
-The point is that the two track each other: component-wise differentiation is
-fine when the loop gain is small and becomes an ascent direction when it is
-not. Writes coupling_sweep.json for figure 3.
+Within this sweep the two track each other: component-wise differentiation is
+accurate to six digits when the loop gain is small and carries ~86% error when
+it exceeds 1. It stays a descent direction throughout -- it does not become an
+ascent direction at any point we measured.
+
+The tracking is also specific to holding the design fixed and varying Ra. See
+predict_error.py: across different designs the loop gain can order two states
+backwards, and the quantity that actually predicts the error is the
+*directional* gain ||Phi_T^T g|| / ||g||.
+
+Writes coupling_sweep.json for figure 3.
 """
 
 from __future__ import annotations

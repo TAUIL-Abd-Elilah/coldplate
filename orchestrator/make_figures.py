@@ -184,8 +184,11 @@ def fig3_coupling(rows, out_png):
     Plotted against rho(Phi_T) rather than Rayleigh number on purpose: the
     error is *not* monotonic in Ra (Ra = 3e5 has a lower loop gain than
     Ra = 3e4, and correspondingly less error), but it is monotonic in the loop
-    gain. The gain is the controlling variable, which is what makes the finding
-    transferable to other coupled systems.
+    gain *within this one-parameter sweep*.
+
+    That ordering does not hold across different designs -- see fig8, where the
+    loop gain gets a pair at equal Ra backwards. The statistic that does
+    predict the error is the directional gain ||Phi_T^T g|| / ||g||.
     """
     rows = sorted(rows, key=lambda r: r["rho_phi"])
     Ra = np.array([r["Ra"] for r in rows])
