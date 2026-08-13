@@ -8,25 +8,27 @@ compute — a C++/Eigen solver with a hand-derived adjoint, a JAX solver with
 autodiff, a PyTorch material model, and a Fortran solver differentiated by
 **Enzyme at the LLVM IR level**.
 
-Two of those are interchangeable. Swapping the JAX thermal solver for the
-Fortran/Enzyme one leaves the end-to-end gradient unchanged to **5.3 × 10⁻¹²**,
-cosine 1.000000000000 — the same physics, reached through a completely
-different derivative technology.
+Three results, in order of how much we trust them.
 
-Two results, one clean and one uncomfortable.
+**1. The components are interchangeable.** Swapping the JAX thermal solver for
+the Fortran/Enzyme one leaves the end-to-end gradient unchanged to
+**5.3 × 10⁻¹²**, cosine 1.000000000000 — the same physics, reached through a
+completely different derivative technology. That is what a component boundary
+is supposed to buy you, measured rather than asserted.
 
-**The clean one:** the JAX and Fortran blocks are genuinely interchangeable, so
-the end-to-end gradient does not depend on which derivative technology produced
-it. That is what a component boundary is supposed to buy you, measured rather
-than asserted.
+**2. Not composing across that boundary costs a lot, but only sometimes.** In a
+strongly coupled state the component-wise gradient carries **86% error and
+inverts the sign on a third of the design variables**. In the regime this
+optimiser actually runs in, the same approximation is 4–20% off and works fine.
+Same code, same physics, two orders of magnitude difference in how wrong you
+are — and nothing in the forward solution tells you which case you are in.
 
-**The uncomfortable one:** how much you lose by *not* composing across that
-boundary depends enormously on regime, and you cannot tell which regime you are
-in by looking at the forward solution. In a strongly coupled state the
-component-wise gradient carries **86% error and inverts the sign on a third of
-the design variables**. In the regime this optimiser actually runs in, the same
-approximation is only 4–20% off and works fine. Same code, same physics, two
-orders of magnitude difference in how wrong you are.
+**3. There is a cheap way to tell.** The implicit function theorem says the
+leading error term is `Φ_Tᵀg`, so the predictor is the directional gain
+`γ = ‖Φ_Tᵀg‖/‖g‖` — **one VJP**. Across four design families and five Rayleigh
+numbers, log₁₀(γ) correlates with log₁₀(error) at **0.995**, while the more
+obvious candidate, the coupling loop gain ρ(Φ_T), manages 0.825 and orders some
+pairs backwards.
 
 ---
 
