@@ -52,6 +52,15 @@ class Params:
     Pr: float = 7.0  # component-wise gradients point the wrong way
     q_chip: float = 1.0
     chip_frac: float = 0.4
+    # 0 = cold-plate (chip heat flux on part of the bottom wall, the design
+    # problem); 1 = Rayleigh-Benard (isothermal hot bottom wall, used to check
+    # the coupled physics against the classical critical Rayleigh number).
+    bc_mode: float = 0.0
+    t_hot: float = 1.0
+    # Which functional of the coupled state is being minimised. Changing this
+    # changes dJ/dT, and therefore the directional gain, without touching the
+    # physics or rho(Phi_T).
+    objective: str = "chip_mean"
     filter_radius: float = 2.0
     beta: float = 1.0
     eta: float = 0.5
@@ -134,6 +143,8 @@ class ColdPlate:
                 "k": k,
                 "q_chip": p.q_chip,
                 "chip_frac": p.chip_frac,
+                "bc_mode": p.bc_mode,
+                "t_hot": p.t_hot,
             },
         )
         return out["T"]
@@ -240,9 +251,34 @@ class ColdPlate:
         return T, {"iters": max_newton, "residual": res, "ok": res < tol}
 
     def objective(self, T):
-        """Mean temperature over the chip footprint -- what we minimise."""
-        mask = jnp.asarray(self.params.chip_mask())
-        return jnp.sum(T[0, :] * mask) / jnp.sum(mask)
+        """The quantity being minimised.
+
+        Selectable because the directional gain gamma depends on dJ/dT, so
+        changing the objective at a *fixed* physical state changes gamma while
+        leaving rho(Phi_T) untouched by construction. That is the cleanest way
+        to test whether the error of a component-wise gradient is governed by
+        the direction or by the spectral radius -- see objective_sweep.py.
+        """
+        p = self.params
+        mask = jnp.asarray(p.chip_mask())
+        kind = p.objective
+
+        if kind == "chip_mean":
+            return jnp.sum(T[0, :] * mask) / jnp.sum(mask)
+        if kind == "chip_peak":
+            # smooth max over the chip strip (p-norm)
+            t = T[0, :] * mask
+            return (jnp.sum(t**8) / jnp.sum(mask)) ** (1.0 / 8.0)
+        if kind == "domain_mean":
+            return jnp.mean(T)
+        if kind == "top_half_mean":
+            return jnp.mean(T[p.Ny // 2 :, :])
+        if kind == "left_column_mean":
+            return jnp.mean(T[:, : max(1, p.Nx // 4)])
+        if kind == "outlet_mean":
+            # mean over the top row: what a downstream heat exchanger would see
+            return jnp.mean(T[p.Ny - 1, :])
+        raise ValueError(f"unknown objective {kind!r}")
 
     # -- end-to-end value and gradient ------------------------------------
 
@@ -356,6 +392,8 @@ class ColdPlate:
                     "k": kk,
                     "q_chip": p.q_chip,
                     "chip_frac": p.chip_frac,
+                    "bc_mode": p.bc_mode,
+                    "t_hot": p.t_hot,
                 },
             )
             return self.objective(out["T"])
@@ -391,7 +429,8 @@ class ColdPlate:
         def J_of_k(kk):
             out = apply_tesseract(
                 self._t["thermal"],
-                {"u": u_f, "v": v_f, "k": kk, "q_chip": p.q_chip, "chip_frac": p.chip_frac},
+                {"u": u_f, "v": v_f, "k": kk, "q_chip": p.q_chip,
+                 "chip_frac": p.chip_frac, "bc_mode": p.bc_mode, "t_hot": p.t_hot},
             )
             return self.objective(out["T"])
 

@@ -33,7 +33,7 @@ int enzyme_const;
 /* Fortran ABI: every argument by pointer. */
 extern void thermal_residual(int* Nx, int* Ny, double* T, double* u, double* v,
                              double* k, double* q_chip, double* chip_frac,
-                             double* R);
+                             double* bc_mode, double* t_hot, double* R);
 
 extern void __enzyme_autodiff(void*, ...);
 extern void __enzyme_fwddiff(void*, ...);
@@ -44,11 +44,12 @@ extern "C" {
 
 TH_API void th_forward(int Nx, int Ny, const double* T, const double* u,
                        const double* v, const double* k, double q_chip,
-                       double chip_frac, double* R) {
+                       double chip_frac, double bc_mode, double t_hot,
+                       double* R) {
   int nx = Nx, ny = Ny;
-  double q = q_chip, cf = chip_frac;
+  double q = q_chip, cf = chip_frac, bm = bc_mode, th = t_hot;
   thermal_residual(&nx, &ny, (double*)T, (double*)u, (double*)v, (double*)k,
-                   &q, &cf, R);
+                   &q, &cf, &bm, &th, R);
 }
 
 /* Forward mode. Integer and scalar-parameter arguments are passed as dup with
@@ -57,9 +58,11 @@ TH_API void th_forward(int Nx, int Ny, const double* T, const double* u,
 TH_API void th_jvp(int Nx, int Ny, const double* T, const double* dT,
                    const double* u, const double* du, const double* v,
                    const double* dv, const double* k, const double* dk,
-                   double q_chip, double chip_frac, double* R, double* dR) {
+                   double q_chip, double chip_frac, double bc_mode,
+                   double t_hot, double* R, double* dR) {
   int nx = Nx, ny = Ny, dnx = 0, dny = 0;
   double q = q_chip, cf = chip_frac, dq = 0.0, dcf = 0.0;
+  double bm = bc_mode, th = t_hot, dbm = 0.0, dth = 0.0;
 
   __enzyme_fwddiff((void*)thermal_residual,
                    enzyme_dup, &nx, &dnx,
@@ -70,6 +73,8 @@ TH_API void th_jvp(int Nx, int Ny, const double* T, const double* dT,
                    enzyme_dup, (double*)k, (double*)dk,
                    enzyme_dup, &q, &dq,
                    enzyme_dup, &cf, &dcf,
+                   enzyme_dup, &bm, &dbm,
+                   enzyme_dup, &th, &dth,
                    enzyme_dup, R, dR);
 }
 
@@ -77,10 +82,11 @@ TH_API void th_jvp(int Nx, int Ny, const double* T, const double* dT,
  * Tb, ub, vb and kb, which the caller must zero beforehand. */
 TH_API void th_vjp(int Nx, int Ny, const double* T, double* Tb, const double* u,
                    double* ub, const double* v, double* vb, const double* k,
-                   double* kb, double q_chip, double chip_frac, double* R,
-                   double* Rb) {
+                   double* kb, double q_chip, double chip_frac,
+                   double bc_mode, double t_hot, double* R, double* Rb) {
   int nx = Nx, ny = Ny;
   double q = q_chip, cf = chip_frac, dq = 0.0, dcf = 0.0;
+  double bm = bc_mode, th = t_hot, dbm = 0.0, dth = 0.0;
 
   __enzyme_autodiff((void*)thermal_residual,
                     enzyme_const, &nx,
@@ -91,6 +97,8 @@ TH_API void th_vjp(int Nx, int Ny, const double* T, double* Tb, const double* u,
                     enzyme_dup, (double*)k, kb,
                     enzyme_dup, &q, &dq,
                     enzyme_dup, &cf, &dcf,
+                    enzyme_dup, &bm, &dbm,
+                    enzyme_dup, &th, &dth,
                     enzyme_dup, R, Rb);
 }
 

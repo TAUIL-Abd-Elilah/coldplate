@@ -215,6 +215,42 @@ components separately?": **compute γ with a single VJP.** Below ~0.01 the
 component-wise gradient is good to about a percent; above ~0.1 it is not worth
 having. This is cheap enough to run as an assertion inside a pipeline, and it
 is a statement about the composition rather than about this particular problem.
+It ships as a standalone module, [`coupling_check.py`](coupling_check.py),
+which needs only a JAX-traceable loop and does not import anything from here.
+
+### The decisive test: hold the physics fixed, change the objective
+
+The evidence above varies designs and Rayleigh numbers, so ρ and γ move
+together and a sceptic could say the comparison is confounded. This removes the
+confound entirely.
+
+At one design and one Rayleigh number there is a single coupled state, a single
+Φ, and therefore **a single ρ(Φ_T)**. Changing only *what is being measured*
+changes `g = dJ/dT`, and so changes γ — but ρ cannot move. So if the error
+varies, ρ is structurally incapable of explaining it (`objective_sweep.py`):
+
+| objective | γ | naive rel. error |
+| --- | --- | --- |
+| outlet mean | 0.0027 | 0.0117 |
+| top-half mean | 0.0076 | 0.0026 |
+| chip peak | 0.0261 | 0.0385 |
+| chip mean | 0.0300 | 0.0399 |
+| domain mean | 0.0967 | 0.0211 |
+| left-column mean | 0.3879 | 0.3535 |
+
+**ρ(Φ_T) = 0.5481 on every one of those rows, while the error varies by a
+factor of 136.** That settles it: the spectral radius is not a sufficient
+statistic for whether component-wise differentiation is safe, and no amount of
+additional data can rescue it. A constant cannot explain a 136-fold spread.
+
+γ does move with the error, and it gets the dangerous case right — 0.388
+against a measured 0.354. But it is a **useful approximation, not a formula**:
+across objectives it correlates at 0.80 (versus 0.995 across designs and
+Rayleigh numbers), and it over-predicts on the domain-mean row and
+under-predicts on the outlet row, each by about 4×. That is expected — γ is the
+leading Neumann term of the error in λ, whereas the quantity you finally care
+about also depends on how `Φ_θᵀ` maps that error into design space. Treat it as
+an order-of-magnitude guide with a real theoretical basis, not as a prediction.
 
 ### What the error looks like in space
 
@@ -402,6 +438,69 @@ wrong.
 ---
 
 ## Validation
+
+### The coupled physics reproduces the classical critical Rayleigh number
+
+A fluid layer heated from below stays motionless until buoyancy overcomes
+viscous and thermal diffusion. For rigid walls the onset is a precisely known
+number, **Ra_c = 1707.762**. That is the right benchmark for *this* solver:
+Stokes flow is the infinite-Prandtl limit, which is the regime the classical
+result is derived in. (A Navier–Stokes benchmark such as de Vahl Davis would
+not be — it runs at Pr = 0.71, where the inertia term we omit is not small, so
+disagreement there would prove nothing.)
+
+Onset is also exactly where our own machinery puts it. At the conduction state
+the coupling loop *is* the linear stability operator, so convection begins
+precisely when the loop gain reaches one — `ρ(Φ_T) = 1 ⟺ Ra = Ra_c`. Measured
+by bisecting on Ra (`benchmark_critical_rayleigh.py`):
+
+| aspect ratio | Ra_c measured | excess over 1707.762 |
+| --- | --- | --- |
+| 1 | 2519.07 | +47.5% |
+| 2 | 1970.84 | +15.4% |
+| 4 | 1779.02 | +4.2% |
+| **8** | **1707.97** | **+0.012%** |
+
+The classical value is for an unbounded layer; our no-slip side walls stabilise
+a confined box, so Ra_c must sit *above* it and fall towards it as the box
+widens. It does, and at aspect ratio 8 it agrees to **four significant
+figures** — a relative error of 1.2 × 10⁻⁴.
+
+One number checks the C++ Stokes solver, the thermal solver, the buoyancy
+coupling between them, and the loop-gain machinery, all at once.
+
+### The discretisation converges at second order
+
+Verification rather than validation — does the code solve its own equations at
+the rate the scheme implies? Smooth analytic material properties, the density
+filter bypassed (it is grid-dependent regularisation, not physics), and
+Richardson extrapolation on two independent grid trios
+(`grid_convergence.py`):
+
+| N | J | | |
+| --- | --- | --- | --- |
+| 16 | 3.750196 | **observed order** | **finest-grid error** |
+| 24 | 3.762598 | | |
+| 32 | 3.767089 | p = 1.871 (16/32/64) | 0.046% |
+| 48 | 3.770452 | | |
+| 64 | 3.771708 | p = 1.829 (24/48/96) | 0.023% |
+| 96 | 3.772662 | | |
+
+Monotone, and the two trios agree — second order, which is what central
+differencing for diffusion plus Péclet-weighted advection should give at
+moderate Péclet number.
+
+Getting an honest number here took two corrections worth recording, because
+both produced plausible-looking wrong answers first. Extrapolating through a
+stalled Newton solve measures the solver rather than the scheme, so
+non-converged trios are now refused outright. And the chip heat load is applied
+through a binary mask (`0.3N ≤ i < 0.7N`) whose width snaps to cell edges, so
+the total imposed heat wobbled ±5% non-monotonically with N — that alone made J
+non-monotone and destroyed the asymptotic range. The study heats the full wall
+instead. Neither issue affects the design problem; both would have silently
+produced a meaningless "order of accuracy".
+
+### Component and composition checks
 
 Every component is checked against an independent implementation, and the
 composition is checked against a monolithic reference.

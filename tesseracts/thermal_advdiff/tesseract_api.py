@@ -74,8 +74,18 @@ def _face_conductivities(k):
     return kx, ky
 
 
-def residual(T, u, v, k, q_chip: float, chip_frac: float):
-    """R(T, u, v, k) = div(uT) - div(k grad T) - source. Linear in T."""
+def residual(T, u, v, k, q_chip: float, chip_frac: float,
+             bc_mode: float = 0.0, t_hot: float = 1.0):
+    """R(T, u, v, k) = div(uT) - div(k grad T) - source. Linear in T.
+
+    bc_mode selects the bottom wall condition:
+      0  cold-plate: a chip heat flux over part of the wall (the design problem)
+      1  Rayleigh-Benard: an isothermal hot wall at t_hot (the benchmark)
+
+    The second exists so the solver can be checked against the classical
+    critical Rayleigh number, which is a precise known value for exactly this
+    physics -- Stokes flow is the infinite-Prandtl limit.
+    """
     Ny, Nx = T.shape
     h = 1.0 / Nx
 
@@ -106,7 +116,15 @@ def residual(T, u, v, k, q_chip: float, chip_frac: float):
     ky = 0.5 * (k[0 : Ny - 1, :] + k[1:Ny, :])
     qx = jnp.zeros((Ny, Nx + 1)).at[:, 1:Nx].set(-kx * (T[:, 1:Nx] - T[:, 0 : Nx - 1]) / h)
     qy = jnp.zeros((Ny + 1, Nx)).at[1:Ny, :].set(-ky * (T[1:Ny, :] - T[0 : Ny - 1, :]) / h)
-    qy = qy.at[0, :].set(q_chip * chip_mask(Nx, chip_frac))  # chip flux in
+    # Bottom wall: either the chip's incoming heat flux, or an isothermal hot
+    # wall. Both written as the +y component of the heat flux at that face.
+    qy = qy.at[0, :].set(
+        jnp.where(
+            bc_mode > 0.5,
+            -k[0, :] * (T[0, :] - t_hot) / (0.5 * h),
+            q_chip * chip_mask(Nx, chip_frac),
+        )
+    )
     qy = qy.at[Ny, :].set(-k[Ny - 1, :] * (0.0 - T[Ny - 1, :]) / (0.5 * h))  # cold top
     diff = (qx[:, 1 : Nx + 1] - qx[:, 0:Nx]) / h + (qy[1 : Ny + 1, :] - qy[0:Ny, :]) / h
 
@@ -118,7 +136,7 @@ def residual(T, u, v, k, q_chip: float, chip_frac: float):
 # --------------------------------------------------------------------------
 
 
-def assemble(u, v, k, Nx: int, Ny: int):
+def assemble(u, v, k, Nx: int, Ny: int, bc_mode: float = 0.0):
     """Build A and b such that A T = b is equivalent to residual(T,...) = 0."""
     h = 1.0 / Nx
     u, v, k = np.asarray(u), np.asarray(v), np.asarray(k)
@@ -183,6 +201,12 @@ def assemble(u, v, k, Nx: int, Ny: int):
     add(cell(np.full(Nx, Ny - 1), ii), cell(np.full(Nx, Ny - 1), ii),
         2.0 * k[Ny - 1, :] / h**2)
 
+    # ---- hot bottom wall, Rayleigh-Benard mode only ----
+    # The chip mode puts a Neumann flux there, which loads b rather than A.
+    if bc_mode > 0.5:
+        add(cell(np.zeros(Nx, dtype=int), ii), cell(np.zeros(Nx, dtype=int), ii),
+            2.0 * k[0, :] / h**2)
+
     A = sp.coo_matrix(
         (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
         shape=(Nx * Ny, Nx * Ny),
@@ -191,10 +215,16 @@ def assemble(u, v, k, Nx: int, Ny: int):
     return A
 
 
-def rhs(Nx: int, Ny: int, q_chip: float, chip_frac: float):
-    """Only the chip strip on the bottom wall loads the right-hand side."""
+def rhs(Nx: int, Ny: int, q_chip: float, chip_frac: float,
+        bc_mode: float = 0.0, t_hot: float = 1.0, k=None):
+    """Whatever the bottom wall injects, as a load on the right-hand side."""
+    h = 1.0 / Nx
     b = np.zeros((Ny, Nx))
-    b[0, :] = q_chip * np.asarray(chip_mask(Nx, chip_frac)) / (1.0 / Nx)
+    if bc_mode > 0.5:
+        # isothermal hot wall: 2 k t_hot / h^2 into the first row
+        b[0, :] = 2.0 * np.asarray(k)[0, :] * t_hot / h**2
+    else:
+        b[0, :] = q_chip * np.asarray(chip_mask(Nx, chip_frac)) / h
     return b.ravel()
 
 
@@ -215,6 +245,12 @@ class InputSchema(BaseModel):
     )
     q_chip: Float64 = Field(default=1.0, description="Chip heat flux into the bottom wall.")
     chip_frac: Float64 = Field(default=0.4, description="Chip width as a fraction of the wall.")
+    bc_mode: Float64 = Field(
+        default=0.0,
+        description="Bottom wall: 0 = chip heat flux (design problem), "
+        "1 = isothermal hot wall (Rayleigh-Benard benchmark).",
+    )
+    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature when bc_mode=1.")
 
 
 class OutputSchema(BaseModel):
@@ -244,10 +280,11 @@ def _solve(inputs: InputSchema):
     v = np.ascontiguousarray(inputs.v, dtype=np.float64)
     k = np.ascontiguousarray(inputs.k, dtype=np.float64)
     q, cf = float(inputs.q_chip), float(inputs.chip_frac)
+    bc, th = float(inputs.bc_mode), float(inputs.t_hot)
 
     key = hashlib.blake2b(
         u.tobytes() + v.tobytes() + k.tobytes()
-        + np.array([q, cf], dtype=np.float64).tobytes(),
+        + np.array([q, cf, bc, th], dtype=np.float64).tobytes(),
         digest_size=16,
     ).hexdigest()
     if key in _CACHE:
@@ -255,8 +292,8 @@ def _solve(inputs: InputSchema):
         return _CACHE[key]
 
     Ny, Nx = k.shape
-    lu = spla.splu(assemble(u, v, k, Nx, Ny).tocsc())
-    b = rhs(Nx, Ny, q, cf)
+    lu = spla.splu(assemble(u, v, k, Nx, Ny, bc).tocsc())
+    b = rhs(Nx, Ny, q, cf, bc, th, k)
     entry = (lu.solve(b).reshape(Ny, Nx), lu, Nx, Ny)
 
     _CACHE[key] = entry
@@ -277,7 +314,8 @@ def abstract_eval(abstract_inputs):
 def _residual_wrt_params(T, inputs):
     """Closure R(u, v, k) at fixed T, for JAX to differentiate."""
     q, cf = float(inputs.q_chip), float(inputs.chip_frac)
-    return lambda u, v, k: residual(jnp.asarray(T), u, v, k, q, cf)
+    bc, th = float(inputs.bc_mode), float(inputs.t_hot)
+    return lambda u, v, k: residual(jnp.asarray(T), u, v, k, q, cf, bc, th)
 
 
 def jacobian_vector_product(

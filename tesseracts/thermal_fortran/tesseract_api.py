@@ -52,11 +52,13 @@ _dp = ctypes.POINTER(ctypes.c_double)
 _ci, _cd = ctypes.c_int, ctypes.c_double
 
 _lib.th_forward.restype = None
-_lib.th_forward.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _cd, _cd, _dp]
+_lib.th_forward.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _cd, _cd, _cd, _cd, _dp]
 _lib.th_jvp.restype = None
-_lib.th_jvp.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _cd, _cd, _dp, _dp]
+_lib.th_jvp.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _dp,
+                        _cd, _cd, _cd, _cd, _dp, _dp]
 _lib.th_vjp.restype = None
-_lib.th_vjp.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _cd, _cd, _dp, _dp]
+_lib.th_vjp.argtypes = [_ci, _ci, _dp, _dp, _dp, _dp, _dp, _dp, _dp, _dp,
+                        _cd, _cd, _cd, _cd, _dp, _dp]
 
 
 def _p(a: np.ndarray):
@@ -72,23 +74,24 @@ def _c(a) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
-def residual(T, u, v, k, q_chip: float, chip_frac: float, Nx: int, Ny: int) -> np.ndarray:
+def residual(T, u, v, k, q_chip: float, chip_frac: float, Nx: int, Ny: int,
+             bc_mode: float = 0.0, t_hot: float = 1.0) -> np.ndarray:
     R = np.zeros(Nx * Ny, dtype=np.float64)
     _lib.th_forward(Nx, Ny, _p(_c(T)), _p(_c(u)), _p(_c(v)), _p(_c(k)),
-                    _cd(q_chip), _cd(chip_frac), _p(R))
+                    _cd(q_chip), _cd(chip_frac), _cd(bc_mode), _cd(t_hot), _p(R))
     return R
 
 
-def _jvp(T, u, v, k, dT, du, dv, dk, q, cf, Nx, Ny) -> np.ndarray:
+def _jvp(T, u, v, k, dT, du, dv, dk, q, cf, Nx, Ny, bc=0.0, th=1.0) -> np.ndarray:
     R = np.zeros(Nx * Ny, dtype=np.float64)
     dR = np.zeros(Nx * Ny, dtype=np.float64)
     _lib.th_jvp(Nx, Ny, _p(_c(T)), _p(_c(dT)), _p(_c(u)), _p(_c(du)),
                 _p(_c(v)), _p(_c(dv)), _p(_c(k)), _p(_c(dk)),
-                _cd(q), _cd(cf), _p(R), _p(dR))
+                _cd(q), _cd(cf), _cd(bc), _cd(th), _p(R), _p(dR))
     return dR
 
 
-def _vjp(T, u, v, k, Rb, q, cf, Nx, Ny):
+def _vjp(T, u, v, k, Rb, q, cf, Nx, Ny, bc=0.0, th=1.0):
     """Reverse mode. Enzyme accumulates into the shadow buffers, so zero them."""
     Tb = np.zeros(Nx * Ny, dtype=np.float64)
     ub = np.zeros(Ny * (Nx + 1), dtype=np.float64)
@@ -96,11 +99,13 @@ def _vjp(T, u, v, k, Rb, q, cf, Nx, Ny):
     kb = np.zeros(Nx * Ny, dtype=np.float64)
     R = np.zeros(Nx * Ny, dtype=np.float64)
     _lib.th_vjp(Nx, Ny, _p(_c(T)), _p(Tb), _p(_c(u)), _p(ub), _p(_c(v)), _p(vb),
-                _p(_c(k)), _p(kb), _cd(q), _cd(cf), _p(R), _p(_c(Rb)))
+                _p(_c(k)), _p(kb), _cd(q), _cd(cf), _cd(bc), _cd(th),
+                _p(R), _p(_c(Rb)))
     return Tb, ub, vb, kb
 
 
-def assemble_by_colouring(T, u, v, k, q, cf, Nx: int, Ny: int) -> sp.csc_matrix:
+def assemble_by_colouring(T, u, v, k, q, cf, Nx: int, Ny: int,
+                          bc=0.0, th=1.0) -> sp.csc_matrix:
     """Recover dR/dT exactly using nine Enzyme JVPs.
 
     Cell (j, i) only appears in the equations of itself and its four
@@ -123,7 +128,7 @@ def assemble_by_colouring(T, u, v, k, q, cf, Nx: int, Ny: int) -> sp.csc_matrix:
             sel = (I % 3 == ci) & (J % 3 == cj)
             seed[(J[sel] * Nx + I[sel])] = 1.0
 
-            col = _jvp(T, u, v, k, seed, zu, zv, zk, q, cf, Nx, Ny)
+            col = _jvp(T, u, v, k, seed, zu, zv, zk, q, cf, Nx, Ny, bc, th)
 
             # Row r received a contribution only from the seeded cell inside its
             # own stencil; find which one that is.
@@ -166,6 +171,12 @@ class InputSchema(BaseModel):
     )
     q_chip: Float64 = Field(default=1.0, description="Chip heat flux into the bottom wall.")
     chip_frac: Float64 = Field(default=0.4, description="Chip width as a fraction of the wall.")
+    bc_mode: Float64 = Field(
+        default=0.0,
+        description="Bottom wall: 0 = chip heat flux (design problem), "
+        "1 = isothermal hot wall (Rayleigh-Benard benchmark).",
+    )
+    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature when bc_mode=1.")
 
 
 class OutputSchema(BaseModel):
@@ -187,11 +198,12 @@ def _solve(inputs: InputSchema):
     v = np.ascontiguousarray(inputs.v, dtype=np.float64)
     k = np.ascontiguousarray(inputs.k, dtype=np.float64)
     q, cf = float(inputs.q_chip), float(inputs.chip_frac)
+    bc, th = float(inputs.bc_mode), float(inputs.t_hot)
     Ny, Nx = k.shape
 
     key = hashlib.blake2b(
         u.tobytes() + v.tobytes() + k.tobytes()
-        + np.array([q, cf], dtype=np.float64).tobytes(),
+        + np.array([q, cf, bc, th], dtype=np.float64).tobytes(),
         digest_size=16,
     ).hexdigest()
     if key in _CACHE:
@@ -199,10 +211,10 @@ def _solve(inputs: InputSchema):
         return _CACHE[key]
 
     # R is affine in T: A = dR/dT and b = -R(T=0).
-    A = assemble_by_colouring(np.zeros(Nx * Ny), u, v, k, q, cf, Nx, Ny)
-    b = -residual(np.zeros(Nx * Ny), u, v, k, q, cf, Nx, Ny)
+    A = assemble_by_colouring(np.zeros(Nx * Ny), u, v, k, q, cf, Nx, Ny, bc, th)
+    b = -residual(np.zeros(Nx * Ny), u, v, k, q, cf, Nx, Ny, bc, th)
     lu = spla.splu(A)
-    entry = (lu.solve(b).reshape(Ny, Nx), lu, Nx, Ny, u, v, k, q, cf)
+    entry = (lu.solve(b).reshape(Ny, Nx), lu, Nx, Ny, u, v, k, q, cf, bc, th)
 
     _CACHE[key] = entry
     if len(_CACHE) > _CACHE_MAX:
@@ -230,11 +242,12 @@ def jacobian_vector_product(
     jvp_outputs: set[str],
     tangent_vector: dict[str, Any],
 ):
-    T, lu, Nx, Ny, u, v, k, q, cf = _solve(inputs)
+    T, lu, Nx, Ny, u, v, k, q, cf, bc, th = _solve(inputs)
     z = {"u": np.zeros(Ny * (Nx + 1)), "v": np.zeros((Ny + 1) * Nx), "k": np.zeros(Nx * Ny)}
     tan = {n: (_c(tangent_vector[n]) if n in jvp_inputs else z[n]) for n in ("u", "v", "k")}
 
-    dR = _jvp(T, u, v, k, np.zeros(Nx * Ny), tan["u"], tan["v"], tan["k"], q, cf, Nx, Ny)
+    dR = _jvp(T, u, v, k, np.zeros(Nx * Ny), tan["u"], tan["v"], tan["k"],
+              q, cf, Nx, Ny, bc, th)
     dT = lu.solve(-dR).reshape(Ny, Nx)
     return {name: dT for name in jvp_outputs}
 
@@ -245,12 +258,12 @@ def vector_jacobian_product(
     vjp_outputs: set[str],
     cotangent_vector: dict[str, Any],
 ):
-    T, lu, Nx, Ny, u, v, k, q, cf = _solve(inputs)
+    T, lu, Nx, Ny, u, v, k, q, cf, bc, th = _solve(inputs)
     Tbar = np.array(cotangent_vector["T"], dtype=np.float64).ravel()
 
     # dT/dtheta = -A^{-1} dR/dtheta, so seed the reverse pass with -A^{-T} Tbar.
     lam = -lu.solve(Tbar, trans="T")
-    _, ub, vb, kb = _vjp(T, u, v, k, lam, q, cf, Nx, Ny)
+    _, ub, vb, kb = _vjp(T, u, v, k, lam, q, cf, Nx, Ny, bc, th)
 
     out = {
         "u": ub.reshape(Ny, Nx + 1),

@@ -29,7 +29,8 @@
 ! differentiate ... declare void @thermal_residual", because after linking
 ! there is a declaration but no definition to differentiate. Arguments stay
 ! pass-by-reference (no `value` attribute), which is what the wrapper expects.
-subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, R) &
+subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, &
+                            bc_mode, t_hot, R) &
     bind(C, name="thermal_residual")
   use iso_c_binding, only: c_double, c_int
   implicit none
@@ -50,7 +51,7 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, R) &
 
   integer(c_int), intent(in) :: Nx, Ny
   real(c_double), intent(in) :: T(Nx*Ny), u(Ny*(Nx+1)), v((Ny+1)*Nx), k(Nx*Ny)
-  real(c_double), intent(in) :: q_chip, chip_frac
+  real(c_double), intent(in) :: q_chip, chip_frac, bc_mode, t_hot
   real(c_double), intent(out) :: R(Nx*Ny)
 
   integer :: i, j, c
@@ -146,10 +147,15 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, R) &
       TT = T(j*Nx + i + 1)
       fs = vv * (w * TB + (1.0d0 - w) * TT)
       if (j == 0) then
-        ! chip heat flux entering through the bottom wall
-        mask = 0.0d0
-        if (dble(i) >= lo .and. dble(i) < hi) mask = 1.0d0
-        qs = q_chip * mask
+        if (bc_mode > 0.5d0) then
+          ! Rayleigh-Benard: isothermal hot wall half a cell below the centre
+          qs = -k(i + 1) * (T(i + 1) - t_hot) / (0.5d0 * h)
+        else
+          ! cold plate: chip heat flux entering through the bottom wall
+          mask = 0.0d0
+          if (dble(i) >= lo .and. dble(i) < hi) mask = 1.0d0
+          qs = q_chip * mask
+        end if
       else
         qs = -kf * (T(j*Nx + i + 1) - T((j-1)*Nx + i + 1)) / h
       end if
