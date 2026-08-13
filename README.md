@@ -461,6 +461,51 @@ and there is nothing for a steady solver to converge to. The heterogeneous
 design used for the gradient study stays solvable to Ra = 3×10⁵. Even at
 Ra = 10³ the starting design has a loop gain of 0.76.
 
+## Prior work, and what is actually new here
+
+Being explicit, because most of what this repository does has been done before
+and better, and a reader who knows the field should not have to work that out
+for themselves.
+
+**Differentiable topology optimisation of thermo-fluidic devices is not new.**
+[TOFLUX](https://arxiv.org/abs/2508.17564) (Padmanabha et al., 2025) is a
+JAX-based differentiable topology optimisation framework covering thermo-fluidic
+coupling, fluid–structure interaction and non-Newtonian flow, and it is open
+source. If you want a framework for this class of problem, use theirs.
+
+**Natural-convection heat-sink topology optimisation is not new either, and the
+state of the art is far beyond this.**
+[Alexandersen et al.](https://arxiv.org/abs/1508.04596) (*Int. J. Heat Mass
+Transfer*, 2016) solve the 3D Boussinesq problem with full Navier–Stokes at
+40–330 million degrees of freedom, across Grashof numbers 10³–10⁶. This work is
+2D, Stokes, and 96×96. The branching structure our optimiser finds is a
+qualitative reproduction of what that literature reports, not a new result.
+
+**The sensitivity analysis is not new.** Padway and Mavriplis
+([arXiv:2104.02826](https://arxiv.org/abs/2104.02826), *Numerical Algorithms*
+2021) analyse tangent and adjoint problems for fixed point iterations linearised
+about non-stationary points. Truncating the Neumann series is a severe special
+case of an approximate adjoint, and that Φ_Tᵀg is the leading error term follows
+directly from the expansion.
+
+So what is left?
+
+1. **Composition across genuinely heterogeneous components**, which the
+   frameworks above deliberately avoid — TOFLUX is one framework in one process,
+   because that is the sane way to build a framework. Here a hand-adjointed C++
+   solver, a compiler-differentiated Fortran solver, a JAX solver and a PyTorch
+   model compose into one differentiable function, and two of them are provably
+   interchangeable. That is a statement about *interfaces*, not about physics.
+2. **The refutation of the spectral radius**, which we have not seen stated:
+   ρ(Φ_T) is the natural diagnostic for "is my coupling strong enough to matter"
+   and it is demonstrably not sufficient — constant while the error moves 136×.
+3. **γ as an operational check.** The analysis behind it is standard; making it
+   a single VJP that runs as a pipeline assertion, and measuring what it
+   predicts, is the contribution.
+
+If you take one thing from this repository, take `coupling_check.py` and the
+finding that motivates it — not the cold plate.
+
 ## Physics
 
 Steady, non-dimensional, Boussinesq, Stokes flow with Brinkman penalisation of

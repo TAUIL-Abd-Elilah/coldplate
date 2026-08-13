@@ -52,21 +52,30 @@ theoretical answer.
 
 ### Relation to existing work
 
-The sensitivity of a fixed point, and the error incurred when its linearisation
-is approximate, is not new ground. Padway and Mavriplis (*Numerical Algorithms*,
-2021, arXiv:2104.02826) analyse tangent and adjoint problems linearised about
-non-stationary points and show how incompletely converged nonlinear solves
-propagate into sensitivities. Goal-oriented a-posteriori error estimation for
-multiphysics systems addresses a closely related question from the discretisation
-side. Truncating (2) is a specific, severe instance of an approximate adjoint,
-and the leading term Φ_Tᵀg follows immediately from the Neumann expansion.
+Almost everything here has been done before, and better, in one respect or
+another. Differentiable topology optimisation of thermo-fluidic devices:
+**TOFLUX** (Padmanabha et al., arXiv:2508.17564, 2025) is an open-source
+JAX framework covering thermo-fluidic coupling, FSI and non-Newtonian flow.
+Natural-convection heat-sink design: **Alexandersen et al.** (*Int. J. Heat Mass
+Transfer*, 2016, arXiv:1508.04596) solve the 3D Boussinesq problem with full
+Navier–Stokes at 40–330 million degrees of freedom; this work is 2D, Stokes and
+96×96, and the branching structure it finds reproduces theirs qualitatively
+rather than adding to it. Sensitivity of fixed points under approximate
+linearisation: **Padway and Mavriplis** (*Numerical Algorithms*, 2021,
+arXiv:2104.02826) analyse tangent and adjoint problems linearised about
+non-stationary points; truncating (2) is a severe special case of an approximate
+adjoint, and that Φ_Tᵀg leads the error follows directly from the expansion.
 
-What we add is not the analysis but its *operational* form and its empirical
-test. γ is a single VJP, cheaper than the gradient it judges, and can therefore
-run as an assertion inside a pipeline rather than as an offline study. And we
-supply the negative result that motivates using it: the statistic a practitioner
-would reach for first, the spectral radius, is refutable — Section 5 exhibits a
-case where it is constant while the error varies 136-fold.
+Three things are left. **Composition across genuinely heterogeneous
+components**, which those frameworks deliberately avoid — TOFLUX is one
+framework in one process because that is the sane way to build a framework —
+whereas here a hand-adjointed C++ solver, a compiler-differentiated Fortran
+solver, a JAX solver and a PyTorch model compose into one function, two of them
+interchangeably. **The refutation of the spectral radius**, which we have not
+seen stated: ρ(Φ_T) is the diagnostic a practitioner reaches for first and
+Section 5 shows it constant while the error moves 136-fold. And **γ as an
+operational check** — the analysis is standard, but making it a single VJP that
+runs as a pipeline assertion, and measuring what it actually predicts, is not.
 
 ## 2. The composition
 
