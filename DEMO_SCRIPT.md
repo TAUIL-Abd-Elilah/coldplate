@@ -1,4 +1,4 @@
-# Demo video script (target 4:40)
+# Demo video script (target 4:55, hard cap 5:00)
 
 Storyboard for the ≤5 minute submission video. Every figure referenced is
 rendered in `orchestrator/results/`; spoken numbers are covered by
@@ -67,7 +67,7 @@ coupled forward solves.
 > metal blocks convection and makes the chip hotter. The forward solution gives
 > no warning.
 
-## 2:15–2:55 — A one-VJP warning signal
+## 2:15–2:45 — A one-VJP warning signal
 
 *On screen: `fig8_predictor.png`.*
 
@@ -79,13 +79,42 @@ coupled forward solves.
 > If the loop-cut adjoint is lambda-zero equals g, its exact equation residual
 > is Phi-transpose-g. Normalize that residual and it costs one VJP. Across
 > fourteen converged configurations its log correlation with measured error is
-> nought point nine nine five, and stays above nought point nine nine four when
-> each design family is held out.
->
-> It is a calibrated warning signal, not a universal error bound: on this
-> benchmark below one percent was benign and above ten percent was dangerous.
+> nought point nine nine five.
 
-## 2:55–3:40 — The gradient changes a realised decision
+## 2:45–3:10 — Does that hold anywhere else?
+
+*On screen: `fig11_generalization.png`.*
+
+> A predictor validated on one physical system is a predictor validated on one
+> physical system. So we removed the physics: two thousand three hundred and
+> seventy-seven randomly generated coupled fixed points, four operator
+> families, linear and nonlinear loops, everything in closed form.
+>
+> Gamma tracks the error at nought point nine eight nine. Spectral radius
+> manages nought point six nine. Nothing gamma called safe exceeded one point
+> four percent error, and everything it called unsafe genuinely exceeded five.
+>
+> The same study found the limit, and we would rather report it than have a
+> reviewer find it. That agreement is carried by attracting fixed points. When
+> the fixed point repels, gamma's verdict is still right but its magnitude is
+> not — and that is exactly when you should stop screening and pay for the
+> adjoint.
+
+## 3:10–3:35 — Right signs, worthless ranking
+
+*On screen: `fig9_attribution.png`.*
+
+> Here is why a wrong gradient can still optimise. Ask it which design cells
+> matter most — the question behind tolerancing and sensor placement. On the
+> fifty most influential cells the shortcut gets every sign right, which is why
+> descent works.
+>
+> Its ranking of those same cells correlates with the truth at minus nought
+> point zero one one: chance. It misses nearly half the true top fifty, and
+> promotes one truly ranked one thousand and sixteenth out of one thousand and
+> twenty-four. Serviceable as a direction. Worthless as a sensitivity.
+
+## 3:35–4:05 — The gradient changes a realised decision
 
 *On screen: `fig10_intervention.png`; animate exact and shortcut bars together.*
 
@@ -107,7 +136,7 @@ coupled forward solves.
 >
 > That is the engineering decision the expensive composed gradient changes.
 
-## 3:40–4:15 — The design artefact
+## 4:05–4:30 — The design artefact
 
 *On screen: `fig1_optimisation.gif`, played through.*
 
@@ -117,13 +146,13 @@ coupled forward solves.
 > temperature by eighty-four point six percent. It finds a branching conductor
 > toward the cold sink while leaving coolant channels open for buoyant flow.
 
-## 4:15–4:40 — Close
+## 4:30–4:55 — Close
 
 > Three served components, a selectable JAX-or-Fortran thermal backend, four
 > derivative stacks, one two-way differentiable equilibrium—and a one-VJP check
 > for when the shortcut is risky.
 >
-> The README starts with a safe judge command. Thirty-five component tests run
+> The README starts with a safe judge command. Sixty-one component tests run
 > in CI without Docker, while a scheduled container job exercises the real
 > boundary. Source, four-page paper, evidence, and every command are public.
 

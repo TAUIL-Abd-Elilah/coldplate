@@ -66,6 +66,21 @@ def main(
     print("with identical amplitudes and exactly zero net material.\n")
 
     with ColdPlate(params=params) as cp:
+        # Establish that this design HAS a steady state before paying for its
+        # adjoint. value_and_grad would otherwise run the full GMRES adjoint --
+        # up to 200 matvecs, each a pair of container round-trips -- against a
+        # state that is about to be rejected anyway. On a sweep over random
+        # designs, where non-convergence is a normal outcome rather than an
+        # error, that dominated the entire runtime.
+        probe = cp.material(rho)
+        _, probe_info = cp.solve_coupled(probe["alpha"], probe["k"])
+        if not probe_info["ok"]:
+            raise RuntimeError(
+                f"base coupled state did not converge "
+                f"(residual {probe_info['residual']:.2e})"
+            )
+
+        # Warm-started by the probe, so this re-solve is nearly free.
         base = cp.value_and_grad(rho)
         if not base["info"]["ok"]:
             raise RuntimeError("base coupled state did not converge")

@@ -46,6 +46,27 @@ On the benchmark shipped here, relative error is approximately gamma while
 gamma is small. The thresholds below are benchmark-calibrated guidance, not
 universal guarantees.
 
+Evidence beyond that benchmark. gamma_generalization.py evaluates this function
+on 2377 randomly generated coupled fixed points -- symmetric, non-normal, sparse
+and low-rank operators, linear and nonlinear loops, spectral radius swept from
+1e-3 to 1.9 -- where the exact answer is available in closed form. Pooled,
+log(gamma) correlates with log(relative error) at 0.989 against 0.691 for
+rho(Phi_x), and gamma wins in every family. Of 656 draws that this function
+called SAFE, the worst actual error was 1.4% and none exceeded 5%; of 965 it
+called UNSAFE, all genuinely exceeded 5%.
+
+DOMAIN OF VALIDITY -- read this before trusting a number. That agreement is
+carried by the attracting cases. Split by spectral radius, the correlation is
+0.993 for rho(Phi_x) < 1 and only 0.36 for rho(Phi_x) >= 1, which follows from
+the identity above: gamma is a residual, and for a repelling fixed point the
+amplification (I - Phi_x^T)^-1 is not controlled by 1/(1 - rho). Correcting
+gamma by the observed decay of the reported terms does not repair it.
+
+So: for a repelling loop, treat the VERDICT as meaningful and the MAGNITUDE as
+not. In practice the terms below stop decaying in that regime, which is the
+signal to stop screening and compute the adjoint. `spectral_radius` is provided
+for exactly this check.
+
 Usage with any JAX-traceable loop::
 
     from coupling_check import coupling_gamma

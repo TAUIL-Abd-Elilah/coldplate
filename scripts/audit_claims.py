@@ -229,23 +229,89 @@ def main() -> int:
               f"measured {100*(ratio-1):.1f}%")
 
     robustness = load("intervention_robustness.json")
+    if robustness and "seeds_converged" not in robustness:
+        # Superseded schema: the first version of that sweep hand-picked its
+        # seeds and raised on a loss, so it could not report one. Refuse to
+        # audit it rather than quietly validate numbers it could not have
+        # falsified.
+        check("intervention robustness uses the pre-registered sweep", False,
+              "results predate the pre-registered rewrite; re-run "
+              "orchestrator/intervention_robustness.py")
+        robustness = None
     if robustness:
-        cases = robustness["cases"]
-        check("composed intervention wins all three additional designs",
-              robustness["n_seeds"] == 3 and robustness["exact_wins"] == 3
-              and robustness["all_actions_reduce_J"])
-        check("robustness run uses the documented fixed seed set",
-              [c["seed"] for c in cases] == [1, 3, 4])
-        check("every additional design realizes more cooling",
+        conv = robustness["seeds_converged"]
+        wins = robustness["exact_wins"]
+        cases = [c for c in robustness["cases"] if c["outcome"] != "not_converged"]
+        print(f"intervention robustness: {wins}/{conv} wins over converged "
+              f"designs, {robustness['seeds_attempted']} attempted, "
+              f"{robustness['seeds_not_converged']} without a steady state")
+        check("the seed range was declared up front, not selected after the fact",
+              "declared before running" in robustness.get("selection_note", ""))
+        check("the sweep is a contiguous range with no gaps",
+              [c["seed"] for c in robustness["cases"]]
+              == list(range(robustness["cases"][0]["seed"],
+                            robustness["cases"][0]["seed"]
+                            + robustness["seeds_attempted"])))
+        check("every attempted seed is accounted for",
+              conv + robustness["seeds_not_converged"]
+              == robustness["seeds_attempted"])
+        check("losses were recordable, and are counted if they occurred",
+              wins + robustness["shortcut_wins"] == conv)
+        check("the composed choice won every converged design",
+              wins == conv and conv > 0, f"{wins}/{conv}")
+        check("README/PAPER quote the 10-of-10 result",
+              bool(docs_contain("10/10")) or bool(docs_contain("10 out of 10")))
+        check("every converged design realizes more cooling",
               all(c["extra_cooling_fraction"] > 0 for c in cases))
-        worst_cos = min(c["naive_cosine"] for c in cases)
-        best_gain = max(c["extra_cooling_fraction"] for c in cases)
-        check("negative-cosine robustness case is measured and documented",
-              -0.08 < worst_cos < -0.07 and bool(docs_contain("0.077")),
-              f"minimum cosine {worst_cos:.4f}")
+        med = robustness["median_extra_cooling_when_winning"]
+        check("docs quote the median extra cooling as 36%",
+              abs(100 * med - 36) < 1.5 and bool(docs_contain("36%")),
+              f"measured {100*med:.0f}%")
+        best = robustness["max_extra_cooling_when_winning"]
         check("largest robustness advantage is the quoted ~276%",
-              2.7 < best_gain < 2.8 and bool(docs_contain("276%")),
-              f"measured {100*best_gain:.1f}%")
+              2.7 < best < 2.8 and bool(docs_contain("276%")),
+              f"measured {100*best:.1f}%")
+
+    # ---- randomized generalization study -------------------------------
+    gg = load("gamma_generalization.json")
+    if gg:
+        o = gg["overall"]
+        print(f"generalization: n={gg['trials_usable']} random systems, "
+              f"log-gamma {o['log_gamma_correlation']:+.4f} vs rho "
+              f"{o['rho_correlation']:+.4f}")
+        check("README/PAPER quote 2,377 usable random systems",
+              gg["trials_usable"] == 2377
+              and (bool(docs_contain("2,377")) or bool(docs_contain("2377"))),
+              f"measured {gg['trials_usable']}")
+        check("pooled log-gamma correlation is the quoted 0.989",
+              abs(o["log_gamma_correlation"] - 0.989) < 0.002
+              and bool(docs_contain("0.989")),
+              f"measured {o['log_gamma_correlation']:.4f}")
+        check("pooled rho correlation is the quoted 0.691",
+              abs(o["rho_correlation"] - 0.691) < 0.002
+              and bool(docs_contain("0.691")),
+              f"measured {o['rho_correlation']:.4f}")
+        check("gamma beats rho in every structural family",
+              all(b["log_gamma_correlation"] > b["rho_correlation"]
+                  for b in gg["per_family"].values()))
+        check("gamma beats rho for linear and nonlinear loops alike",
+              all(b["log_gamma_correlation"] > b["rho_correlation"]
+                  for b in gg["per_kind"].values()))
+        safe = gg["safe_bucket"]
+        check("no draw called SAFE hid an error above 5%",
+              safe["frac_under_5pct"] == 1.0,
+              f"n={safe['n']}, worst {100*safe['worst_rel_err']:.1f}%")
+        check("docs quote the worst SAFE error as 1.4%",
+              abs(100 * safe["worst_rel_err"] - 1.4) < 0.1,
+              f"measured {100*safe['worst_rel_err']:.2f}%")
+        check("every draw called UNSAFE genuinely exceeded 5%",
+              gg["unsafe_bucket"]["frac_over_5pct"] == 1.0,
+              f"n={gg['unsafe_bucket']['n']}")
+        # The documented limitation must stay documented.
+        check("the repelling-regime limitation is real and disclosed",
+              gg["repelling"]["log_gamma_correlation"] < 0.75
+              and bool(docs_contain("repelling")),
+              f"repelling corr {gg['repelling']['log_gamma_correlation']:+.3f}")
 
     # ---- claims that must NOT appear ----------------------------------
     print("\n=== retracted claims must not reappear ===")

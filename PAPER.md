@@ -26,7 +26,12 @@ spectral radius of the fixed-point Jacobian, ρ(Φ_T), is insufficient by itself
 (we exhibit a fixed-state case where it is constant while the error varies
 136-fold), whereas the objective-aware residual
 γ = ‖Φ_Tᵀg‖/‖g‖ — one vector-Jacobian product — tracks it (0.995 against 0.825
-in log-log correlation; 0.994–0.997 under family holdout).
+in log-log correlation; 0.994–0.997 under family holdout). Removing the physics
+entirely, γ tracks the error at **0.989 against 0.691 for ρ across 2,377
+randomly generated coupled fixed points**, winning in every structural family
+and for nonlinear loops as well as linear ones — with one boundary we report
+rather than bury: that agreement is carried by attracting fixed points, and γ
+predicts poorly when the fixed point repels.
 
 Two consequences we test rather than assert. The shortcut's failure is *modal*:
 it keeps the sign of every one of the fifty most influential design variables,
@@ -265,6 +270,39 @@ adjoint residual to design-gradient error also depends on `(I−Φ_Tᵀ)⁻¹` a
 γ > 0.1 flagged danger. `coupling_check.py` exposes these as configurable,
 benchmark-calibrated defaults rather than universal guarantees.
 
+**Does it generalise?** Every number above comes from one physical system, which
+is the honest limit of the evidence. So we removed the physics: 2,377 randomly
+generated coupled fixed points (`gamma_generalization.py`) across four
+structural families — symmetric, non-normal, sparse, low-rank — with linear
+loops Φ = Ax + Bθ and nonlinear ones Φ = tanh(Ax) + b, spectral radius swept
+log-uniformly over 10⁻³ to 1.9, and every quantity available in closed form. γ
+is computed by calling the shipped module, not a reimplementation. Pooled,
+log γ correlates with log error at **0.989** against **0.691** for ρ, and γ wins
+in **every family and both kinds** — 0.996 symmetric, 0.982 non-normal, 0.995
+sparse, 0.990 low-rank. The shipped thresholds survive contact: of 656 draws
+called SAFE the worst error was 1.4% and none exceeded 5%, and all 965 called
+UNSAFE genuinely exceeded it.
+
+The same study locates the boundary, which we would rather not have found. Split
+by spectral radius, γ correlates 0.993 for attracting fixed points and only
+**0.36 for repelling ones**. This follows from (2): γ is a residual, and the
+error it induces is (I − Φ_Tᵀ)⁻¹ applied to it — an amplification bounded by
+about 1/(1−ρ) only while ρ < 1. Correcting γ by the observed decay of ‖(Φ_Tᵀ)ᵏg‖
+does not repair it (0.25). But the terms stop decaying in 136 of 178 repelling
+draws, which is the actionable signal: for a repelling loop, trust γ's *verdict*
+and not its *magnitude*, and compute the adjoint. Our own headline state is
+repelling at ρ = 1.19, and there we do.
+
+![**One VJP, no physics.** Left: measured relative error of the component-wise
+gradient against γ on 2,377 randomly generated coupled fixed points, spanning
+four decades and hugging the identity error = γ; the repelling cases (blue) peel
+away and saturate, which is the documented limit. Centre: the spectral radius
+against the same errors — the obvious diagnostic, and visibly not a function of
+the thing it is meant to predict. Right: the thresholds this repository ships,
+with medians marked. Nothing γ called SAFE exceeded 1.4% error, and everything
+it called UNSAFE genuinely exceeded 5%.
+](orchestrator/results/fig11_generalization.png)
+
 **Using it as a budget.** Because γ costs one VJP against the tens the adjoint
 needs, it can be measured *before* deciding whether to pay. Gating the optimiser
 on it (`--mode gamma_gated`, 48², 80 iterations, gate 0.10) gives γ ∈ [0.020,
@@ -323,10 +361,12 @@ realised cooling** at the largest step for exactly the same material budget.
 ![**Equal-budget actions checked by fresh coupled solves:** the composed choice
 wins 3/3.](orchestrator/results/fig10_intervention.png)
 
-At fixed Ra = 2 × 10⁴ and step 0.025 it also wins three independently seeded,
-converged designs (6%, 26% and 276% extra cooling); one shortcut gradient is
-even an ascent direction (cosine −0.077). These are convergence-qualified pilot
-cases, not a population estimate.
+At fixed Ra = 2 × 10⁴ and step 0.025 we then swept a seed range **declared
+before running** — 0 to 11, with losses recordable and non-convergence reported
+rather than dropped. Ten of the twelve designs had a reachable steady state, and
+**the composed choice won all ten**, median 36% extra cooling, range 6% to 276%.
+The design of that sweep is part of the result: its first version hand-picked
+its seeds and raised on a loss, so it could not have reported one.
 
 The same distinction appears in attribution (`sensitivity_ranking.py`, 32²,
 Ra = 3 × 10⁴). The shortcut keeps the sign of all fifty truly most influential
@@ -334,18 +374,21 @@ cells—enough for descent—but its ranking is chance-level (Spearman −0.011)
 misses 44% of the true top fifty, and promotes a cell truly ranked 1016th of
 1024. A serviceable search direction can still be a useless sensitivity.
 
-Limitations are important. The intervention evidence spans one state over
-three amplitudes plus three convergence-qualified designs, not a population
-study. The physics is
+Limitations are important. The intervention evidence spans one state over three
+amplitudes plus twelve pre-declared designs at a second state — a sweep, not a
+population study, and both states are strongly coupled by construction. The
+physics is
 two-dimensional and Stokes, so inertia is absent. The topology optimisation
 runs at Ra = 10³ because its near-uniform intermediate-density start has no
-reachable steady state at the strong setting. Finally, γ has been measured on
-one physical system; transfer to other coupling structures follows as a
-testable hypothesis, not a demonstrated fact.
+reachable steady state at the strong setting. Finally, γ is measured on one
+*physical* system plus 2,377 synthetic ones; the synthetic study establishes
+that the relationship is not an artefact of this problem, but random operators
+are not a substitute for a second real multiphysics application, and the
+repelling regime remains a stated exclusion rather than a solved case.
 
 ## 8. Reproducibility
 
-Four pinned implementations, three served per run; 35 component tests; and a
+Four pinned implementations, three served per run; 61 component tests; and a
 scheduled job that exercises the real container boundary. The safe reviewer
 path is `scripts/judge_demo.sh`; every experiment has a driver, and
 `scripts/audit_claims.py` re-derives the headline numbers.

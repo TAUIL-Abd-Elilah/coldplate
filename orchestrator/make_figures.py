@@ -601,6 +601,97 @@ def fig10_intervention(json_path, out_png):
     print(f"wrote {out_png}")
 
 
+def fig11_generalization(npz_path, json_path, out_png):
+    """gamma against the truth on thousands of random coupled systems.
+
+    The physics results answer "does it work here". This answers "does it work
+    at all", on operators with no physics in them -- and shows the one place it
+    stops working, which is the part worth being loud about.
+    """
+    import numpy as _np
+
+    d = _np.load(npz_path, allow_pickle=False)
+    summary = json.loads(Path(json_path).read_text())
+    gam, err, rho = d["gamma"], d["rel_err"], d["rho"]
+    ok = (gam > 0) & (err > 0)
+    gam, err, rho = gam[ok], err[ok], rho[ok]
+    attracting = rho < 1.0
+
+    fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.2))
+
+    # -- 1. gamma predicts, and where it frays -------------------------
+    ax = axes[0]
+    ax.scatter(gam[attracting], err[attracting], s=5, alpha=0.30,
+               color=ACCENT, linewidths=0, label="attracting  ρ < 1")
+    ax.scatter(gam[~attracting], err[~attracting], s=9, alpha=0.65,
+               color=NAIVE, linewidths=0, label="repelling  ρ ≥ 1")
+    lim = [max(gam.min(), 1e-8), gam.max()]
+    ax.plot(lim, lim, ls="--", lw=1.0, color=MUTED, zorder=0)
+    ax.annotate("error = γ", xy=(lim[1], lim[1]), xytext=(-4, 6),
+                textcoords="offset points", ha="right", fontsize=8, color=MUTED)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("directional residual γ  (one VJP)")
+    ax.set_ylabel("relative error of the shortcut")
+    r_all = summary["overall"]["log_gamma_correlation"]
+    r_att = summary["attracting"]["log_gamma_correlation"]
+    r_rep = summary["repelling"]["log_gamma_correlation"]
+    ax.set_title(f"γ vs truth   pooled r = {r_all:+.3f}")
+    ax.legend(fontsize=8, loc="upper left")
+    ax.text(0.97, 0.05,
+            f"attracting  r = {r_att:+.3f}\nrepelling    r = {r_rep:+.3f}",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8.5,
+            color=INK)
+
+    # -- 2. the spectral radius, for comparison -------------------------
+    ax = axes[1]
+    ax.scatter(rho, err, s=5, alpha=0.30, color=MUTED, linewidths=0)
+    ax.axvline(1.0, color=NAIVE, lw=1.0, ls=":")
+    ax.set_yscale("log")
+    ax.set_xlabel("spectral radius ρ(Φ_x)")
+    ax.set_ylabel("relative error of the shortcut")
+    ax.set_title(f"ρ vs truth   r = {summary['overall']['rho_correlation']:+.3f}")
+
+    # -- 3. do the shipped verdicts mean anything? ----------------------
+    ax = axes[2]
+    buckets = [
+        ("SAFE\nγ < 0.01", err[gam < 0.01], "#0f766e"),
+        ("MARGINAL\n0.01–0.10", err[(gam >= 0.01) & (gam < 0.10)], "#fbbf24"),
+        ("UNSAFE\nγ ≥ 0.10", err[gam >= 0.10], "#b91c1c"),
+    ]
+    for i, (label, vals, colour) in enumerate(buckets):
+        if not len(vals):
+            continue
+        jitter = _np.random.default_rng(0).normal(0, 0.055, size=len(vals))
+        ax.scatter(i + jitter, vals, s=4, alpha=0.25, color=colour, linewidths=0)
+        ax.plot([i - 0.3, i + 0.3], [_np.median(vals)] * 2, color=INK, lw=1.6)
+    ax.axhline(0.05, color=INK, lw=1.0, ls="--")
+    ax.annotate("5% error", xy=(2.35, 0.05), xytext=(0, 5),
+                textcoords="offset points", ha="right", fontsize=8, color=INK)
+    ax.set_yscale("log")
+    ax.set_xticks(range(len(buckets)))
+    ax.set_xticklabels([b[0] for b in buckets], fontsize=8.5)
+    ax.set_ylabel("relative error of the shortcut")
+    safe = summary["safe_bucket"]
+    ax.set_title(f"shipped verdicts   worst SAFE = "
+                 f"{100 * safe['worst_rel_err']:.1f}%")
+
+    for a in axes:
+        a.grid(True, which="major", color=GRID, lw=0.6, alpha=0.8)
+        a.set_axisbelow(True)
+
+    fig.suptitle(
+        f"One VJP predicts the cost of cutting a coupling loop, on "
+        f"{summary['trials_usable']:,} random coupled systems with no physics in them "
+        f"— and stops predicting when the fixed point repels",
+        y=1.03, fontsize=11, fontweight="semibold",
+    )
+    fig.tight_layout()
+    fig.savefig(out_png, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_png}")
+
+
 def fig9_attribution(npz_path, json_path, out_png, k=50):
     """Where the naive gradient sends an engineer looking, versus where it matters.
 
@@ -745,3 +836,8 @@ if __name__ == "__main__":
         )
     if (R / "intervention_test.json").exists():
         fig10_intervention(R / "intervention_test.json", R / "fig10_intervention.png")
+    if (R / "gamma_generalization.npz").exists():
+        fig11_generalization(
+            R / "gamma_generalization.npz", R / "gamma_generalization.json",
+            R / "fig11_generalization.png",
+        )

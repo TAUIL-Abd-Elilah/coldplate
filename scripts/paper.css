@@ -129,7 +129,8 @@ strong { font-weight: 700; }
    abstract grows again, or a new paragraph silently falls outside the tint. */
 #abstract + p,
 #abstract + p + p,
-#abstract + p + p + p {
+#abstract + p + p + p,
+#abstract + p + p + p + p {
   background: var(--accent-soft);
   border-left: 2.2pt solid var(--accent);
   padding: 1.3mm 2mm;

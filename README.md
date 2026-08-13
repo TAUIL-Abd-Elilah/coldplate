@@ -20,7 +20,7 @@ any one run.
 | --- | --- |
 | Swap JAX autodiff for Fortran/Enzyme | end-to-end gradient changes by **5.3 × 10⁻¹²**, cosine 1.000000000000 |
 | Validate the composed adjoint | directional derivative matches a true coupled finite difference to **8.3 × 10⁻⁶** |
-| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling**, wins **3/3** amplitudes, then wins **3/3** additional converged designs |
+| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling**, wins **3/3** amplitudes, and wins **10/10** designs over a seed range declared in advance (median 36% more cooling) |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 
 The exact and loop-cut gradients can both drive the weakly coupled long
@@ -117,22 +117,42 @@ This is the missing link between gradient accuracy and an engineering outcome.
 
 ![Equal-budget material interventions selected by each gradient and evaluated by the true coupled solver.](orchestrator/results/fig10_intervention.png)
 
-We also held `Ra=2×10⁴` and the `0.025` action fixed and repeated the true
-forward re-solve on three independently seeded, convergence-qualified designs
-(`intervention_robustness.py`):
+Then we held `Ra=2×10⁴` and the `0.025` action fixed and repeated the true
+forward re-solve over a **seed range declared before running** — 0 through 11,
+no design chosen after seeing its result (`intervention_robustness.py`):
 
-| seed | γ | gradient cosine | ΔJ, composed choice | ΔJ, loop-cut choice | extra cooling |
+| seed | γ | naive rel. err | ΔJ, composed choice | ΔJ, loop-cut choice | extra cooling |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 0.330 | +0.804 | −0.04927 | −0.03925 | 26% |
-| 3 | 0.215 | +0.969 | −0.05143 | −0.04873 | 6% |
-| 4 | 0.201 | **−0.077** | **−0.12222** | −0.03252 | **276%** |
+| 0 | — | — | *no reachable steady state* | | |
+| 1 | 0.330 | 0.859 | −0.04927 | −0.03925 | 26% |
+| 2 | 0.369 | 0.744 | −0.06034 | −0.04202 | 44% |
+| 3 | 0.215 | 0.332 | −0.05143 | −0.04873 | 6% |
+| 4 | 0.201 | 1.122 | **−0.12222** | −0.03252 | **276%** |
+| 5 | 0.366 | 1.010 | −0.04758 | −0.03728 | 28% |
+| 6 | — | — | *no reachable steady state* | | |
+| 7 | 0.360 | 0.713 | **−0.11281** | −0.03024 | **273%** |
+| 8 | 0.375 | 0.864 | −0.04577 | −0.03811 | 20% |
+| 9 | 0.194 | 0.345 | −0.06203 | −0.05268 | 18% |
+| 10 | 0.359 | 0.710 | **−0.10077** | −0.02789 | **261%** |
+| 11 | 0.478 | 1.212 | −0.05243 | −0.02328 | 125% |
 
-The composed choice wins **3/3 additional designs**. Seed 4 is especially
-revealing: the loop-cut gradient is globally an ascent direction (negative
-cosine), yet its constrained cell choice still cools; the composed choice
-delivers 3.76× as much cooling. Seeds 1, 3, and 4 are a fixed set selected in a
-convergence pilot, so this is a robustness check—not a population success-rate
-estimate.
+**The composed choice won 10 out of 10 designs that had a reachable steady
+state**, with a median of **36% extra cooling** and a range of 6% to 276%. Two
+of the twelve had no steady state to converge to at this Rayleigh number; they
+are listed rather than dropped, because a design with no equilibrium is a fact
+about the physics and not a failed trial.
+
+That structure is deliberate, and it replaced an earlier version of this
+experiment that was not sound. The first version took a hand-picked seed list
+and *raised an exception* whenever the exact gradient lost — so a design that
+disagreed would have crashed the run instead of appearing in the table. A test
+that cannot record a negative is not evidence. This one declares its seeds up
+front, records losses as losses, and reports every attempt; it simply happens
+that no loss occurred.
+
+γ was between 0.194 and 0.478 on every converged design — **UNSAFE on all of
+them**, which is the correct call: the loop-cut gradient carried 33% to 121%
+relative error there.
 
 ### What we do *not* claim
 
@@ -338,6 +358,63 @@ under-predicts on the outlet row, each by about 4×. That is expected — γ is 
 adjoint-equation residual, whereas its conversion to design-gradient error also
 depends on `(I − Φ_Tᵀ)⁻¹` and on how `Φ_θᵀ` maps state sensitivity into design
 space. Treat it as a screening signal with a theoretical basis, not a formula.
+
+### Does γ generalise past this cold plate? 2,377 random systems say yes — with one boundary
+
+Every result above is measured on one physical system. That is the honest limit
+of the evidence: the derivation is general, but a reader is entitled to suspect
+that γ tracks the error because Boussinesq convection on a structured grid
+happens to be well behaved. So we removed the physics entirely
+(`gamma_generalization.py`).
+
+Random coupled fixed points `x* = Φ(x*, θ)` are generated where every quantity
+is exact — no solver tolerance, no finite differences — across four structural
+families (symmetric, non-normal, sparse, low-rank), linear loops `Φ = Ax + Bθ`
+and nonlinear ones `Φ = tanh(Ax) + b`, with the spectral radius swept
+log-uniformly from 10⁻³ to 1.9. γ is computed by calling the shipped
+`coupling_check.py`, not a reimplementation.
+
+| subset | n | corr(log γ, log error) | corr(ρ, log error) |
+| --- | --- | --- | --- |
+| **all** | **2,377** | **+0.9893** | +0.6907 |
+| symmetric | 600 | +0.9957 | +0.7979 |
+| non-normal | 579 | +0.9817 | +0.6502 |
+| sparse | 598 | +0.9945 | +0.7222 |
+| low-rank | 600 | +0.9900 | +0.7159 |
+| linear loops | 1,906 | +0.9884 | +0.6923 |
+| nonlinear loops | 471 | +0.9935 | +0.7095 |
+
+γ beats ρ in **every family and both kinds**, and the pooled +0.989 on random
+operators is within a hair of the +0.995 measured on the physics. That is the
+generalisation claim, tested rather than asserted.
+
+**The thresholds shipped in `coupling_check.py` hold up**, which matters more
+than the correlation because a false SAFE verdict is the one that hurts someone
+— it tells them to skip the adjoint:
+
+| verdict | n | outcome |
+| --- | --- | --- |
+| `γ < 0.01` → SAFE | 656 | worst error **1.4%**; 100% under 5% — **no false SAFE** |
+| `γ ≥ 0.10` → UNSAFE | 965 | 100% genuinely above 5% error — no false alarm |
+
+**And the boundary, which we would rather have not found.** Split by spectral
+radius, γ correlates **+0.9925 for attracting fixed points (ρ < 1)** but only
+**+0.36 for repelling ones (ρ ≥ 1)**. The reason is structural: γ is the
+*residual* of the adjoint equation, and the error it causes is
+`(I − Φ_Tᵀ)⁻¹` applied to that residual. For ρ < 1 the amplification is bounded
+by roughly 1/(1 − ρ) and γ carries the signal; for ρ ≥ 1 it is not bounded that
+way, and a residual of a given size can mean almost anything.
+
+Two extra VJPs do not rescue it — correcting γ by the observed decay ratio of
+`‖(Φ_Tᵀ)ᵏg‖` gives +0.25, no better. But the diagnostic is not silent there: in
+**136 of the 178** repelling cases the successive terms fail to decay at all,
+which is itself the correct signal. **If your fixed point is repelling, do not
+screen — compute the adjoint.**
+
+This is worth stating plainly because our own headline state is repelling
+(ρ = 1.19), and it is exactly where we do compute the exact adjoint. γ still
+returns UNSAFE there and the advice is right; what this study says is that in
+that regime you should trust γ's *verdict* and not its *magnitude*.
 
 ### What the error looks like in space
 
@@ -892,10 +969,21 @@ realised outcome with the true forward solver:
 cd orchestrator && python intervention_test.py --N 20 --Ra 3e4
 ```
 
-Repeat a fixed action across three convergence-qualified random designs:
+Test whether γ predicts anything outside this problem — thousands of random
+coupled fixed points where the exact answer is closed form, no containers and
+no solver involved (a few minutes on one core):
 
 ```bash
-cd orchestrator && python intervention_robustness.py
+cd orchestrator && python gamma_generalization.py --trials 2400
+```
+
+Repeat the equal-budget action experiment over a pre-declared range of designs,
+recording every seed including losses and designs with no reachable steady
+state (slow — a non-convergent design must burn the full Newton budget before
+it can be called non-convergent):
+
+```bash
+cd orchestrator && python intervention_robustness.py --n-seeds 12
 ```
 
 Run the attribution task — rank design cells by influence with each gradient and
@@ -959,8 +1047,10 @@ orchestrator/
   predict_error.py        what predicts component-wise gradient error (one VJP)
   predictor_statistics.py holdout + bootstrap robustness of that correlation
   intervention_test.py    equal-budget sensitivity action, true forward re-solve
-  intervention_robustness.py same action across three converged random designs
+  intervention_robustness.py  pre-registered seed sweep of the action experiment
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
+  gamma_generalization.py does gamma predict off this problem? 2,377 random loops
+  intervention_robustness.py  pre-registered seed sweep of the action experiment
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         figures and animation
@@ -982,6 +1072,7 @@ prototype/
 | `fig8_predictor.png` | the directional gain γ predicts the error; the loop gain does not |
 | `fig9_attribution.png` | which cells each gradient says matter — signs survive, ranking does not |
 | `fig10_intervention.png` | equal material budgets, cells selected by each gradient, true outcome |
+| `fig11_generalization.png` | γ against the truth on 2,377 random coupled systems, and where it stops working |
 
 ## License
 

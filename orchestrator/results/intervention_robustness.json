@@ -2,12 +2,26 @@
   "N": 20,
   "Ra": 20000.0,
   "amplitude": 0.025,
-  "n_seeds": 3,
-  "exact_wins": 3,
-  "all_actions_reduce_J": true,
+  "seeds_attempted": 12,
+  "seeds_converged": 10,
+  "seeds_not_converged": 2,
+  "exact_wins": 10,
+  "shortcut_wins": 0,
+  "win_rate_over_converged": 1.0,
+  "median_extra_cooling_when_winning": 0.35614125944434427,
+  "min_extra_cooling_when_winning": 0.05549630461983379,
+  "max_extra_cooling_when_winning": 2.758344535036469,
+  "all_converged_actions_reduce_J": true,
+  "selection_note": "Contiguous seed range declared before running; every seed is reported, including losses and designs with no reachable steady state. No seed was chosen after seeing its result.",
   "cases": [
     {
+      "seed": 0,
+      "outcome": "not_converged",
+      "reason": "RuntimeError: base coupled state did not converge (residual 5.89e-02)"
+    },
+    {
       "seed": 1,
+      "outcome": "exact_wins",
       "gamma": 0.3301022784652648,
       "naive_relative_error": 0.8593537767064758,
       "naive_cosine": 0.8037757620170616,
@@ -19,7 +33,21 @@
       "extra_cooling_fraction": 0.2554971047984731
     },
     {
+      "seed": 2,
+      "outcome": "exact_wins",
+      "gamma": 0.3694762673013375,
+      "naive_relative_error": 0.7444732381708082,
+      "naive_cosine": 0.8020397689317793,
+      "add_set_overlap": 0.65,
+      "remove_set_overlap": 0.25,
+      "delta_J_exact_action": -0.06034466470340716,
+      "delta_J_naive_action": -0.04201775326898671,
+      "exact_advantage": 0.018326911434420445,
+      "extra_cooling_fraction": 0.4361706661728515
+    },
+    {
       "seed": 3,
+      "outcome": "exact_wins",
       "gamma": 0.21452551679405799,
       "naive_relative_error": 0.3320217123605695,
       "naive_cosine": 0.9693021239316321,
@@ -32,6 +60,7 @@
     },
     {
       "seed": 4,
+      "outcome": "exact_wins",
       "gamma": 0.2007515449460198,
       "naive_relative_error": 1.1216563138256332,
       "naive_cosine": -0.07742143074669837,
@@ -41,7 +70,91 @@
       "delta_J_naive_action": -0.03251952194458152,
       "exact_advantage": 0.08970004563783496,
       "extra_cooling_fraction": 2.758344535036469
+    },
+    {
+      "seed": 5,
+      "outcome": "exact_wins",
+      "gamma": 0.3656313060141594,
+      "naive_relative_error": 1.0095870888855285,
+      "naive_cosine": 0.7441261392595143,
+      "add_set_overlap": 0.55,
+      "remove_set_overlap": 0.05,
+      "delta_J_exact_action": -0.04757559535375444,
+      "delta_J_naive_action": -0.037281681266813305,
+      "exact_advantage": 0.010293914086941136,
+      "extra_cooling_fraction": 0.27611185271583705
+    },
+    {
+      "seed": 6,
+      "outcome": "not_converged",
+      "reason": "RuntimeError: perturbed state did not converge (residual 2.78e-02)"
+    },
+    {
+      "seed": 7,
+      "outcome": "exact_wins",
+      "gamma": 0.36008173012429634,
+      "naive_relative_error": 0.713474032747652,
+      "naive_cosine": 0.7028725546425845,
+      "add_set_overlap": 0.35,
+      "remove_set_overlap": 0.0,
+      "delta_J_exact_action": -0.11281489097455388,
+      "delta_J_naive_action": -0.030242979595617836,
+      "exact_advantage": 0.08257191137893605,
+      "extra_cooling_fraction": 2.730283605749633
+    },
+    {
+      "seed": 8,
+      "outcome": "exact_wins",
+      "gamma": 0.37501705031242044,
+      "naive_relative_error": 0.8640559607198528,
+      "naive_cosine": 0.8227042476311311,
+      "add_set_overlap": 0.6,
+      "remove_set_overlap": 0.05,
+      "delta_J_exact_action": -0.0457726234652962,
+      "delta_J_naive_action": -0.038109189087596196,
+      "exact_advantage": 0.007663434377700007,
+      "extra_cooling_fraction": 0.2010915099790016
+    },
+    {
+      "seed": 9,
+      "outcome": "exact_wins",
+      "gamma": 0.19377312584692666,
+      "naive_relative_error": 0.34548692599711994,
+      "naive_cosine": 0.9391841455066352,
+      "add_set_overlap": 0.8,
+      "remove_set_overlap": 0.55,
+      "delta_J_exact_action": -0.06202629812489047,
+      "delta_J_naive_action": -0.05267587769167248,
+      "exact_advantage": 0.009350420433217987,
+      "extra_cooling_fraction": 0.17750858349145626
+    },
+    {
+      "seed": 10,
+      "outcome": "exact_wins",
+      "gamma": 0.3592846534937379,
+      "naive_relative_error": 0.7100770161335297,
+      "naive_cosine": 0.7090906211692443,
+      "add_set_overlap": 0.35,
+      "remove_set_overlap": 0.0,
+      "delta_J_exact_action": -0.10077233612205294,
+      "delta_J_naive_action": -0.027892061907947685,
+      "exact_advantage": 0.07288027421410526,
+      "extra_cooling_fraction": 2.612939640483819
+    },
+    {
+      "seed": 11,
+      "outcome": "exact_wins",
+      "gamma": 0.4778796044233916,
+      "naive_relative_error": 1.2118183728803489,
+      "naive_cosine": 0.47272394340693086,
+      "add_set_overlap": 0.35,
+      "remove_set_overlap": 0.0,
+      "delta_J_exact_action": -0.052428531664957756,
+      "delta_J_naive_action": -0.023278202523860703,
+      "exact_advantage": 0.029150329141097053,
+      "extra_cooling_fraction": 1.2522585930428813
     }
   ],
-  "selection_note": "Seeds 1, 3, and 4 are a fixed convergence-qualified pilot set; this is robustness evidence, not a population success-rate estimate."
+  "complete": true,
+  "seeds_planned": 12
 }

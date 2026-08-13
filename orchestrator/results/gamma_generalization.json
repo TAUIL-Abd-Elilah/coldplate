@@ -1,0 +1,65 @@
+{
+  "trials_requested": 2400,
+  "trials_usable": 2377,
+  "n": 40,
+  "m": 25,
+  "seed": 0,
+  "overall": {
+    "n": 2377,
+    "log_gamma_correlation": 0.9892922643785,
+    "rho_correlation": 0.6906686170924539
+  },
+  "per_family": {
+    "normal": {
+      "n": 600,
+      "log_gamma_correlation": 0.9957044039263873,
+      "rho_correlation": 0.7979187028677251
+    },
+    "nonnormal": {
+      "n": 579,
+      "log_gamma_correlation": 0.9817268703918035,
+      "rho_correlation": 0.6502405406142668
+    },
+    "sparse": {
+      "n": 598,
+      "log_gamma_correlation": 0.9944766859412205,
+      "rho_correlation": 0.7222469998528069
+    },
+    "lowrank": {
+      "n": 600,
+      "log_gamma_correlation": 0.9900355499378205,
+      "rho_correlation": 0.715942275900362
+    }
+  },
+  "per_kind": {
+    "linear": {
+      "n": 1906,
+      "log_gamma_correlation": 0.9884232398917127,
+      "rho_correlation": 0.692298525843219
+    },
+    "nonlinear": {
+      "n": 471,
+      "log_gamma_correlation": 0.9934674870362439,
+      "rho_correlation": 0.7095295128690049
+    }
+  },
+  "attracting": {
+    "n": 2199,
+    "log_gamma_correlation": 0.9924774003001255,
+    "rho_correlation": 0.7259036630409609
+  },
+  "repelling": {
+    "n": 178,
+    "log_gamma_correlation": 0.3609023434711992,
+    "rho_correlation": 0.17263290728084935
+  },
+  "safe_bucket": {
+    "n": 656,
+    "worst_rel_err": 0.014228828352379113,
+    "frac_under_5pct": 1.0
+  },
+  "unsafe_bucket": {
+    "n": 965,
+    "frac_over_5pct": 1.0
+  }
+}
