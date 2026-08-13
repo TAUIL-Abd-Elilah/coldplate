@@ -2,8 +2,7 @@
 
 **A cheap test, and a cold plate that answers it**
 
-Tesseract Hackathon 2026 · Track: multi-physics & coupled systems
-Code and data: every number below is printed by a named script in this repository.
+Tesseract Hackathon 2026 · Track: multi-physics & coupled systems · Apache-2.0 · every number below is printed by a named script in this repository
 
 ---
 
@@ -44,13 +43,30 @@ theorem,
 
   dJ/dθ = (∂Φ/∂θ)ᵀ λ,  (I − Φ_T)ᵀ λ = g,  g = dJ/dT.  (1)
 
-The shortcut is to treat the loop as feed-forward, which amounts to keeping only
-the first term of
+The shortcut treats the loop as feed-forward, keeping only the first term of
 
   λ = g + Φ_Tᵀ g + (Φ_Tᵀ)² g + …  (2)
 
-Whether that is acceptable is an empirical question with, it turns out, a
+Whether that is acceptable turns out to be an empirical question with a
 theoretical answer.
+
+### Relation to existing work
+
+The sensitivity of a fixed point, and the error incurred when its linearisation
+is approximate, is not new ground. Padway and Mavriplis (*Numerical Algorithms*,
+2021, arXiv:2104.02826) analyse tangent and adjoint problems linearised about
+non-stationary points and show how incompletely converged nonlinear solves
+propagate into sensitivities. Goal-oriented a-posteriori error estimation for
+multiphysics systems addresses a closely related question from the discretisation
+side. Truncating (2) is a specific, severe instance of an approximate adjoint,
+and the leading term Φ_Tᵀg follows immediately from the Neumann expansion.
+
+What we add is not the analysis but its *operational* form and its empirical
+test. γ is a single VJP, cheaper than the gradient it judges, and can therefore
+run as an assertion inside a pipeline rather than as an offline study. And we
+supply the negative result that motivates using it: the statistic a practitioner
+would reach for first, the spectral radius, is refutable — Section 5 exhibits a
+case where it is constant while the error varies 136-fold.
 
 ## 2. The composition
 
@@ -63,13 +79,12 @@ Four Tesseracts, four languages, four ways of producing a derivative:
 | `thermal_fortran` | Fortran | Enzyme, an LLVM compiler pass |
 | `material_map` | PyTorch | `torch.autograd` |
 
-The fluid system is linear in its unknown w = (u,v,p), so `A(α) w = b(T)` and
-its exact JVP and VJP are extra solves against the same sparse LU — a transpose
-solve plus an analytic scatter, written by hand. The Fortran component takes the
-opposite approach: flang emits LLVM IR, an Enzyme pass differentiates it, and
-the sparse operator ∂R/∂T is recovered *exactly* from nine Enzyme JVPs using a
-3×3 colouring (the stencil is five-point, so cells whose indices agree mod 3
-never interact).
+The fluid system is linear in w = (u,v,p), so `A(α) w = b(T)` and its exact JVP
+and VJP are extra solves against the same sparse LU — a transpose solve plus an
+analytic scatter, by hand. The Fortran component inverts that approach: flang
+emits LLVM IR, an Enzyme pass differentiates it, and ∂R/∂T is recovered
+*exactly* from nine Enzyme JVPs by a 3×3 colouring (the stencil is five-point,
+so cells whose indices agree mod 3 never interact).
 
 Both halves of the gradient are Krylov solves whose matvecs cross the container
 boundary: Newton–Krylov forward, applying (Φ_T − I) via JVPs, and GMRES for the
@@ -77,6 +92,32 @@ adjoint of (1), applying (I − Φ_T)ᵀ via VJPs. At our operating point the lo
 gain exceeds one, so Picard iteration provably cannot converge — Newton needs
 the linearisation invertible, not contractive. The JVP endpoints are therefore
 not a convenience; they are what makes the forward problem solvable.
+
+**Chain versus loop.** The distinction matters and is often blurred. A *chain* —
+A feeds B feeds an objective — is differentiable by one sweep of the chain rule;
+a single `jax.grad` over wrapped components suffices and nothing is solved. This
+is a *loop*: the fluid solver's output is the thermal solver's input and vice
+versa, so no ordering makes one sweep sufficient. The steady state must be
+solved for, and its sensitivity requires a second, transposed solve whose
+operator exists only as an action realised by calling both components.
+
+**Why not `jax.custom_vjp`?** The fair objection to any containerised
+differentiable pipeline is that one could attach a hand-written backward pass to
+a component and keep everything in one process. That is correct when the
+components are Python. Here the components are C++/Eigen and flang/Enzyme-built
+Fortran, whose build toolchains (LLVM 19, flang) do not belong inside a JAX
+process; the boundary is crossed thousands of times per solve in both
+directions, which is a conversation rather than a wrapped call; and because the
+contract is a schema, the two thermal implementations are substitutable with no
+change to the caller, which a `custom_vjp` written against one implementation is
+not.
+
+Two claims are enforced by the build rather than asserted: neither the C++ nor
+the Fortran image can import `jax`, `torch`, `tensorflow`, `autograd` or
+`casadi`, and the Fortran library must contain `cosh` among its linked symbols —
+a function present in no source file, being Enzyme's generated derivative of the
+`tanh` in the Péclet weighting. Both are re-checkable from outside the build
+with `scripts/verify_integrity.sh`.
 
 **Components are interchangeable.** `thermal_advdiff` and `thermal_fortran`
 implement the same equation behind the same schema. Swapping them
@@ -209,20 +250,12 @@ supported by its derivation, not a demonstrated fact.
 
 ## 8. Reproducibility
 
-Four containerised components, dependencies pinned to the versions that produced
-these numbers, 20 tests running in CI without Docker, and a script per claim:
-`compare_thermal_backends.py`, `benchmark_critical_rayleigh.py`,
+Four containerised components with dependencies pinned to the versions that
+produced these numbers; 20 tests running in CI without Docker; one script per
+claim (`compare_thermal_backends.py`, `benchmark_critical_rayleigh.py`,
 `grid_convergence.py`, `validate_pipeline.py`, `sweep_coupling.py`,
-`predict_error.py`, `objective_sweep.py`, `optimize.py`. Every headline number
-reproduces through either thermal backend
+`predict_error.py`, `objective_sweep.py`, `optimize.py`); and every headline
+number reproduced through *either* thermal backend
 (`scripts/validate_both_backends.sh`), agreeing to nine or ten significant
-figures.
-
-## 9. Summary
-
-Composing across a component boundary is not free, and this measures what it
-buys. Sometimes almost nothing: at weak coupling the shortcut is correct to six
-digits. Sometimes an entire physical term, with a third of the sensitivities
-inverted. The distinction is invisible in the forward solution, is *not*
-governed by the spectral radius, and is estimated to within an order of
-magnitude by one vector-Jacobian product.
+figures. The integrity claims of Section 2 are re-checkable against the built
+images with `scripts/verify_integrity.sh`.

@@ -380,6 +380,55 @@ between the two solvers, in both directions. That conversation is exactly what
 Tesseract's `jacobian_vector_product` / `vector_jacobian_product` endpoints
 make possible across a container and language boundary.
 
+### The honest objection: why not `jax.custom_vjp`?
+
+Any two-container differentiable pipeline invites the same challenge — attach a
+hand-written backward pass to a function JAX cannot differentiate, keep
+everything in one process, delete the containers. **That objection is correct
+whenever the components are Python.** Three things make it not apply here.
+
+*The components are not Python.* Collapsing this means embedding an Eigen C++
+solver and a flang/Enzyme-compiled Fortran library into the JAX process and
+keeping their build toolchains alive in the same environment. The Enzyme
+component needs LLVM 19 and flang at build time; the JAX component needs a
+completely different Python stack. They are containerised because that is the
+honest way to ship them, not to manufacture a boundary.
+
+*The boundary is crossed thousands of times per solve, in both directions.*
+`custom_vjp` gives you one backward pass through a component. What this needs is
+a Krylov iteration whose every matvec re-enters the other component — forward
+for the Newton solve, backward for the adjoint. That is not a wrapped function
+call, it is a conversation.
+
+*Interchangeability is the payoff.* Because the contract is a schema rather than
+a Python signature, the JAX thermal block and the Fortran/Enzyme one are
+substitutable with no change to the caller and no change to the gradient
+(5.3 × 10⁻¹²). A `custom_vjp` wrapper is written against one implementation.
+
+Two claims are enforced by the build rather than asserted here: neither the C++
+nor the Fortran image can import `jax`, `torch`, `tensorflow`, `autograd` or
+`casadi` — the build fails if they can — and the Fortran library must contain
+`cosh` in its linked symbols, a function that appears in no source file. It is
+Enzyme's generated derivative of `tanh`. If the pass had silently no-opped, that
+symbol would be missing and the build would stop.
+
+### Chain versus loop
+
+Worth being precise about what kind of composition this is, because the two are
+often conflated. A *chain* — component A feeds component B feeds an objective —
+is differentiable by one sweep of the chain rule, and a single `jax.grad` over
+wrapped components suffices. Nothing needs to be solved.
+
+This is a *loop*. The fluid solver's output is the thermal solver's input and
+the thermal solver's output is the fluid solver's input, so there is no ordering
+in which one sweep suffices. The steady state must be solved for, and its
+sensitivity requires solving a second, transposed system — the adjoint of
+equation (1) — whose operator is available only as an action, only by calling
+both components. That is the sense in which Tesseract is load-bearing here
+rather than convenient.
+
+### Why Newton, not Picard
+
 A practical consequence worth noting: Newton–Krylov matters here. Picard cannot
 converge at all once ρ(Φ_T) exceeds 1, which the gradient-study operating point
 does (1.19), and Anderson acceleration did not rescue it. Newton only needs the

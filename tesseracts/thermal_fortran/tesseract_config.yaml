@@ -56,3 +56,27 @@ build_config:
           flang-new -shared -fPIC -O2 /tmp/ad.ll -o /tesseract/lib/libthermal_ad.so -lm && \
           test -s /tesseract/lib/libthermal_ad.so && \
           nm -D --defined-only /tesseract/lib/libthermal_ad.so | grep -E 'th_forward|th_jvp|th_vjp'
+
+    # Two claims about this component, both enforced rather than asserted.
+    #
+    # 1. No AD *library* is involved: the derivatives come from a compiler pass
+    #    over Fortran, so the build fails if any autodiff framework can be
+    #    imported inside the image.
+    # 2. The Enzyme pass actually ran: the linked library must import `cosh`,
+    #    which appears nowhere in the source. It is the generated derivative of
+    #    the `tanh` in the Peclet weighting. If Enzyme silently no-opped, that
+    #    symbol would be absent.
+    - |
+      RUN set -eu; \
+          PY=$(command -v /python-env/bin/python3 || command -v python3); \
+          for m in jax torch tensorflow autograd casadi; do \
+            if "$PY" -c "import $m" >/dev/null 2>&1; then \
+              echo "FAILED: $m is importable in a component that claims compiler-generated derivatives"; \
+              exit 1; \
+            fi; \
+          done; \
+          nm -D --undefined-only /tesseract/lib/libthermal_ad.so | grep -q ' cosh' || { \
+            echo "FAILED: no cosh in the linked symbols -- the Enzyme pass did not differentiate tanh"; \
+            exit 1; \
+          }; \
+          echo "verified: no autodiff framework, and Enzyme's derivative of tanh is present"
