@@ -22,3 +22,6 @@ venv/
 .DS_Store
 .vscode/
 .idea/
+
+# paper PDF is a build artefact of PAPER.md; regenerate with scripts/build_paper.sh
+# (kept tracked anyway so judges do not need a LaTeX install)
