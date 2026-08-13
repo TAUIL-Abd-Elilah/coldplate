@@ -319,6 +319,75 @@ def fig6_trajectory(hist_path, out_png):
     print(f"wrote {out_png}")
 
 
+def fig8_predictor(json_path, out_png):
+    """Which statistic predicts the error of a component-wise gradient?
+
+    Left: the coupling loop gain rho(Phi_T), the obvious candidate. Right: the
+    directional gain gamma = ||Phi_T^T g|| / ||g||, which is what the implicit
+    function theorem actually puts in the leading error term. rho is a worst
+    case over all directions; gamma asks about the one direction the objective
+    cares about, and costs a single VJP.
+    """
+    rows = json.loads(Path(json_path).read_text())
+    if len(rows) < 3:
+        print(f"not enough rows in {json_path}")
+        return
+
+    err = np.array([r["rel_err"] for r in rows])
+    sr = np.array([r["rho_phi"] for r in rows])
+    gm = np.array([r["gamma"] for r in rows])
+    names = [r["design"] for r in rows]
+    uniq = sorted(set(names))
+    palette = {n: c for n, c in zip(uniq, [ACCENT, NAIVE, "#7c3aed", "#059669"])}
+
+    fig, ax = plt.subplots(1, 2, figsize=(10.6, 4.7))
+    floor = max(err.min() * 0.5, 1e-5)
+
+    for a, x, lab in ((ax[0], sr, r"coupling loop gain  $\rho(\Phi_T)$"),
+                      (ax[1], gm, r"directional gain  $\gamma=\|\Phi_T^{T}g\|/\|g\|$")):
+        for n in uniq:
+            m = [i for i, v in enumerate(names) if v == n]
+            a.scatter(x[m], np.maximum(err[m], floor), s=62, label=n,
+                      color=palette[n], edgecolors="white", linewidths=0.8, zorder=3)
+        a.set_xscale("log")
+        a.set_yscale("log")
+        a.set_xlabel(lab)
+        a.grid(True, color=GRID, lw=0.6, which="both")
+
+    ax[0].set_ylabel("relative error of the naive gradient")
+    lo = min(gm.min(), err.min()) * 0.5
+    hi = max(gm.max(), err.max()) * 2
+    ax[1].plot([lo, hi], [lo, hi], color=MUTED, ls="--", lw=1.1, zorder=1,
+               label=r"error $=\gamma$")
+    ax[1].legend(loc="upper left", fontsize=9)
+    ax[0].legend(loc="upper left", fontsize=9, title="design")
+
+    ax[0].set_title("loop gain does not order the error", fontsize=11)
+    ax[1].set_title(r"directional gain does, and error $\approx\gamma$ when small",
+                    fontsize=11)
+
+    # highlight the pair that the loop gain gets backwards
+    try:
+        i_r = next(i for i, r in enumerate(rows)
+                   if r["design"] == "rough" and abs(r["Ra"] - 1e4) < 1)
+        i_s = next(i for i, r in enumerate(rows)
+                   if r["design"] == "smooth" and abs(r["Ra"] - 1e4) < 1)
+        for i in (i_r, i_s):
+            ax[0].scatter([sr[i]], [err[i]], s=210, facecolors="none",
+                          edgecolors="#b91c1c", lw=1.8, zorder=4)
+        ax[0].annotate("same Ra: lower loop gain,\nhigher error",
+                       xy=(sr[i_s], err[i_s]), xytext=(0.06, 0.12),
+                       textcoords="axes fraction", fontsize=8.8, color="#b91c1c",
+                       arrowprops=dict(arrowstyle="->", color="#b91c1c", lw=1.1))
+    except StopIteration:
+        pass
+
+    fig.tight_layout()
+    fig.savefig(out_png, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_png}")
+
+
 def fig7_regime_maps(npz_path, out_png):
     """Same design, rising coupling: where the two gradients start to disagree.
 

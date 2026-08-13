@@ -138,22 +138,65 @@ ordering is perfect: Ra = 3×10⁵ has a *lower* loop gain than Ra = 3×10⁴ an
 correspondingly less error, so the damage is not monotonic in the physical
 parameter but is monotonic in ρ(Φ_T), across 5.5 orders of magnitude.
 
-**How far that generalises is a question we can answer, and the answer is
-"not far enough to use as a safety check."** Holding the design fixed and
-varying Ra, the loop gain orders the error perfectly. Across *different*
-designs it does not: iteration 1 of the optimisation has ρ(Φ_T) = 0.759 and
-only 6% gradient error, while the sweep's Ra = 3×10⁵ row has essentially the
-same loop gain, 0.769, and 60% error. Same gain, ten-fold different damage.
-
-So the loop gain is a genuine control parameter along a one-parameter family,
-and not a sufficient statistic in general — smoothness of the design matters
-too, and we have not isolated that. We would rather state this than imply a
-diagnostic we have not earned.
+**That ordering does not survive contact with other designs.** Iteration 1 of
+the optimisation has ρ(Φ_T) = 0.759 and only 6% gradient error, while the
+sweep's Ra = 3×10⁵ row has essentially the same loop gain, 0.769, and 60%
+error. Worse, ρ can order two states *backwards* — see the next section. So
+the loop gain is a control parameter along a one-parameter family and not a
+sufficient statistic. Fortunately there is a statistic that is.
 
 What does survive is the practical warning: **there is no sign of any of this
 in the forward solution.** J moves by 13% between Ra = 10² and 3×10⁴ while the
 gradient error goes from 3 × 10⁻⁶ to 0.86. A pipeline can look completely
 healthy and be handing you a gradient that is 86% wrong.
+
+### What actually predicts it: one VJP
+
+The implicit function theorem says what the error should be. The exact adjoint
+solves `(I − Φ_T)ᵀ λ = g`, so
+
+```
+lambda = g + Phi_T^T g + (Phi_T^T)^2 g + ...
+```
+
+and cutting the feedback loop keeps only the first term. The leading error is
+therefore **`Φ_Tᵀ g`** — which depends on the *direction* `g`, the objective's
+own sensitivity to the coupled state. ρ(Φ_T) is a worst case over all
+directions and cannot see this: a large gain along directions the objective
+never excites costs nothing.
+
+That suggests the **directional gain**
+
+```
+gamma  =  || Phi_T^T g ||  /  || g ||
+```
+
+which costs exactly one VJP — far less than the gradient it is judging.
+Measured across four design families × five Rayleigh numbers
+(`predict_error.py`, figure 8):
+
+| predictor | correlation with log₁₀(naive error) |
+| --- | --- |
+| ρ(Φ_T) | +0.825 |
+| **log₁₀(γ)** | **+0.995** |
+
+And the case that settles it — two states at the *same* Rayleigh number:
+
+| design | ρ(Φ_T) | γ | naive error |
+| --- | --- | --- | --- |
+| rough, Ra = 10⁴ | **0.682** | 0.111 | **0.400** |
+| smooth, Ra = 10⁴ | **0.377** | 0.253 | **0.792** |
+
+The smooth design has *half* the spectral radius and *twice* the error. ρ
+orders these backwards; γ orders them correctly, and does so across the whole
+dataset. Empirically `error ≈ γ` for γ ≲ 0.05, growing superlinearly beyond as
+the higher Neumann terms start to matter.
+
+So there is a usable answer to "can I get away with differentiating my
+components separately?": **compute γ with a single VJP.** Below ~0.01 the
+component-wise gradient is good to about a percent; above ~0.1 it is not worth
+having. This is cheap enough to run as an assertion inside a pipeline, and it
+is a statement about the composition rather than about this particular problem.
 
 ### What the error looks like in space
 
@@ -423,6 +466,19 @@ the measurement behind the trajectory table above:
 cd orchestrator && python optimize.py --N 48 --iters 120 --diagnose 6 --outdir results_diag
 ```
 
+Test what predicts the error of a component-wise gradient (this is the result
+in figure 8, and it costs one VJP per configuration):
+
+```bash
+cd orchestrator && python predict_error.py --N 20
+```
+
+Render the spatial maps of where the two gradients disagree:
+
+```bash
+cd orchestrator && python gradient_map_sweep.py --N 24
+```
+
 Check which Rayleigh numbers keep the optimiser's designs well posed:
 
 ```bash
@@ -461,6 +517,8 @@ orchestrator/
   optimize.py             topology optimisation driver (--mode, --diagnose)
   probe_startpoint.py     which Ra keeps the optimiser's designs well posed
   compare_to_reference.py differential test against the monolithic reference
+  predict_error.py        what predicts component-wise gradient error (one VJP)
+  gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         figures and animation
 prototype/
@@ -478,6 +536,7 @@ prototype/
 | `fig5_architecture.png` | the three components and the adjoint between them |
 | `fig6_trajectory_error.png` | naive-gradient error at the designs the optimiser visits |
 | `fig7_regime_maps.png` | one design, rising coupling: where the two gradients disagree |
+| `fig8_predictor.png` | the directional gain γ predicts the error; the loop gain does not |
 
 ## License
 
