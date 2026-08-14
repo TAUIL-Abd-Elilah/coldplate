@@ -21,11 +21,14 @@ jobs:
         run: |
           bash scripts/build_paper.sh
           pdfinfo PAPER.pdf | grep -E '^(Pages|Title|Author):'
-          pages="$(pdfinfo PAPER.pdf | awk '/^Pages:/ {print $2}')"
-          test "$pages" -eq 4
 
       - uses: actions/upload-artifact@v7
         with:
           name: coldplate-paper
           path: PAPER.pdf
           if-no-files-found: error
+
+      - name: Enforce four-page brief
+        run: |
+          pages="$(pdfinfo PAPER.pdf | awk '/^Pages:/ {print $2}')"
+          test "$pages" -eq 4
