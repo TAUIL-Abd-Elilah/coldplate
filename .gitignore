@@ -23,5 +23,8 @@ venv/
 .vscode/
 .idea/
 
+# regenerated narration segments, slides and intermediate video streams
+demo/build/
+
 # paper PDF is a build artefact of PAPER.md; regenerate with scripts/build_paper.sh
 # (kept tracked anyway so judges do not need a LaTeX install)
