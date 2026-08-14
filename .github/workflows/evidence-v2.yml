@@ -12,7 +12,6 @@ on:
           - physics
           - showdown
           - robustness
-          - all
 
 permissions:
   contents: read
@@ -41,52 +40,76 @@ jobs:
           done
 
       - name: Nonlinear benchmark and dimensional cold plate
-        if: inputs.experiment == 'physics' || inputs.experiment == 'all'
+        if: inputs.experiment == 'physics'
         working-directory: orchestrator
         run: |
           set -euo pipefail
+          out="$RUNNER_TEMP/extended-evidence"
+          mkdir -p "$out"
           python -u benchmark_de_vahl_davis.py --N 32 --Ra 1000 10000 \
-            --out results/de_vahl_davis.json
+            --out "$out/de_vahl_davis.json"
           python -u dimensional_coldplate.py --N 32 --mesh-sizes 16 24 \
-            --out results/dimensional_coldplate.json
+            --out "$out/dimensional_coldplate.json"
+          python - "$out/de_vahl_davis.json" "$out/dimensional_coldplate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          cavity = json.loads(Path(sys.argv[1]).read_text())
+          physical = json.loads(Path(sys.argv[2]).read_text())
+          cavity_valid = (
+              len(cavity) == 2
+              and all(row["solver"]["ok"] for row in cavity)
+              and all(row["solver"]["fluid"]["converged"] for row in cavity)
+              and all(row["within_coarse_grid_tolerance"] for row in cavity)
+          )
+          dimensional_valid = (
+              physical.get("evidence_valid") is True
+              and physical.get("mesh_refinement", {}).get("all_solves_converged") is True
+          )
+          if not cavity_valid or not dimensional_valid:
+              raise SystemExit(
+                  "physics evidence is retained in the always-upload artifact, "
+                  f"but failed validity gates: cavity={cavity_valid}, "
+                  f"dimensional={dimensional_valid}"
+              )
+          PY
 
       - name: Common raw-proposal strong-coupling optimisation showdown
-        if: inputs.experiment == 'showdown' || inputs.experiment == 'all'
+        if: inputs.experiment == 'showdown'
         working-directory: orchestrator
         run: |
           set -euo pipefail
+          out="$RUNNER_TEMP/extended-evidence"
+          mkdir -p "$out"
           python -u strong_coupling_showdown.py \
-            --out results/strong_coupling_showdown.json
+            --out "$out/strong_coupling_showdown.json"
 
       - name: Retrospectively frozen 48-attempt robustness matrix
-        if: inputs.experiment == 'robustness' || inputs.experiment == 'all'
+        if: inputs.experiment == 'robustness'
         working-directory: orchestrator
         run: |
           set -euo pipefail
+          out="$RUNNER_TEMP/extended-evidence"
+          mkdir -p "$out/intervention_robustness_matrix_48_attempts"
           # Execute one (Ra, seed) case per subprocess. The matrix runner owns
           # the per-attempt timeout and atomically checkpoints every outcome,
           # including timeout/runner_failure, before moving to the next case.
           # A nonzero final status means the matrix itself is incomplete; the
           # always-upload step below still preserves all durable records.
           python -u intervention_robustness_matrix.py \
-            --out results/intervention_robustness_matrix_48.json \
-            --attempt-dir results/intervention_robustness_matrix_48_attempts
+            --out "$out/intervention_robustness_matrix_48.json" \
+            --attempt-dir "$out/intervention_robustness_matrix_48_attempts"
 
       - name: Show compact evidence summary
         if: always()
         run: |
-          find orchestrator/results -maxdepth 1 -type f -name '*.json' \
+          find "$RUNNER_TEMP/extended-evidence" -maxdepth 2 -type f -name '*.json' \
             -printf '%f %s bytes\n' | sort
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: extended-evidence-${{ inputs.experiment }}-${{ github.sha }}
-          path: |
-            orchestrator/results/de_vahl_davis.json
-            orchestrator/results/dimensional_coldplate.json
-            orchestrator/results/strong_coupling_showdown.json
-            orchestrator/results/intervention_robustness_Ra*.json
-            orchestrator/results/intervention_robustness_matrix_48.json
-            orchestrator/results/intervention_robustness_matrix_48_attempts/*.json
+          path: ${{ runner.temp }}/extended-evidence/
           if-no-files-found: warn

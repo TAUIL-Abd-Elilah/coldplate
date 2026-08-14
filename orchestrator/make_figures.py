@@ -11,7 +11,7 @@
   fig7  one design, rising coupling: where the two gradients disagree in space
   fig8  which statistic predicts that error -- directional gain, not loop gain
   fig9  attribution: which design cells each gradient says actually matter
-  fig10 equal-budget actions chosen by each gradient, checked by a forward solve
+  fig10 equal raw-design actions chosen by each gradient, checked by a forward solve
 """
 
 from __future__ import annotations
@@ -565,7 +565,7 @@ def fig5_architecture(out_png):
 
 
 def fig10_intervention(json_path, out_png):
-    """Equal-budget actions selected by each gradient, checked by re-solving."""
+    """Equal raw-design actions selected by each gradient and re-solved."""
     data = json.loads(Path(json_path).read_text())
     rows = data["rows"]
     amp = np.array([r["amplitude"] for r in rows])
@@ -583,15 +583,15 @@ def fig10_intervention(json_path, out_png):
         ax.text(xi - width / 2, a + 0.002, f"{a:.3f}", ha="center", fontsize=8)
         ax.text(xi + width / 2, b + 0.002, f"{b:.3f}", ha="center", fontsize=8)
     ax.set_xticks(x, [f"{a:.3f}" for a in amp])
-    ax.set_xlabel("material moved into and out of each selected cell")
+    ax.set_xlabel("raw-design amplitude on each increased/decreased cell")
     ax.set_ylabel("realised reduction in chip temperature  −ΔJ")
-    ax.set_title("Same material budget, true forward re-solve: exact sensitivity wins 3/3")
+    ax.set_title("Same zero-sum raw-design rule, true forward re-solve: exact wins 3/3")
     ax.grid(True, axis="y", color=GRID, lw=0.6)
     ax.legend(loc="upper left")
     ax.text(
         0.98, 0.07,
         f"Ra={data['Ra']:.0e} · {data['k_each_way']} add + "
-        f"{data['k_each_way']} remove cells\nzero net material · γ={data['gamma']:.3f}",
+        f"{data['k_each_way']} decrease cells\nzero-sum raw move · γ={data['gamma']:.3f}",
         transform=ax.transAxes, ha="right", va="bottom", fontsize=8.2, color=MUTED,
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.82, "pad": 1.5},
     )

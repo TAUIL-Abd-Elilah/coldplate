@@ -1,3 +1,5 @@
 # Optional, isolated dependency for regenerating the narrated submission video.
-# Pillow is already pulled in by the pinned Matplotlib driver environment.
+# Keep the validator's image decoder explicit: publication runs in a fresh
+# Python environment and must not rely on Matplotlib pulling Pillow transitively.
+Pillow==12.3.0
 edge-tts==7.2.8

@@ -1,0 +1,70 @@
+[
+  {
+    "N": 32,
+    "Ra": 1000.0,
+    "Pr": 0.71,
+    "inertia": 1.0,
+    "solver": {
+      "iters": 4,
+      "residual": 2.682451483160264e-10,
+      "ok": true,
+      "coupled_converged": true,
+      "fluid": {
+        "converged": true,
+        "relative_residual": 5.3618770014625355e-15,
+        "newton_iterations": 0
+      }
+    },
+    "Nu_mean": 1.1204347718459344,
+    "u_max": 3.645908027976768,
+    "u_max_y": 0.828125,
+    "v_max": 3.7066583326659033,
+    "v_max_x": 0.171875,
+    "reference": {
+      "Nu_mean": 1.118,
+      "u_max": 3.649,
+      "v_max": 3.697
+    },
+    "relative_error": {
+      "Nu_mean": 0.0021777923487784623,
+      "u_max": 0.0008473477728780932,
+      "v_max": 0.0026124784057082184
+    },
+    "coarse_grid_tolerance": 0.15,
+    "within_coarse_grid_tolerance": true
+  },
+  {
+    "N": 32,
+    "Ra": 10000.0,
+    "Pr": 0.71,
+    "inertia": 1.0,
+    "solver": {
+      "iters": 7,
+      "residual": 6.974198996090308e-12,
+      "ok": true,
+      "coupled_converged": true,
+      "fluid": {
+        "converged": true,
+        "relative_residual": 7.624710518820963e-15,
+        "newton_iterations": 0
+      }
+    },
+    "Nu_mean": 2.2702656015015297,
+    "u_max": 16.230080912549,
+    "u_max_y": 0.828125,
+    "v_max": 19.660539563160448,
+    "v_max_x": 0.109375,
+    "reference": {
+      "Nu_mean": 2.243,
+      "u_max": 16.178,
+      "v_max": 19.617
+    },
+    "relative_error": {
+      "Nu_mean": 0.01215586335333474,
+      "u_max": 0.0032192429564221747,
+      "v_max": 0.0022194812234515027
+    },
+    "coarse_grid_tolerance": 0.15,
+    "within_coarse_grid_tolerance": true
+  }
+]

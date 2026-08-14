@@ -20,16 +20,17 @@ any one run.
 | --- | --- |
 | Swap JAX autodiff for Fortran/Enzyme | end-to-end gradient changes by **5.3 × 10⁻¹²**, cosine 1.000000000000 |
 | Validate the composed adjoint | directional derivative matches a true coupled finite difference to **8.3 × 10⁻⁶** |
-| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling** and wins **3/3** amplitudes; a fixed 12-seed sweep records **10 wins, 0 observed losses, 2 inconclusive attempts** (median 36% more cooling among wins) |
+| Act on the sensitivities at strong coupling | under the same zero-sum raw-design rule, the exact-gradient action gives **58% more realised cooling**; a retrospectively frozen 48-attempt extension records **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable attempts**—35/39 wins among comparable cases, with an **81.1%** post-freeze descriptive seed-cluster-bootstrap lower endpoint |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 
 The exact and loop-cut gradients can both drive the weakly coupled long
 optimisation, which is why convergence alone is not validation. At a strongly
 coupled state the shortcut is 86% wrong and flips a third of the signs; when it
-chooses where to move a fixed material budget, the true forward solver confirms
+chooses where to apply a fixed raw-design action, the true forward solver confirms
 that the composed sensitivity makes the better engineering decision.
 
-**Start here:** [technical paper](PAPER.pdf) · [video storyboard](DEMO_SCRIPT.md) ·
+**Start here:** [4:51 narrated demo](demo/coldplate_submission.mp4) ·
+[captions](demo/coldplate_submission.en.srt) · [technical paper](PAPER.pdf) ·
 [`scripts/judge_demo.sh`](scripts/judge_demo.sh) (safe 1–3 minute warm smoke test)
 
 ---
@@ -73,8 +74,10 @@ numbers reproduced by the script, not quoted from a notebook):
 The composed figure is a directional derivative along a random unit vector,
 agreeing with central differences to 8.3 × 10⁻⁶ and holding at ~10⁻⁵ across
 step sizes from 10⁻³ to 10⁻⁴ — that plateau *is* the finite-difference noise
-floor, since the fixed point is only converged to ~10⁻¹⁰. The adjoint is exact;
-the difference scheme is the inaccurate one.
+floor, since the fixed point is only converged to ~10⁻¹⁰. The
+coupling-complete adjoint differentiates the converged discrete equations,
+while the residual discrepancy is consistent with the finite-difference and
+forward-solve tolerances.
 
 **Every number in that table reproduces through either thermal backend**
 (`scripts/validate_both_backends.sh`), which is worth stating because the two
@@ -101,23 +104,25 @@ Cutting that loop is not a small approximation: it is most of the gradient.
 
 Correctness matters only if acting on it changes the physical outcome. At a
 strongly coupled state (`N=20`, Ra = 3×10⁴), each gradient was given the same
-action: add material to the 5% of cells it calls most beneficial, remove the
-same amount from the 5% it calls least beneficial, and preserve total material
-exactly. We then ignored both predictions and re-solved the true coupled
-forward problem (`intervention_test.py`):
+raw-design rule: increase the 5% of variables it calls most beneficial,
+decrease the 5% it calls least beneficial by the same amplitude, and make the
+raw move sum to zero. We then ignored both predictions and re-solved the true
+coupled forward problem (`intervention_test.py`):
 
-| material moved per selected cell | ΔJ, cells chosen by exact gradient | ΔJ, cells chosen by loop-cut gradient | extra realised cooling |
+| raw-design amplitude per selected cell | ΔJ, cells chosen by exact gradient | ΔJ, cells chosen by loop-cut gradient | extra realised cooling |
 | ---: | ---: | ---: | ---: |
 | 0.010 | −0.01715 | −0.01121 | 53% |
 | 0.025 | −0.04322 | −0.02800 | 54% |
 | 0.050 | **−0.08789** | −0.05565 | **58%** |
 
-Both actions use 20 additions and 20 removals with zero net material. The
-composed-gradient action wins all three forward re-solves. At the largest
-amplitude it selects a change that cools **58% more** under the same budget.
+Both actions use 20 raw-variable increases and 20 decreases with a zero-sum raw
+move. Filtering and projection are nonlinear, so this is not a claim of equal
+realised physical-density movement. The composed-gradient action wins all three
+forward re-solves. At the largest amplitude it selects a change that cools
+**58% more** under the same raw-variable count and amplitude.
 This is the missing link between gradient accuracy and an engineering outcome.
 
-![Equal-budget material interventions selected by each gradient and evaluated by the true coupled solver.](orchestrator/results/fig10_intervention.png)
+![Equal zero-sum raw-design interventions selected by each gradient and evaluated by the true coupled solver.](orchestrator/results/fig10_intervention.png)
 
 Then we held `Ra=2×10⁴` and the `0.025` action fixed and repeated the true
 forward re-solve over the fixed contiguous seed range 0 through 11
@@ -140,8 +145,8 @@ forward re-solve over the fixed contiguous seed range 0 through 11
 
 The sweep produced **10 wins and 0 observed losses** for the composed choice
 among the ten designs for which both actions could be compared, with a median
-of **36% extra cooling** and a range of 6% to 276%. The other **2 attempts are
-inconclusive**: seed 0's base solve did not converge within the numerical
+of **36% extra cooling** and a range of 6% to 276%. The other **2 inconclusive attempts**
+are seed 0's base solve, which did not converge within the numerical
 budget, while the earlier runner stopped seed 6 after the exact-action solve
 failed and therefore never evaluated the shortcut action. Solver failure is
 reported as solver failure; it is not evidence that an equilibrium does not
@@ -160,6 +165,76 @@ them into wins.
 them**, which is the correct call: the loop-cut gradient carried 33% to 121%
 relative error there.
 
+### Frozen extensions: a solver boundary and 48 attempts
+
+We specified two follow-ups in committed protocols before storing their
+trajectories, but call them **retrospectively frozen designs**, not prospective
+preregistrations. The operating points were informed by the favourable result
+above. In particular, 13 of the 48 matrix cells had prior stored evidence; 35
+had no stored result when the design was frozen. The protocols and every
+contrary outcome remain in the repository.
+
+The repeated strong-coupling showdown gave all three branches the same initial
+design, raw-design proposal rule, projected-volume target, eight update
+opportunities and true candidate-forward budget. The composed branch accepted
+five decisions, reducing the true objective by **11.83%**, but its proposed
+sixth candidate did not converge within the frozen solver budget (residual
+`1.07e-2`). The loop-cut and frozen-flow branches completed eight decisions,
+reducing their objectives by **8.15%** and **7.67%**, respectively. This is an
+**incomplete** execution: because the horizons differ, the eight-step endpoint
+is **not evaluable** and there is **no eight-step endpoint verdict**.
+
+For **post-hoc descriptive context only**, the shared first five accepted decisions reduce
+the objective by **11.83%** with the composed adjoint, **5.16%** with the
+loop-cut gradient and **4.71%** with frozen flow. That common-prefix comparison
+was examined after the failure; it is not the frozen endpoint and is not called
+a win.
+
+![The incomplete frozen showdown, with the solver failure retained and only the shared five-step prefix compared.](orchestrator/results/fig12_showdown.png)
+
+The 48-attempt matrix completed every planned `(Ra, seed)` cell and retained
+base-solver failures, incomplete action pairs, ties and the one shortcut win:
+
+| Ra | exact wins | shortcut wins | ties | noncomparable |
+| ---: | ---: | ---: | ---: | ---: |
+| 10,000 | 12 | **1** | 3 | 0 |
+| 20,000 | 12 | 0 | 0 | 4 |
+| 30,000 | 11 | 0 | 0 | 5 |
+| **pooled** | **35** | **1** | **3** | **9** |
+
+Thus **35 of 39 comparable cases (89.7%)** favour the exact-gradient action;
+the attempt-level Wilson interval is 76.4–95.9%. Because each seed appears at
+all three Rayleigh numbers, the secondary seed-cluster bootstrap resamples the
+16 complete seed clusters rather than pretending all 48 attempts are
+independent. This is a post-freeze descriptive interval, not a frozen primary
+inferential endpoint: its 95% span is 81.1–97.4%, so the quoted lower endpoint
+is **81.1%**.
+
+The provenance split is deliberately visible. The 13 prior-overlap cells
+contain 11 exact wins and 2 noncomparable attempts. Among the **35** cells not
+stored before the frozen design, there are **24 exact wins, 1 shortcut win, 3
+ties and 7 noncomparable attempts**—24/28 wins among comparable cases. This is a strong
+robustness extension, not an untouched independent confirmation set.
+
+![All 48 retained outcomes, with per-Rayleigh Wilson intervals and a pooled seed-cluster bootstrap.](orchestrator/results/fig13_robustness_matrix.png)
+
+Every extension is byte-bound in
+[`EVIDENCE_PROVENANCE.json`](orchestrator/results/EVIDENCE_PROVENANCE.json).
+The validator requires all four canonical records, rehashes the 48-attempt
+tree, queries the original Actions run/artifact metadata, downloads each
+artifact, and compares its bytes with the committed evidence:
+
+| retained evidence | Actions outcome | source | interpretation |
+| --- | --- | --- | --- |
+| 48-attempt matrix | [success](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826817492) | `3c3d8fb` | complete, including contrary outcomes |
+| eight-step showdown | [expected failure](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826895893) | `cd7900e` | incomplete endpoint; no winner |
+| nonlinear/SI physics | [workflow success](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826056516) | `429661d` | cavity valid; dimensional evidence invalid |
+| showdown interpretation | deterministic derivation | `interpret_showdown.py` | input/output hashes bound |
+
+```bash
+python scripts/validate_evidence_provenance.py --verify-github
+```
+
 ### What we do *not* claim
 
 We ran the full topology optimisation twice — once driven by the composed
@@ -167,7 +242,7 @@ gradient, once by the naive one, same seed and schedule — and **both succeeded
 
 | driven by | final J | reduction |
 | --- | --- | --- |
-| composed gradient (exact) | 1.2588 | 84.6% |
+| coupling-complete gradient | 1.2588 | 84.6% |
 | one-way gradient (naive) | 1.2576 | 84.6% |
 
 The naive run ended a hair *lower*. We are not going to dress that up. An
@@ -854,7 +929,11 @@ This is a **research prototype**, not a manufacturing-ready cold plate. The
 core studies remain nondimensional. `dimensional_coldplate.py` now makes one
 mapping explicit—a sealed 5 × 5 × 2 mm water/aluminium cavity near 25 °C with a
 1 W chip and a stated out-of-plane depth—and reports its nondimensional inputs,
-SI temperatures, velocities and K/W. The base-versus-fins comparison is an
+SI temperatures, velocities and solver status. The frozen artifact is a failed
+audit, not performance evidence: only **3 of 6** planned layout/mesh solves
+converged, the N=32 finned solve stalled, and even the converged baseline
+temperature is outside the constant-property liquid-water regime. Its apparent
+resistance reduction is withheld. The base-versus-fins setup is also an
 **unequal-material illustration**, not an efficiency or optimisation claim.
 Pressure drop, contact resistance, temperature-dependent properties,
 manufacturing constraints, three-dimensional effects and experimental
@@ -872,7 +951,9 @@ number, **Ra_c = 1707.762**. This remains the right benchmark for the Stokes
 path: it is the infinite-Prandtl regime in which the classical onset result is
 derived. The separate de Vahl Davis cavity check below activates `inertia = 1`
 at Pr = 0.71, so it validates the nonlinear path rather than asking the Stokes
-approximation to reproduce finite-Prandtl flow.
+approximation to reproduce finite-Prandtl flow. At N=32, both cases converge;
+all six Nusselt and centerline-velocity metrics are within **1.2%** of the
+published references.
 
 Onset is also exactly where our own machinery puts it. At the conduction state
 the coupling loop *is* the linear stability operator, so convection begins
@@ -976,9 +1057,10 @@ driver runs jax 0.11 while the JAX Tesseract runs 0.10.2 inside its image,
 which is the isolation working as intended rather than an oversight. Keep the
 published pins for reproduction; update them only with a fresh validation run.
 
-As built: LLVM/flang 19.1.7 with the Enzyme LLVM-19 nightly download pinned by
-SHA-256 `5b43014a…69ef031` (its numeric GitHub asset ID is deliberately not used,
-because the upstream nightly job recreates it), Eigen 3.4,
+As built: LLVM/flang 19.1.7 with the official Enzyme LLVM-19 nightly object
+vendored at the exact SHA-256 `5b43014a…69ef031`. Vendoring removes the
+release-day dependency on an upstream asset that is periodically recreated;
+its upstream licence and provenance travel beside the binary. Also: Eigen 3.4,
 tesseract-core 1.11.0, tesseract-jax 0.4.1. Regenerate this list with
 `scripts/capture_versions.sh`.
 
@@ -1073,8 +1155,9 @@ in figure 8, and it costs one VJP per configuration):
 cd orchestrator && python predict_error.py --N 20
 ```
 
-Turn both sensitivities into identical material-budget decisions and verify the
-realised outcome with the true forward solver:
+Apply the same zero-sum raw-variable count and amplitude with each sensitivity,
+then verify the realised outcome with the true forward solver. The nonlinear
+filter/projection means this is not an equal realised-density budget:
 
 ```bash
 cd orchestrator && python intervention_test.py --N 20 --Ra 3e4
@@ -1095,6 +1178,17 @@ Measure when dropping inertia actually changes the design gradient — the same
 cd orchestrator && python inertia_study.py --N 16
 ```
 
+Run the nonlinear de Vahl Davis cavity benchmark and the explicit 1 W SI case
+with its three-grid refinement table:
+
+```bash
+cd orchestrator
+python benchmark_de_vahl_davis.py --N 32 --Ra 1000 10000
+# The retained case writes its full audit, then exits 1 because only 3/6 solves converged:
+python dimensional_coldplate.py --N 32 --mesh-sizes 16 24 || [ "$?" -eq 1 ]
+cd ..
+```
+
 Test whether γ predicts anything outside this problem — thousands of random
 coupled fixed points where the exact answer is closed form, no containers and
 no solver involved (a few minutes on one core):
@@ -1103,13 +1197,45 @@ no solver involved (a few minutes on one core):
 cd orchestrator && python gamma_generalization.py --trials 2400
 ```
 
-Repeat the equal-budget action experiment over a fixed contiguous range of
+Repeat the equal raw-design action experiment over a fixed contiguous range of
 designs, recording every seed including losses, failed base solves and
 inconclusive action pairs (slow — a difficult design can burn the full Newton
 budget):
 
 ```bash
 cd orchestrator && python intervention_robustness.py --n-seeds 12
+```
+
+Run the retrospective frozen repeated-decision comparison and the complete
+48-attempt matrix. Both retain contrary outcomes and solver/runner failures;
+their protocols disclose which operating points had prior evidence:
+
+```bash
+cd orchestrator
+python interpret_showdown.py  # validates the retained result and exits zero
+# A full frozen rerun exits one specifically because its endpoint is incomplete:
+python strong_coupling_showdown.py || [ "$?" -eq 1 ]
+python intervention_robustness_matrix.py
+cd ..
+```
+
+After those JSON results exist, regenerate the three extended figures and the
+data-derived narrated video (Edge TTS and ffmpeg are isolated optional media
+dependencies):
+
+The committed deliverables are the
+[MP4](demo/coldplate_submission.mp4),
+[English captions](demo/coldplate_submission.en.srt),
+[poster](demo/poster.png), [timed script](DEMO_SCRIPT.md), and
+[stream/hash manifest](demo/video_manifest.json).
+
+```bash
+cd orchestrator
+python make_extended_figures.py
+cd ..
+pip install -r requirements-video.txt
+python scripts/build_demo_video.py
+python scripts/validate_video.py --video demo/coldplate_submission.mp4 --manifest demo/video_manifest.json --captions demo/coldplate_submission.en.srt --poster demo/poster.png
 ```
 
 Run the attribution task — rank design cells by influence with each gradient and
@@ -1165,7 +1291,7 @@ tesseracts/
   stokes_brinkman/    C++/Eigen fluid solver, hand-derived adjoint
   thermal_advdiff/    JAX advection-diffusion, sparse LU
   thermal_fortran/    Fortran advection-diffusion, Enzyme compiler AD
-    toolchain/        base image: flang + LLVM 19 + Enzyme plugin
+    toolchain/        flang + LLVM 19 + hash-checked vendored Enzyme plugin
   material_map/       PyTorch filter + projection + property maps
 orchestrator/
   pipeline.py             composes the three; Newton-Krylov forward, GMRES adjoint
@@ -1176,10 +1302,11 @@ orchestrator/
   compare_to_reference.py differential test against the monolithic reference
   predict_error.py        what predicts component-wise gradient error (one VJP)
   predictor_statistics.py holdout + bootstrap robustness of that correlation
-  intervention_test.py    equal-budget sensitivity action, true forward re-solve
+  intervention_test.py    equal raw-design action, true forward re-solve
   intervention_robustness.py  fixed-range seed sweep of the action experiment
   intervention_robustness_matrix.py  durable 48-attempt matrix and aggregation
   strong_coupling_showdown.py  repeated equal-rule decision comparison
+  interpret_showdown.py  hash-bound incomplete-endpoint interpretation
   benchmark_de_vahl_davis.py  nonlinear cavity benchmark against literature
   dimensional_coldplate.py  explicit SI mapping and mesh-refinement report
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
@@ -1189,6 +1316,7 @@ orchestrator/
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         core figures and animation
   make_extended_figures.py  showdown, robustness, and physics figures
+  results/EVIDENCE_PROVENANCE.json  byte/run/artifact bindings for frozen evidence
 prototype/
   reference_jax.py    independent monolithic reference implementation
 ```
@@ -1206,9 +1334,13 @@ prototype/
 | `fig7_regime_maps.png` | one design, rising coupling: where the two gradients disagree |
 | `fig8_predictor.png` | the directional gain γ predicts the error; the loop gain does not |
 | `fig9_attribution.png` | which cells each gradient says matter — signs survive, ranking does not |
-| `fig10_intervention.png` | equal material budgets, cells selected by each gradient, true outcome |
+| `fig10_intervention.png` | equal zero-sum raw moves, cells selected by each gradient, true outcome |
 | `fig11_generalization.png` | γ against the truth on 2,377 random coupled systems, and where it stops working |
+| `fig12_showdown.png` | the retained solver failure and post-hoc shared five-step prefix |
+| `fig13_robustness_matrix.png` | all 48 outcomes, per-Ra Wilson intervals and seed-cluster bootstrap |
+| `fig14_physics_validation.png` | nonlinear cavity reference and explicit 1 W SI illustration |
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE) and the redistributed Enzyme plugin's
+[third-party notice](THIRD_PARTY_NOTICES.md).

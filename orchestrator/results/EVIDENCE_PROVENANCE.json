@@ -1,0 +1,88 @@
+{
+  "schema": "coldplate-evidence-provenance-v1",
+  "repository": "TAUIL-Abd-Elilah/coldplate",
+  "generated_on": "2026-08-14",
+  "records": [
+    {
+      "name": "robustness_matrix_48",
+      "kind": "github_actions_artifact",
+      "result_status": "complete",
+      "run_id": 31826817492,
+      "run_url": "https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826817492",
+      "source_sha": "3c3d8fb71e4c1e7dcab4ccf33b983479bde564d1",
+      "workflow_file": ".github/workflows/evidence-v2.yml",
+      "conclusion": "success",
+      "artifact": {
+        "id": 9229870282,
+        "name": "extended-evidence-robustness-3c3d8fb71e4c1e7dcab4ccf33b983479bde564d1",
+        "digest": "sha256:552ea1f17ed233ccb2c523b0b7187d1ea6e4c8f811356e8d23bce35fcc0ec38f",
+        "size_in_bytes": 48421
+      },
+      "files": {
+        "orchestrator/results/intervention_robustness_matrix_48.json": "45aece395c6314878b2b4236ab3f5ea482c54e5c19bd0b30c313bb73f49b26b3"
+      },
+      "trees": [
+        {
+          "path": "orchestrator/results/intervention_robustness_matrix_48_attempts",
+          "pattern": "*.json",
+          "file_count": 48,
+          "sha256": "7a1bc209778e944480174cbab0a36c3da23add1d1376e07219d6f0b4f74b8103"
+        }
+      ]
+    },
+    {
+      "name": "strong_coupling_showdown",
+      "kind": "github_actions_artifact",
+      "result_status": "incomplete_retained",
+      "run_id": 31826895893,
+      "run_url": "https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826895893",
+      "source_sha": "cd7900e31d26aa4a95b2a877504f076f88318f23",
+      "workflow_file": ".github/workflows/evidence-v2.yml",
+      "conclusion": "expected_failure",
+      "artifact": {
+        "id": 9229374175,
+        "name": "extended-evidence-showdown-cd7900e31d26aa4a95b2a877504f076f88318f23",
+        "digest": "sha256:5f7937bbd4fde94e017c7d4a41a1b0e2a3f4bcbd552237e1464eeee01ba72463",
+        "size_in_bytes": 23939
+      },
+      "files": {
+        "orchestrator/results/strong_coupling_showdown.json": "7052370672697ce264e1ef2ba8572cf6802ac7a3c49e00c24929e14158d1a78f"
+      },
+      "trees": []
+    },
+    {
+      "name": "physics_bundle",
+      "kind": "github_actions_artifact",
+      "result_status": "cavity_valid_dimensional_invalid",
+      "run_id": 31826056516,
+      "run_url": "https://github.com/TAUIL-Abd-Elilah/coldplate/actions/runs/31826056516",
+      "source_sha": "429661d24520390f5452531f798d6f9eb98ca06d",
+      "workflow_file": ".github/workflows/evidence-v2.yml",
+      "conclusion": "success",
+      "artifact": {
+        "id": 9233866484,
+        "name": "extended-evidence-physics-429661d24520390f5452531f798d6f9eb98ca06d",
+        "digest": "sha256:0075b2268dd17b8d7257ffae02423a2b4382e3ef6526d1728e10ef9dc8afc1dd",
+        "size_in_bytes": 2942
+      },
+      "files": {
+        "orchestrator/results/de_vahl_davis.json": "31895107d31986da710526c272b3394aa636710e2050eaf6933664567b2f52c9",
+        "orchestrator/results/dimensional_coldplate.json": "254b185a571f31cf857a1e3a0eb2e41917ac498fc49820d7695dba2fdfb0b8b3"
+      },
+      "trees": []
+    },
+    {
+      "name": "showdown_interpretation",
+      "kind": "derived",
+      "result_status": "withholds_endpoint_verdict",
+      "generator": "orchestrator/interpret_showdown.py",
+      "inputs": {
+        "orchestrator/results/strong_coupling_showdown.json": "7052370672697ce264e1ef2ba8572cf6802ac7a3c49e00c24929e14158d1a78f"
+      },
+      "files": {
+        "orchestrator/results/strong_coupling_showdown_interpretation.json": "e9e6a8a6fe884169e106bee71d86eedf3fee55eb885b8d4330885ed465b48e79"
+      },
+      "trees": []
+    }
+  ]
+}

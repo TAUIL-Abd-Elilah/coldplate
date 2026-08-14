@@ -21,6 +21,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from validate_evidence_provenance import validate_manifest
 from validate_video import validate_release_video
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +78,21 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
     check("technical writeup present", (ROOT / "PAPER.md").exists())
     check("writeup PDF built", (ROOT / "PAPER.pdf").exists())
     check("demo video script present", (ROOT / "DEMO_SCRIPT.md").exists())
+    evidence_provenance = ROOT / "orchestrator" / "results" / "EVIDENCE_PROVENANCE.json"
+    if evidence_provenance.is_file():
+        try:
+            report = validate_manifest(evidence_provenance)
+            check(
+                "extended evidence is hash-bound to workflow artifacts",
+                True,
+                f"{report['records']} provenance records",
+            )
+        except Exception as exc:  # noqa: BLE001 - readiness check reports all failures
+            check("extended evidence is hash-bound to workflow artifacts", False, str(exc))
+    elif strict_public:
+        check("extended evidence is hash-bound to workflow artifacts", False, "manifest missing")
+    else:
+        warn("extended evidence provenance manifest is not generated yet")
     video = ROOT / "demo" / "coldplate_submission.mp4"
     captions = ROOT / "demo" / "coldplate_submission.en.srt"
     poster = ROOT / "demo" / "poster.png"
@@ -99,7 +115,7 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
         )
     if all(media_present):
         try:
-            media = validate_release_video(video, video_manifest, captions)
+            media = validate_release_video(video, video_manifest, captions, poster)
             check(
                 "video has verified 1080p H.264 + AAC streams and is under five minutes",
                 True,

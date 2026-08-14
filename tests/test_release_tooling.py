@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -67,6 +68,9 @@ def test_release_workflow_pins_actions_and_serializes_manual_phases():
     assert "actions/checkout@v" not in workflow
     assert "actions/setup-python@v" not in workflow
     assert "docker/login-action@v" not in workflow
+    assert "python -m pip install -r requirements-video.txt" in workflow
+    assert "validate_evidence_provenance.py --verify-github" in workflow
+    assert workflow.count('gh api "repos/$GITHUB_REPOSITORY" --jq .visibility') == 2
 
 
 def test_release_workflow_never_interpolates_confirmation_into_shell_source():
@@ -107,11 +111,35 @@ def test_every_github_action_is_pinned_to_a_full_commit_sha():
     assert not bad
 
 
-def test_enzyme_nightly_download_is_byte_pinned_not_asset_id_pinned():
+def test_enzyme_plugin_is_vendored_licensed_and_byte_pinned():
     dockerfile = (
         ROOT / "tesseracts" / "thermal_fortran" / "toolchain" / "Dockerfile"
     ).read_text(encoding="utf-8")
-    assert "releases/download/nightly/LLVMEnzyme-19.so" in dockerfile
-    assert "5b43014ab23fdf212b5c0852e5ae1d2e9d3062bf0aa2323bbbf63b33369ef031" in dockerfile
-    assert "ENZYME_ASSET_ID" not in dockerfile
-    assert "releases/assets/" not in dockerfile
+    vendor = ROOT / "tesseracts" / "thermal_fortran" / "toolchain" / "vendor"
+    plugin = vendor / "LLVMEnzyme-19.so"
+    licence = vendor / "LICENSE.Enzyme.txt"
+    expected = "5b43014ab23fdf212b5c0852e5ae1d2e9d3062bf0aa2323bbbf63b33369ef031"
+    assert plugin.stat().st_size == 8_050_632
+    assert hashlib.sha256(plugin.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(licence.read_bytes()).hexdigest() == (
+        "f2db94d30c9657f2556732f3e80973d49fc4d093eede0a54ffda88152296f695"
+    )
+    assert "Apache License v2.0 with LLVM Exceptions" in licence.read_text(
+        encoding="utf-8"
+    )
+    assert "COPY vendor/LLVMEnzyme-19.so" in dockerfile
+    assert "COPY vendor/LICENSE.Enzyme.txt" in dockerfile
+    assert expected in dockerfile
+    assert "releases/download/nightly" not in dockerfile
+
+
+def test_evidence_workflow_stages_only_fresh_outputs_and_fails_invalid_physics():
+    workflow = (ROOT / ".github" / "workflows" / "evidence-v2.yml").read_text(
+        encoding="utf-8"
+    )
+    assert '$RUNNER_TEMP/extended-evidence' in workflow
+    assert "path: ${{ runner.temp }}/extended-evidence/" in workflow
+    assert "physical.get(\"evidence_valid\") is True" in workflow
+    assert "all_solves_converged\") is True" in workflow
+    assert "path: |\n            orchestrator/results/" not in workflow
+    assert "- all" not in workflow

@@ -1,0 +1,239 @@
+{
+  "assumptions": {
+    "model": "steady 2-D Boussinesq; heat load uses stated out-of-plane depth",
+    "fluid": "constant-property water near 25 C",
+    "solid": "isotropic aluminium represented by Brinkman penalisation",
+    "momentum": "steady nonlinear Navier-Stokes-Brinkman (inertia=1)",
+    "boundaries": "chip heat flux at bottom; isothermal top; other walls adiabatic",
+    "omissions": "radiation, contact resistance, phase change, and temperature-dependent properties",
+    "comparison_scope": "illustrative geometry comparison only; the base and finned layouts contain unequal aluminium volume"
+  },
+  "physical_inputs": {
+    "width_m": 0.005,
+    "height_m": 0.005,
+    "depth_m": 0.002,
+    "chip_width_m": 0.002,
+    "heat_load_W": 1.0,
+    "sink_temperature_K": 298.15,
+    "reference_delta_T_K": 10.0,
+    "gravity_m_s2": 9.81,
+    "water_density_kg_m3": 997.0,
+    "water_dynamic_viscosity_Pa_s": 0.00089,
+    "water_cp_J_kgK": 4181.0,
+    "water_conductivity_W_mK": 0.606,
+    "water_expansion_1_K": 0.000257,
+    "aluminium_conductivity_W_mK": 205.0,
+    "blocked_solid_permeability_m2": 1e-12
+  },
+  "nondimensional_inputs": {
+    "thermal_diffusivity_m2_s": 1.4537753418111306e-07,
+    "kinematic_viscosity_m2_s": 8.926780341023068e-07,
+    "velocity_scale_m_s": 2.907550683622261e-05,
+    "heat_flux_W_m2": 250000.0,
+    "Pr": 6.140412541254125,
+    "Ra": 24283.98730041795,
+    "q_chip": 206.2706270627063,
+    "chip_frac": 0.4,
+    "k_fluid": 1.0,
+    "k_solid": 338.2838283828383,
+    "alpha_max": 25000000.0,
+    "q_chip_used": 203.0972328002031,
+    "inertia": 1.0
+  },
+  "grid": {
+    "Nx": 32,
+    "Ny": 32,
+    "chip_cells": 13,
+    "effective_chip_width_m": 0.00203125,
+    "represented_heat_load_W": 0.9999999999999999
+  },
+  "layouts": {
+    "baseline": {
+      "name": "aluminium_base_only",
+      "solid_volume_fraction": 0.09375,
+      "solver": {
+        "iters": 17,
+        "residual": 7.60444152092532e-10,
+        "ok": true,
+        "coupled_converged": true,
+        "fluid": {
+          "converged": true,
+          "relative_residual": 4.062420179391892e-13,
+          "newton_iterations": 0
+        }
+      },
+      "chip_cell_mean_nondimensional": 73.59370010640762,
+      "chip_wall_mean_nondimensional": 73.60308096944702,
+      "chip_wall_mean_temperature_K": 1034.18080969447,
+      "chip_wall_mean_temperature_C": 761.0308096944701,
+      "temperature_rise_K": 736.0308096944702,
+      "thermal_resistance_K_W": 736.0308096944702,
+      "max_abs_u_m_s": 2.2841177213766787e-05,
+      "max_abs_v_m_s": 1.5846571013394246e-05
+    },
+    "finned": {
+      "name": "base_plus_four_fins",
+      "solid_volume_fraction": 0.16796875,
+      "solver": {
+        "iters": 20,
+        "residual": 0.08706887665608232,
+        "ok": false,
+        "stalled": true,
+        "coupled_converged": false,
+        "fluid": {
+          "converged": true,
+          "relative_residual": 6.9087141659920946e-15,
+          "newton_iterations": 3
+        }
+      },
+      "chip_cell_mean_nondimensional": 21.561371824902167,
+      "chip_wall_mean_nondimensional": 21.570752687941567,
+      "chip_wall_mean_temperature_K": 513.8575268794157,
+      "chip_wall_mean_temperature_C": 240.7075268794157,
+      "temperature_rise_K": 215.70752687941567,
+      "thermal_resistance_K_W": 215.70752687941567,
+      "max_abs_u_m_s": 0.0014177290033999801,
+      "max_abs_v_m_s": 0.001714899281086339
+    }
+  },
+  "comparison": {
+    "kind": "illustrative_unequal_material",
+    "equal_material_budget": false,
+    "baseline_solid_volume_fraction": 0.09375,
+    "finned_solid_volume_fraction": 0.16796875,
+    "finned_to_baseline_solid_volume_ratio": 1.7916666666666667,
+    "interpretation": "This isolates neither fin shape nor material efficiency: the finned layout adds aluminium. It is an illustrative dimensional case, not an equal-budget optimisation result."
+  },
+  "evidence_valid": false,
+  "finned_thermal_resistance_reduction_percent": 70.69313892322566,
+  "mesh_refinement": {
+    "grids": [
+      16,
+      24,
+      32
+    ],
+    "finest_grid": 32,
+    "all_solves_converged": false,
+    "comparison_scope": "same illustrative unequal-material layouts on each mesh",
+    "rows": [
+      {
+        "N": 16,
+        "represented_heat_load_W": 1.0,
+        "evidence_valid": false,
+        "layouts": {
+          "baseline": {
+            "thermal_resistance_K_W": 697.0161047223842,
+            "relative_difference_from_finest": 0.05300689109506329,
+            "solid_volume_fraction": 0.125,
+            "solver": {
+              "iters": 30,
+              "residual": 9.374272025297614e-09,
+              "ok": false,
+              "coupled_converged": false,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 1.792389253745655e-15,
+                "newton_iterations": 0
+              }
+            }
+          },
+          "finned": {
+            "thermal_resistance_K_W": 196.53496482044966,
+            "relative_difference_from_finest": 0.08888221165172328,
+            "solid_volume_fraction": 0.265625,
+            "solver": {
+              "iters": 23,
+              "residual": 7.608846885887033e-11,
+              "ok": true,
+              "coupled_converged": true,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 3.6747435781763917e-13,
+                "newton_iterations": 0
+              }
+            }
+          }
+        }
+      },
+      {
+        "N": 24,
+        "represented_heat_load_W": 1.0,
+        "evidence_valid": false,
+        "layouts": {
+          "baseline": {
+            "thermal_resistance_K_W": 740.4379978749814,
+            "relative_difference_from_finest": 0.005987776764862174,
+            "solid_volume_fraction": 0.08333333333333333,
+            "solver": {
+              "iters": 30,
+              "residual": 0.0002028178602557773,
+              "ok": false,
+              "coupled_converged": false,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 8.774037219440662e-13,
+                "newton_iterations": 0
+              }
+            }
+          },
+          "finned": {
+            "thermal_resistance_K_W": 216.8364468216206,
+            "relative_difference_from_finest": 0.00523356768554506,
+            "solid_volume_fraction": 0.1875,
+            "solver": {
+              "iters": 25,
+              "residual": 1.411848415955319e-11,
+              "ok": true,
+              "coupled_converged": true,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 1.0250971778505907e-13,
+                "newton_iterations": 0
+              }
+            }
+          }
+        }
+      },
+      {
+        "N": 32,
+        "represented_heat_load_W": 0.9999999999999999,
+        "evidence_valid": false,
+        "layouts": {
+          "baseline": {
+            "thermal_resistance_K_W": 736.0308096944702,
+            "relative_difference_from_finest": 0.0,
+            "solid_volume_fraction": 0.09375,
+            "solver": {
+              "iters": 17,
+              "residual": 7.60444152092532e-10,
+              "ok": true,
+              "coupled_converged": true,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 4.062420179391892e-13,
+                "newton_iterations": 0
+              }
+            }
+          },
+          "finned": {
+            "thermal_resistance_K_W": 215.70752687941567,
+            "relative_difference_from_finest": 0.0,
+            "solid_volume_fraction": 0.16796875,
+            "solver": {
+              "iters": 20,
+              "residual": 0.08706887665608232,
+              "ok": false,
+              "stalled": true,
+              "coupled_converged": false,
+              "fluid": {
+                "converged": true,
+                "relative_residual": 6.9087141659920946e-15,
+                "newton_iterations": 3
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

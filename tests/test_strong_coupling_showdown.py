@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
 import strong_coupling_showdown as showdown_module  # noqa: E402
+from interpret_showdown import build_interpretation  # noqa: E402
 
 from strong_coupling_showdown import (  # noqa: E402
     initial_design,
@@ -38,6 +40,46 @@ def test_cli_maps_protocol_option_to_main_parameter(tmp_path, monkeypatch):
         ["--protocol", str(protocol), "--out", str(out)]
     ) == 0
     assert captured == {"protocol_path": str(protocol), "out": str(out)}
+
+
+def test_incomplete_frozen_result_has_hash_bound_noncomparative_interpretation():
+    source = ROOT / "orchestrator" / "results" / "strong_coupling_showdown.json"
+    interpretation = build_interpretation(source)
+    assert interpretation["execution_status"] == "incomplete_frozen_execution"
+    assert interpretation["primary_endpoint"] == {
+        "name": "true coupled objective after eight frozen-protocol decisions",
+        "evaluable": False,
+        "reason": "composed candidate_forward nonconvergence at iteration 6",
+        "ranking": [],
+        "comparisons": [],
+        "frozen_success_condition_met": False,
+    }
+    prefix = interpretation["descriptive_common_prefix"]
+    assert prefix["steps"] == 5
+    assert prefix["pre_specified"] is False
+    assert prefix["methods"]["composed"]["reduction_percent"] == pytest.approx(
+        11.831634631280329
+    )
+    assert interpretation["common_initial_objective_verified"] is True
+
+
+def test_showdown_interpretation_rejects_mutated_objective_chain(tmp_path):
+    source = ROOT / "orchestrator" / "results" / "strong_coupling_showdown.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["branches"][0]["rows"][0]["J_after"] += 0.01
+    mutated = tmp_path / "strong_coupling_showdown.json"
+    mutated.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="accepted rows|objective chain"):
+        build_interpretation(mutated)
+
+
+def test_showdown_interpretation_accepts_external_copy_without_path_leak(tmp_path):
+    source = ROOT / "orchestrator" / "results" / "strong_coupling_showdown.json"
+    external = tmp_path / "external-showdown.json"
+    external.write_bytes(source.read_bytes())
+    interpretation = build_interpretation(external)
+    assert interpretation["source_file"] == "external-showdown.json"
+    assert str(tmp_path) not in json.dumps(interpretation)
 
 
 def test_frozen_showdown_protocol_is_deterministic_and_discloses_prior_overlap():

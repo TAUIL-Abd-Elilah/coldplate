@@ -320,8 +320,13 @@ def main(
               f"rise={row['temperature_rise_K']:.2f} K, "
               f"Rth={row['thermal_resistance_K_W']:.4f} K/W, "
               f"converged={row['solver']['ok']}")
-    print("finned Rth change: "
-          f"{result['finned_thermal_resistance_reduction_percent']:.2f}% reduction")
+    if result["evidence_valid"] and result.get("mesh_refinement", {}).get(
+        "all_solves_converged", not bool(mesh_sizes)
+    ):
+        print("finned Rth change: "
+              f"{result['finned_thermal_resistance_reduction_percent']:.2f}% reduction")
+    else:
+        print("dimensional comparison withheld: one or more planned solves did not converge")
     print(f"wrote {path}")
     return result
 
@@ -338,4 +343,10 @@ if __name__ == "__main__":
         default=None,
         help="optional additional N values; writes a mesh-refinement table",
     )
-    main(**vars(ap.parse_args()))
+    args = ap.parse_args()
+    result = main(**vars(args))
+    valid = result["evidence_valid"] and result.get("mesh_refinement", {}).get(
+        "all_solves_converged", args.mesh_sizes is None
+    )
+    if not valid:
+        raise SystemExit(1)

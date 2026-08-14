@@ -39,11 +39,27 @@ def _save(fig, path: Path) -> None:
 
 
 def showdown_figure(data: dict, path: Path) -> None:
-    if not data.get("complete") or not data.get("summary", {}).get("all_branches_complete"):
-        raise ValueError("showdown is incomplete; refusing to render a finish")
     expected_steps = int(data["protocol"]["outer_steps"])
-    if any(len(branch.get("objectives", [])) != expected_steps + 1 for branch in data["branches"]):
-        raise ValueError("showdown branch does not contain every frozen-protocol step")
+    branches = data.get("branches", [])
+    if len(branches) != 3 or {branch.get("method") for branch in branches} != {
+        "composed", "one_way", "frozen"
+    }:
+        raise ValueError("showdown must contain the three frozen methods exactly once")
+    completed = [int(branch.get("completed_iterations", -1)) for branch in branches]
+    if any(value < 0 or len(branch.get("objectives", [])) != value + 1
+           for value, branch in zip(completed, branches)):
+        raise ValueError("showdown trajectories do not match their accepted-step counts")
+    initial = [float(branch["objectives"][0]) for branch in branches]
+    if max(initial) - min(initial) > 1e-12:
+        raise ValueError("showdown branches do not share the measured initial objective")
+    all_complete = (
+        data.get("complete") is True
+        and data.get("summary", {}).get("all_branches_complete") is True
+        and all(value == expected_steps for value in completed)
+    )
+    common_horizon = expected_steps if all_complete else min(completed)
+    if common_horizon <= 0:
+        raise ValueError("showdown has no common accepted-decision horizon")
     colors = {"composed": TEAL, "one_way": ORANGE, "frozen": RED}
     labels = {"composed": "composed adjoint", "one_way": "loop cut", "frozen": "flow frozen"}
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8), gridspec_kw={"width_ratios": [1.65, 1]})
@@ -54,15 +70,28 @@ def showdown_figure(data: dict, path: Path) -> None:
         improvement = 100.0 * (objectives[0] - objectives) / objectives[0]
         steps = np.arange(len(objectives))
         method = branch["method"]
-        ax.plot(steps, improvement, marker="o", ms=5, lw=2.5,
+        shared = slice(0, common_horizon + 1)
+        ax.plot(steps[shared], improvement[shared], marker="o", ms=5, lw=2.5,
                 color=colors[method], label=labels[method])
+        if len(steps) > common_horizon + 1:
+            ax.plot(
+                steps[common_horizon:], improvement[common_horizon:],
+                marker="o", ms=4, lw=1.7, ls="--", alpha=0.45,
+                color=colors[method],
+            )
         if branch.get("failure"):
-            ax.scatter(steps[-1], improvement[-1], marker="x", s=90, color=colors[method])
+            failed_step = int(branch["failure"].get("iteration", steps[-1]))
+            ax.axvline(failed_step, ls=":", lw=1.4, color=colors[method])
+            ax.annotate(
+                f"candidate {failed_step}: no converged J",
+                (failed_step, improvement[-1]), xytext=(8, -18),
+                textcoords="offset points", fontsize=8, color=colors[method],
+            )
         names.append(labels[method])
-        reductions.append(float(improvement[-1]))
+        reductions.append(float(improvement[common_horizon]))
         bar_colors.append(colors[method])
     ax.axhline(0, color="#c7ccd5", lw=1)
-    ax.set_xlabel("equal-budget design decision")
+    ax.set_xlabel("common-rule design decision")
     ax.set_ylabel("true coupled objective reduction (%)")
     ax.set_title("Fresh forward solve after every decision", loc="left", weight="bold")
     ax.legend(frameon=False, loc="upper left")
@@ -72,14 +101,28 @@ def showdown_figure(data: dict, path: Path) -> None:
     bars.barh(order, reductions, color=bar_colors, height=0.62)
     bars.set_yticks(order, names)
     bars.invert_yaxis()
-    bars.set_xlabel("final reduction (%)")
-    bars.set_title("Same start · same update · same outer budget", loc="left", weight="bold")
+    bars.set_xlabel(f"reduction after common first {common_horizon} decisions (%)")
+    bars.set_title(
+        "Frozen endpoint" if all_complete else "Post-hoc common-prefix description",
+        loc="left", weight="bold",
+    )
     bars.grid(axis="x", color="#e8ebf0", lw=0.8)
     for y, value in zip(order, reductions):
         bars.text(max(value, 0) + 0.15, y, f"{value:.2f}%", va="center", weight="bold")
-    fig.suptitle("Strong-coupling optimisation showdown", x=0.055, ha="left",
-                 fontsize=17, weight="bold", color=NAVY)
-    fig.tight_layout()
+    title = (
+        "Strong-coupling optimisation showdown"
+        if all_complete
+        else "Frozen showdown stopped by solver failure · no eight-step verdict"
+    )
+    fig.suptitle(title, x=0.055, ha="left", fontsize=17, weight="bold", color=NAVY)
+    if not all_complete:
+        fig.text(
+            0.055, 0.01,
+            "Bars compare only the shared five accepted decisions; this descriptive "
+            "prefix was selected after the recorded failure.",
+            fontsize=8.5, color=RED,
+        )
+    fig.tight_layout(rect=(0, 0.04 if not all_complete else 0, 1, 0.95))
     _save(fig, path)
 
 
@@ -135,7 +178,10 @@ def robustness_figure(data: dict, path: Path) -> None:
     stack.set_yticks([])
     stack.set_xlabel("all frozen-protocol attempts")
     stack.set_title("Every outcome remains in the denominator audit", loc="left", weight="bold")
-    stack.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, -0.03), ncol=1)
+    stack.legend(
+        frameon=True, facecolor="white", framealpha=0.92, edgecolor="none",
+        loc="center left", bbox_to_anchor=(0.02, 0.38), ncol=1,
+    )
     stack.grid(axis="x", color="#e8ebf0", lw=0.8)
     fig.suptitle("48-case robustness matrix · 16 fixed seeds at each coupling level",
                  x=0.055, ha="left", fontsize=17, weight="bold", color=NAVY)
@@ -145,7 +191,12 @@ def robustness_figure(data: dict, path: Path) -> None:
 
 def physics_figure(cavity: list[dict], physical: dict, path: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(14.8, 4.8), gridspec_kw={"width_ratios": [1.25, 0.8, 1]})
-    compare, layouts, bars = axes
+    compare, layouts, audit = axes
+    if not cavity or any(
+        not row["solver"]["ok"] or not row["solver"]["fluid"]["converged"]
+        for row in cavity
+    ):
+        raise ValueError("the nonlinear cavity benchmark is not converged")
     metric_names = ["Nu_mean", "u_max", "v_max"]
     markers = ["o", "s", "^"]
     for metric, marker in zip(metric_names, markers):
@@ -172,22 +223,34 @@ def physics_figure(cavity: list[dict], physical: dict, path: Path) -> None:
     layouts.set_yticks([])
     layouts.set_title("5 × 5 × 2 mm\nwater / aluminium", weight="bold")
 
-    values = [physical["layouts"][name]["thermal_resistance_K_W"] for name in ("baseline", "finned")]
-    colors = [GREY, TEAL]
-    rects = bars.bar(["base only", "+ four fins"], values, color=colors, width=0.62)
-    bars.set_ylabel("chip-wall thermal resistance (K/W)")
-    bars.set_title("Dimensional 1 W illustration", loc="left", weight="bold")
-    bars.grid(axis="y", color="#e8ebf0", lw=0.8)
-    for rect, value in zip(rects, values):
-        bars.text(rect.get_x() + rect.get_width() / 2, value, f"{value:.2f}",
-                  ha="center", va="bottom", weight="bold")
-    change = physical["finned_thermal_resistance_reduction_percent"]
-    direction = "lower" if change >= 0 else "higher"
-    bars.text(0.5, 0.92, f"{abs(change):.1f}% {direction}", transform=bars.transAxes,
-              ha="center", color=TEAL if change >= 0 else RED, weight="bold")
-    bars.text(0.5, 0.84, "unequal material; illustrative only", transform=bars.transAxes,
-              ha="center", color=NAVY, fontsize=8)
-    fig.suptitle("Recognised physics reference + explicit SI engineering map",
+    mesh = physical["mesh_refinement"]
+    grids = [int(value) for value in mesh["grids"]]
+    rows = {int(row["N"]): row for row in mesh["rows"]}
+    methods = ("baseline", "finned")
+    status = np.asarray([
+        [bool(rows[grid]["layouts"][method]["solver"]["ok"]) for grid in grids]
+        for method in methods
+    ], dtype=float)
+    audit.imshow(status, vmin=0, vmax=1, cmap="RdYlGn", aspect="auto")
+    audit.set_xticks(np.arange(len(grids)), [f"N={grid}" for grid in grids])
+    audit.set_yticks(np.arange(2), ["base only", "+ four fins"])
+    audit.set_title("Dimensional solve audit", loc="left", weight="bold")
+    for row_index, method in enumerate(methods):
+        for column_index, grid in enumerate(grids):
+            solver = rows[grid]["layouts"][method]["solver"]
+            label = "converged" if solver["ok"] else "not\nconverged"
+            audit.text(column_index, row_index, label, ha="center", va="center",
+                       color="white", fontsize=8,
+                       weight="bold")
+    valid_count = int(status.sum())
+    total_count = int(status.size)
+    audit.text(
+        0.5, -0.20,
+        f"exact 1 W load · {valid_count}/{total_count} solves converged\n"
+        "comparison withheld · temperatures leave the liquid-water model regime",
+        transform=audit.transAxes, ha="center", va="top", color=NAVY, fontsize=8,
+    )
+    fig.suptitle("Recognised nonlinear reference + explicit SI convergence audit",
                  x=0.045, ha="left", fontsize=17, weight="bold", color=NAVY)
     fig.tight_layout()
     _save(fig, path)

@@ -1,177 +1,133 @@
-# Demo video script (target 4:55, hard cap 5:00)
+# Demo video script (rendered 00:04:50.600)
 
-Storyboard for the ≤5 minute submission video. Every figure referenced is
-rendered in `orchestrator/results/`; spoken numbers are covered by
-`scripts/audit_claims.py`.
+This narration is generated from committed result JSON by
+`scripts/build_demo_video.py`; the timestamps below match the rendered audio.
 
-The story leads with a measurable component swap, establishes why the loop
-requires composition, and then shows the decisive engineering result: two
-equal-budget actions chosen by different gradients and checked with fresh
-coupled forward solves.
+## 00:00:00–00:00:15 — The decision, not just the derivative
 
----
+*On screen: `orchestrator/results/fig10_intervention.png`.*
 
-## 0:00–0:35 — Components that should not fit together
-
-*On screen: `fig5_architecture.png`.*
-
-> A cold plate cools a chip. Coolant carries heat away, solid metal conducts it
-> away, and the design question is where to spend a limited material budget.
+> What if every component derivative is correct, yet the engineering decision is wrong?
 >
-> Each run serves three Tesseracts: a PyTorch material map, a C++/Eigen fluid
-> solver with a hand-derived adjoint, and one thermal backend. That thermal slot
-> can be either JAX autodiff or the same equation in Fortran, differentiated by
-> Enzyme as a compiler pass over LLVM IR.
+> Coldplate asks where a limited amount of metal should go in a buoyancy-cooled chip.
 >
-> Across the repository that is three implementation languages and four
-> genuinely different derivative stacks.
-
-## 0:35–1:10 — The backends are interchangeable
-
-*On screen: highlight the two alternatives in the thermal slot.*
-
-> A component contract matters only if implementations are swappable, so we
-> swapped them and measured every level.
+> At strong coupling, cutting one feedback loop changes which cells we choose and how much cooling we realize.
 >
-> The temperature field agrees to seven times ten to the minus sixteen; JVP and
-> VJP to about ten to the minus fifteen; the converged coupled state to five
-> times ten to the minus twelve. Most importantly, the end-to-end design
-> gradient agrees to five times ten to the minus twelve, with cosine one.
+
+## 00:00:15–00:00:43 — A real heterogeneous fixed point
+
+*On screen: `orchestrator/results/fig5_architecture.png`.*
+
+> The pipeline serves a PyTorch material map, a C plus plus Eigen flow solver, and a thermal solver.
 >
-> The composed gradient does not care whether a Python tracer or a compiler
-> pass over Fortran produced the thermal derivative.
-
-## 1:10–1:40 — Why this is a loop, not a chain
-
-*On screen: trace the two-way fluid–thermal arrows.*
-
-> Buoyancy makes temperature drive the flow; advection makes flow drive
-> temperature. The steady state is a fixed point, not a feed-forward pass.
+> Temperature drives buoyancy; velocity advects heat, so the converged state is a two-way fixed point.
 >
-> Newton–Krylov finds that state with JVPs through both components. The implicit
-> adjoint is a second Krylov solve using their VJPs in reverse. At our strong
-> operating point the loop gain exceeds one, so the fixed point is locally
-> unstable under Picard; our Picard and Anderson runs failed. Cross-component
-> JVPs make the Newton–Krylov solve robust in this regime.
-
-## 1:40–2:15 — What it costs to cut the loop
-
-*On screen: `fig2_gradient_validation.png`, then `fig7_regime_maps.png`.*
-
-> The composed gradient agrees with finite differences to eight parts in a
-> million—the differencing noise floor.
+> Newton Krylov crosses the component boundary with J V P's; the implicit adjoint crosses it again with V J P's.
 >
-> Now take the charitable shortcut: keep each component's derivative, but treat
-> the temperature entering buoyancy as fixed. At strong coupling it has
-> eighty-six percent relative error and a third of design variables have the
-> wrong sign. Spatially, it entirely misses the coherent region where adding
-> metal blocks convection and makes the chip hotter. The forward solution gives
-> no warning.
-
-## 2:15–2:45 — A one-VJP warning signal
-
-*On screen: `fig8_predictor.png`.*
-
-> Spectral radius is the obvious warning statistic, but it is objective-blind.
-> We hold the state and its Jacobian fixed, change only the objective, and the
-> shortcut error moves one hundred and thirty-six fold while spectral radius
-> cannot move at all.
+> The thermal slot swaps JAX autodiff for independent Fortran differentiated by Enzyme at LLVM I R, and the full coupled pipeline is checked again after the swap.
 >
-> If the loop-cut adjoint is lambda-zero equals g, its exact equation residual
-> is Phi-transpose-g. Normalize that residual and it costs one VJP. Across
-> fourteen converged configurations its log correlation with measured error is
-> nought point nine nine five.
 
-## 2:45–3:10 — Does that hold anywhere else?
+## 00:00:44–00:01:04 — Cutting one loop corrupts the sensitivity
 
-*On screen: `fig11_generalization.png`.*
+*On screen: `orchestrator/results/fig2_gradient_validation.png`.*
 
-> A predictor validated on one physical system is a predictor validated on one
-> physical system. So we removed the physics: two thousand three hundred and
-> seventy-seven randomly generated coupled fixed points, four operator
-> families, linear and nonlinear loops, everything in closed form.
+> Finite-difference component samples confirm the composed gradient to 3.7 parts per million.
 >
-> Gamma tracks the error at nought point nine eight nine. Spectral radius
-> manages nought point six nine. Nothing gamma called safe exceeded one point
-> four percent error, and everything it called unsafe genuinely exceeded five.
+> The strongest shortcut still differentiates every component, but freezes temperature inside buoyancy.
 >
-> The same study found the limit, and we would rather report it than have a
-> reviewer find it. That agreement is carried by attracting fixed points. In
-> our repelling samples, non-decaying VJP terms warned that the magnitude was
-> unreliable. Our conservative policy there is to stop screening and pay for
-> the adjoint.
-
-## 3:10–3:35 — Right signs, worthless ranking
-
-*On screen: `fig9_attribution.png`.*
-
-> Here is why a wrong gradient can still optimise. Ask it which design cells
-> matter most — the question behind tolerancing and sensor placement. On the
-> fifty most influential cells the shortcut gets every sign right, which is why
-> descent works.
+> At this strong setting it has 86 percent relative error and wrong signs in 33 percent of the design field, while the forward temperature gives no warning.
 >
-> Its ranking of those same cells correlates with the truth at minus nought
-> point zero one one: chance. It misses nearly half the true top fifty, and
-> promotes one truly ranked one thousand and sixteenth out of one thousand and
-> twenty-four. Serviceable as a direction. Worthless as a sensitivity.
 
-## 3:35–4:05 — The gradient changes a realised decision
+## 00:01:04–00:01:23 — A fresh forward solve decides
 
-*On screen: `fig10_intervention.png`; animate exact and shortcut bars together.*
+*On screen: `orchestrator/results/fig10_intervention.png`.*
 
-> But prediction is not the finish line. We give each gradient the same action:
-> add material to twenty cells, remove the same amount from twenty others, then
-> discard both predictions and re-solve the true coupled physics.
+> A norm is not an outcome, so each gradient proposes the same count and amplitude of positive and negative raw-design changes and is judged by a fresh coupled solve.
 >
-> The gradients agree on only forty percent of the add set and ten percent of
-> the remove set. At three perturbation sizes, both actions cool the chip—but the
-> composed gradient wins all three fresh forward solves. At the largest step it
-> reduces the objective by nought point zero eight eight, versus nought point
-> zero five six: fifty-eight percent more realised cooling for exactly the same
-> material budget.
+> The composed choice wins all 3 tested action sizes.
 >
-> Hold a second strong setting fixed and repeat across three converged random
-> designs: the composed choice wins three out of three again. In one, the
-> shortcut gradient actually has negative cosine, and the correct choice cools
-> nearly four times as much.
+> At the largest step it delivers 58 percent more realized cooling under the same zero-sum raw-design rule.
 >
-> That is the engineering decision the expensive composed gradient changes.
 
-## 4:05–4:30 — The design artefact
+## 00:01:23–00:02:03 — Frozen eight-step showdown: incomplete
 
-*On screen: `fig1_optimisation.gif`, played through.*
+*On screen: `orchestrator/results/fig12_showdown.png`.*
 
-> At the weakly coupled topology-optimisation start, both gradients are good
-> search directions—an important limitation, not something we hide. Over one
-> hundred and twenty iterations at ninety-six squared, the exact run cuts chip
-> temperature by eighty-four point six percent. It finds a branching conductor
-> toward the cold sink while leaving coolant channels open for buoyant flow.
-
-## 4:30–4:55 — Close
-
-> Three served components, a selectable JAX-or-Fortran thermal backend, four
-> derivative stacks, one two-way differentiable equilibrium—and a one-VJP check
-> for when the shortcut is risky.
+> We froze the repeated procedure before storing these trajectories, but the same operating point already had favorable one-step evidence, so this is follow-up rather than an untouched independent confirmation.
 >
-> The README starts with a safe judge command. Seventy-three component tests run
-> in CI without Docker, while a scheduled container job exercises the real
-> boundary. Source, technical paper, evidence, and every command are public.
+> The protocol gives every branch the same start, projected-volume target, eight update opportunities, and true candidate-solve budget.
+>
+> The frozen eight-step endpoint has no winner because the composed step-six candidate did not converge. Over the shared first 5 accepted decisions, the descriptive reductions are 11.83, 5.16, and 4.71 percent; that common prefix was examined after the failure and is not the frozen endpoint.
+>
+> The failure is retained without parameter tuning or selective rerun.
+>
 
----
+## 00:02:04–00:02:31 — 48 attempts, with overlap disclosed
 
-## Recording notes
+*On screen: `orchestrator/results/fig13_robustness_matrix.png`.*
 
-- The strongest live command is `bash scripts/judge_demo.sh --no-build --grid 16`.
-  It performs integrity checks and the JAX-versus-Enzyme backend swap while
-  cleaning up only Coldplate images.
-- If showing a terminal,
-  `nm -D --undefined-only /tesseract/lib/libthermal_ad.so | grep cosh` is a
-  useful beat: `cosh` appears in no source file. It is called by Enzyme's
-  generated derivative of `tanh` and is visible as a linked import.
-- Keep the admission that both long optimisations worked. It motivates the
-  equal-budget intervention, which is the stronger outcome test.
-- Do not call the calibrated γ bands universal thresholds, do not call the
-  repeated VJPs a convergent Neumann series at ρ ≥ 1, and do not claim that all
-  four implementations are served simultaneously.
-- Replace “public” in the closing line if the repository has not yet been made
-  public at recording time. The submission itself must use the public URL.
+> This retrospective frozen extension retains every failure; 13 attempts overlap the earlier pilot and 35 cells had no stored result when the design was frozen.
+>
+> Among 39 comparable cases, the exact action wins 35, the shortcut wins 1, and 3 are ties.
+>
+> The post-freeze descriptive 95 percent seed-cluster bootstrap interval has a lower endpoint of 81.1 percent; the other 9 attempts remain visible as noncomparable, not deleted.
+>
+
+## 00:02:31–00:03:20 — Physics outside the original design point
+
+*On screen: `orchestrator/results/fig14_physics_validation.png`.*
+
+> The de Vahl Davis reference activates full nonlinear Navier Stokes inertia, hot and cold side walls, and insulated horizontal walls.
+>
+> At Rayleigh 1000 and 10000, all 6 Nusselt and centerline-velocity metrics are within 1.2 percent of the published reference.
+>
+> A separate 5 by 5 by 2 millimeter sealed-water example maps every nondimensional group back to S I units and preserves exactly 1 watt on the discretized chip.
+>
+> Only 3 of 6 planned layout and mesh solves converged; the N equals 32 finned solve stalled, so its apparent reduction is withheld rather than promoted as evidence.
+>
+> Even the converged baseline predicts a temperature above water's liquid range, outside the constant-property model used for this scaling exercise.
+>
+> The retained failure is a boundary on the dimensional illustration, not a performance or equal-material optimization claim.
+>
+
+## 00:03:20–00:03:45 — One VJP tells us when to worry
+
+*On screen: `orchestrator/results/fig8_predictor.png`.*
+
+> The loop-cut adjoint's exact equation residual is Phi transpose g; normalizing it costs one V J P and retains the objective direction spectral radius discards.
+>
+> Across 14 converged physical configurations, its log correlation with measured error is 0.995.
+>
+> Across 2,377 synthetic fixed points, it is 0.989, versus 0.691 for spectral radius.
+>
+
+## 00:03:46–00:04:03 — A diagnostic with an honest boundary
+
+*On screen: `orchestrator/results/fig11_generalization.png`.*
+
+> The limit is explicit: correlation falls to 0.36 when the loop repels, so the reusable PyTree utility provides no universal threshold and never calls that regime safe.
+>
+> An upstream-ready Tesseract JAX issue and test plan are prepared, but nothing will be submitted before publication review.
+>
+
+## 00:04:04–00:04:23 — The optimized artefact
+
+*On screen: `orchestrator/results/fig1_final.png`.*
+
+> At the weaker-coupling topology-optimization start both gradients can descend, which is precisely why the strong-setting decision studies matter.
+>
+> The full composed run over 120 iterations lowers the chip objective by 84.6 percent.
+>
+> It forms a branching conductor toward the cold sink while preserving channels for buoyant coolant flow.
+>
+
+## 00:04:23–00:04:49 — Auditable in one judge path
+
+*On screen: `orchestrator/results/fig5_architecture.png`.*
+
+> Linux C I runs the tests and claim audit, while a separate job rebuilds all four component images and serves three at a time across the real derivative boundary.
+>
+> The August twenty-ninth release workflow records exact O C I digests, checksums the paper and video, and refuses to publish until anonymous pulls succeed.
+>
+> Coldplate is a two-way equilibrium whose composition changes a measured engineering decision, with the evidence and the failure modes attached.
+>

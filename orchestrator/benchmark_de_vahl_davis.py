@@ -141,4 +141,11 @@ if __name__ == "__main__":
     ap.add_argument("--Ra", type=float, nargs="+", default=[1.0e3, 1.0e4])
     ap.add_argument("--out", default="results/de_vahl_davis.json")
     ap.add_argument("--verbose", action="store_true")
-    main(**vars(ap.parse_args()))
+    rows = main(**vars(ap.parse_args()))
+    if not all(
+        row["solver"]["ok"]
+        and row["solver"]["fluid"]["converged"]
+        and row["within_coarse_grid_tolerance"]
+        for row in rows
+    ):
+        raise SystemExit(1)

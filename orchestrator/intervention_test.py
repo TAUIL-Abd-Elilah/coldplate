@@ -1,15 +1,18 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Turn each gradient into the same action and re-solve the true physics.
+"""Turn each gradient into the same raw-design action and re-solve the physics.
 
 Gradient validation proves that the composed adjoint is correct, but a judge can
 still ask whether correctness changes a downstream decision. This experiment
-turns each gradient into the same volume-neutral intervention:
+turns each gradient into the same zero-sum raw-design intervention:
 
-* add material to the ``k`` cells it calls most beneficial;
-* remove the same amount from the ``k`` cells it calls least beneficial;
-* use identical counts and amplitudes, with exactly zero net material;
+* increase the ``k`` raw variables it calls most beneficial;
+* decrease the ``k`` raw variables it calls least beneficial;
+* use identical counts and amplitudes, with an exactly zero-sum raw move;
 * re-solve the true coupled forward problem and measure the realised change.
+
+Because filtering and projection are nonlinear, this does not claim equal
+realised physical-density movement between the two proposed actions.
 
 The exact gradient chooses the optimal intervention of this form to first
 order. The one-way gradient sees every component derivative but cuts the
@@ -62,8 +65,8 @@ def main(
 
     print(f"forward-validated intervention, grid {N}x{N}, Ra={Ra:.0e}, "
           f"seed={seed}, k={k}")
-    print("each action adds material to k cells and removes it from k cells")
-    print("with identical amplitudes and exactly zero net material.\n")
+    print("each action increases k raw variables and decreases k raw variables")
+    print("with identical amplitudes and an exactly zero-sum raw move.\n")
 
     with ColdPlate(params=params) as cp:
         # Establish that this design HAS a steady state before paying for its

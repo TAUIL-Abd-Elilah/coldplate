@@ -1,0 +1,27 @@
+{
+  "N": 20,
+  "Ra": 30000.0,
+  "amplitude": 0.025,
+  "attempt_id": "Ra00030000.000_seed005",
+  "attempt_timeout_seconds": 7200.0,
+  "case": {
+    "failure_stage": "base_forward",
+    "matrix_input_reported_outcome": "base_not_converged",
+    "outcome": "base_not_converged",
+    "reason": "RuntimeError: base coupled state did not converge (residual 2.58e-01)",
+    "seed": 5
+  },
+  "elapsed_seconds": 14.990981173000137,
+  "execution_returncode": 1,
+  "outcome": "base_not_converged",
+  "outcome_absolute_tolerance": 1e-10,
+  "outcome_relative_tolerance": 1e-08,
+  "protocol_sha256": "997627a9d00dd799de1d9b3ba4efb78f060a03c39df6f93fe85270b331e57498",
+  "schema_version": 1,
+  "seed": 5,
+  "source": "executed_attempt",
+  "staging_report_bytes": 1288,
+  "staging_report_present": true,
+  "staging_report_sha256": "2981b2b74d2fc3e18eb85a8c2001e6a2f53551ac70fd1baddeb2ad1241c1e0b4",
+  "timed_out": false
+}

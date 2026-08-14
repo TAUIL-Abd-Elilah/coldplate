@@ -8,44 +8,28 @@ Tesseract Hackathon 2026 · Track: multi-physics & coupled systems · Author: [@
 
 ## Abstract
 
-Composing differentiable simulation components across a boundary is expensive:
-it demands that each component expose derivatives, and that the composition
-solve an implicit system rather than a chain. A practitioner facing that cost
-reasonably asks whether the shortcut — differentiating each component in
-isolation and multiplying the pieces together — is good enough.
+Composing differentiable simulation components requires both component
+derivatives and an implicit system solve. We ask when the tempting shortcut—
+differentiating each component in isolation—is good enough.
 
-We build a natural-convection cold plate with three active Tesseracts and a
-drop-in thermal backend: three implementation languages and four derivative
-stacks across the repository. Three findings. **First**, the backends are genuinely
-interchangeable at the tested state: replacing a JAX-autodiffed solver with a Fortran one
-differentiated by an Enzyme compiler pass leaves the end-to-end gradient
-unchanged to 5.3 × 10⁻¹². **Second**, the cost of skipping composition is wildly
-regime-dependent — from about 0.0003% to 86% relative error on the same code — and
-nothing in the forward solution indicates which regime you are in. **Third**,
-spectral radius of the fixed-point Jacobian, ρ(Φ_T), is insufficient by itself
-(we exhibit a fixed-state case where it is constant while the error varies
-136-fold), whereas the objective-aware residual
-γ = ‖Φ_Tᵀg‖/‖g‖ — one vector-Jacobian product — tracks it (0.995 against 0.825
-in log-log correlation; 0.994–0.997 under family holdout). Removing the physics
-entirely, γ tracks the error at **0.989 against 0.691 for ρ across 2,377
-randomly generated coupled fixed points**, winning in every structural family
-and for nonlinear loops as well as linear ones — with one boundary we report
-rather than bury: that agreement is carried by attracting fixed points, and γ
-predicts poorly when the fixed point repels.
+Our natural-convection cold plate serves three active Tesseracts, spanning
+PyTorch, C++/Eigen and JAX or Fortran/Enzyme. Swapping the independently
+implemented thermal backends changes the end-to-end gradient by only
+5.3 × 10⁻¹². Yet cutting the coupling loop causes 0.0003–86% error with no
+forward warning. Spectral radius ρ(Φ_T) is constant in one test where error
+moves 136-fold; the one-VJP, objective-aware residual γ = ‖Φ_Tᵀg‖/‖g‖ tracks
+error at 0.995 versus 0.825 for ρ. Across 2,377 synthetic fixed points the
+figures are **0.989 versus 0.691**, though γ predicts poorly for repelling loops.
 
-Two consequences we test rather than assert. The shortcut's failure is *modal*:
-it keeps the sign of every one of the fifty most influential design variables,
-which is why an optimiser driven by it still succeeds, while ranking those
-variables no better than chance (Spearman −0.011) — serviceable as a search
-direction, worthless as a sensitivity. And γ, being cheap, is usable as a
-budget: gating the optimiser on it removes 92% of cross-boundary VJP calls while
-reaching a final objective within 0.51%, and flags as unsafe the tested state
-where the shortcut carries 115% error.
+The shortcut can still descend while ranking the fifty most influential cells
+at chance (Spearman −0.011). Using γ as a gate removes 92% of cross-boundary VJP
+calls while finishing within 0.51%, yet refuses the state with 115% error.
 
-Most importantly, the gradients change an action: under the same zero-net-
-material budget at strong coupling, cells selected by the composed sensitivity
-deliver **58% more realised cooling** than cells selected by the shortcut in a
-true coupled forward re-solve.
+Most importantly, under one zero-sum raw-design rule the composed sensitivity
+delivers **58% more realised cooling** in a true re-solve. A retrospectively
+frozen extension retains **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable
+attempts** (35/39 comparable; 81.1% post-freeze descriptive
+seed-cluster-bootstrap lower endpoint).
 
 ---
 
@@ -75,31 +59,19 @@ additionally require ρ(Φ_T) < 1 and is not used at our repelling headline stat
 
 ### Relation to existing work
 
-Almost everything here has been done before, and better, in one respect or
-another. Differentiable topology optimisation of thermo-fluidic devices:
-**TOFLUX** (Padmanabha et al., arXiv:2508.17564, 2025) is an open-source
-JAX framework covering thermo-fluidic coupling, FSI and non-Newtonian flow.
-Natural-convection heat-sink design: **Alexandersen et al.** (*Int. J. Heat Mass
-Transfer*, 2016, arXiv:1508.04596) solve the 3D Boussinesq problem with full
-Navier–Stokes at 40–330 million degrees of freedom; this work is 2D, Stokes and
-96×96, and the branching structure it finds reproduces theirs qualitatively
-rather than adding to it. Sensitivity of fixed points under approximate
-linearisation: **Padway and Mavriplis** (*Numerical Algorithms*, 2021,
-arXiv:2104.02826) analyse tangent and adjoint problems linearised about
-non-stationary points. Our loop-cut λ₀ is a severe approximate adjoint, and
+TOFLUX (Padmanabha et al., arXiv:2508.17564, 2025) is an open-source JAX
+framework for differentiable thermo-fluidics. Alexandersen et al. (*Int. J.
+Heat Mass Transfer*, 2016, arXiv:1508.04596) solve 3D natural-convection
+heat-sink design at 40–330 million degrees of freedom; our 2D result reproduces
+their branching structure qualitatively. Padway and Mavriplis (*Numerical
+Algorithms*, 2021, arXiv:2104.02826) analyse fixed-point sensitivities under
+approximate linearisation; our loop-cut λ₀ is one such approximate adjoint and
 Φ_Tᵀg is its exact equation residual.
 
-Three things are left. **Composition across genuinely heterogeneous
-components**, which those frameworks deliberately avoid — TOFLUX is one
-framework in one process because that is the sane way to build a framework —
-whereas here a hand-adjointed C++ solver, a compiler-differentiated Fortran
-solver, a JAX solver and a PyTorch model compose into one function, two of them
-interchangeably. **The demonstration that spectral radius alone is
-insufficient**, which we have not seen stated for this decision: ρ(Φ_T) is the
-diagnostic a practitioner reaches for first and Section 5 shows it constant
-while the error moves 136-fold. And **γ as an
-operational check** — the analysis is standard, but making it a single VJP that
-runs as a pipeline assertion, and measuring what it actually predicts, is not.
+Our contribution is narrower: compose hand-adjointed C++, JAX, PyTorch and
+compiler-differentiated Fortran components; show ρ(Φ_T) constant while error
+moves 136-fold; and turn the objective-aware residual γ into a measured,
+single-VJP pipeline check.
 
 ## 2. The composition
 
@@ -114,9 +86,10 @@ four ways of producing a derivative:
 | `thermal_fortran` | Fortran | Enzyme, an LLVM compiler pass |
 | `material_map` | Python / PyTorch | `torch.autograd` |
 
-The fluid system is linear in w = (u,v,p), so `A(α) w = b(T)` and its exact JVP
-and VJP are extra solves against the same sparse LU — a transpose solve plus an
-analytic scatter, by hand. The Fortran component inverts that approach: flang
+On the headline `inertia=0` path, the fluid system is linear in
+w = (u,v,p), so `A(α) w = b(T)` and its exact JVP and VJP are extra solves
+against the same sparse LU—a transpose solve plus an analytic scatter, by hand.
+The Fortran component inverts that approach: flang
 emits LLVM IR, an Enzyme pass differentiates it, and ∂R/∂T is recovered
 *exactly* from nine Enzyme JVPs by a 3×3 colouring (the stencil is five-point,
 so cells whose indices agree mod 3 never interact).
@@ -136,32 +109,17 @@ trajectory. Newton does not require Φ to be contractive; here the linearisation
 is nonsingular and damped Newton converges from the stated start. The JVP
 endpoints make that matrix-free forward solve robust.
 
-**A nonlinear component, and what the hand derivation costs.** Modelling the
-flow as Stokes is itself an approximation, so the fluid block carries the
-convective acceleration behind a weight: `inertia = 0` is the infinite-Prandtl
-limit and reproduces every earlier result bitwise, `inertia = 1` is steady
-Navier–Stokes and makes the block nonlinear in w, solved by damped Newton.
+**A nonlinear component.** `inertia = 1` adds steady convective acceleration
+and solves the now-nonlinear fluid block by damped Newton; zero retains the
+infinite-Prandtl Stokes path bitwise. Because (u·∇)u is bilinear and contains
+neither α nor T, the parameter scatters stay unchanged and the adjoint simply
+replaces A by the converged Jacobian. Against an autodiffed reference, forward
+error is < 10⁻⁸, JVP/VJP error < 10⁻⁷ and the adjoint identity < 10⁻⁸; the full
+composition matches a coupled finite difference to 8.5 × 10⁻⁸.
 
-The hand-derived adjoint survives intact. (u·∇)u is *bilinear* and involves
-neither α nor T, so every parameter scatter is unchanged and only the inverted
-operator moves from A to the Jacobian at the converged state, J = A + ∂N/∂w.
-That is the practical argument for deriving an adjoint rather than reaching for
-a tool: the structure tells you which part a new nonlinearity touches, and it is
-a small part. All of it is checked against the autodiffed reference —
-forward < 10⁻⁸, JVP and VJP < 10⁻⁷ through the Newton solve, and the adjoint
-identity to 10⁻⁸ — with two tests present solely to stop the rest passing
-vacuously, one asserting that inertia moves the solution and one that the
-inertial tangent differs from the Stokes tangent. The full composition still
-matches a coupled finite difference to 8.5 × 10⁻⁸ with the nonlinear block in
-place.
-
-Having built it, we ask of this shortcut what the rest of the paper asks of
-loop-cutting. At the headline strong-coupling point — Ra = 3 × 10⁴, mean
-density 0.5 — dropping inertia changes the design gradient by **0.002% in water
-and 0.017% in air**, cosine 1 to eight decimals (`inertia_study.py`). This
-supports the Stokes approximation for that measured comparison, not for every
-regime, and reinforces the general point: a shortcut's safety is a property of
-the regime, not of the model.
+At Ra = 3 × 10⁴, dropping inertia changes the measured design gradient by only
+**0.002% in water and 0.017% in air**, cosine 1 to eight decimals
+(`inertia_study.py`). This supports that tested comparison, not every regime.
 
 **Chain versus loop.** The distinction matters and is often blurred. A *chain* —
 A feeds B feeds an objective — is differentiable by one sweep of the chain rule;
@@ -200,7 +158,13 @@ unchanged to numerical precision.
 limit in which the classical onset result Ra_c = 1707.762 is derived, so it is
 the correct benchmark for the original `inertia=0` path. A separate de Vahl
 Davis side-heated cavity check activates `inertia=1` at Pr = 0.71 and therefore
-tests the nonlinear finite-Prandtl path on its own terms. At the conduction
+tests the nonlinear finite-Prandtl path on its own terms. At N=32, both cavity
+cases converge and all six Nusselt/centerline-velocity metrics are within
+**1.2%** of the published references. A separate exact-1 W SI audit is retained
+as a failed boundary: only **3 of 6** planned layout/mesh solves converged, the
+N=32 finned solve stalled, and even the converged baseline temperature is
+outside the constant-property liquid-water regime. We therefore make no
+dimensional resistance or fin-performance claim. At the conduction
 state the coupling loop *is* the linear stability operator, so onset occurs
 exactly where ρ(Φ_T) = 1. Bisecting on Ra
 (`benchmark_critical_rayleigh.py`):
@@ -297,29 +261,16 @@ adjoint residual to design-gradient error also depends on `(I−Φ_Tᵀ)⁻¹` a
 γ > 0.1 flagged danger. `coupling_check.py` exposes these as configurable,
 benchmark-calibrated defaults rather than universal guarantees.
 
-**Does it generalise?** Every number above comes from one physical system, which
-is the honest limit of the evidence. So we removed the physics: 2,377 randomly
-generated coupled fixed points (`gamma_generalization.py`) across four
-structural families — symmetric, non-normal, sparse, low-rank — with linear
-loops Φ = Ax + Bθ and nonlinear ones Φ = tanh(Ax) + b, spectral radius swept
-log-uniformly over 10⁻³ to 1.9, and every quantity available in closed form. γ
-is computed by calling the shipped module, not a reimplementation. Pooled,
-log γ correlates with log error at **0.989** against **0.691** for ρ, and γ wins
-in **every family and both kinds** — 0.996 symmetric, 0.982 non-normal, 0.995
-sparse, 0.990 low-rank. The shipped thresholds survive contact: of 656 draws
-called SAFE the worst error was 1.4% and none exceeded 5%, and all 965 called
-UNSAFE genuinely exceeded it.
+**Does it generalise?** We removed the physics and sampled 2,377 closed-form
+fixed points (`gamma_generalization.py`): symmetric, non-normal, sparse and
+low-rank; linear and nonlinear; ρ from 10⁻³ to 1.9. Log γ correlates with error
+at **0.989** against **0.691** for ρ and wins in every family and both kinds.
+Nothing called SAFE exceeds 1.4% error; all 965 UNSAFE draws exceed 5%.
 
-The same study locates the boundary, which we would rather not have found. Split
-by spectral radius, γ correlates 0.993 for attracting fixed points and only
-**0.36 for repelling ones**. This follows from (2): γ is a residual, and the
-error it induces is (I − Φ_Tᵀ)⁻¹ applied to it. For normal operators its norm is
-bounded by 1/(1−ρ) while ρ < 1; non-normal conditioning can amplify more.
-Correcting γ by the observed decay of ‖(Φ_Tᵀ)ᵏg‖
-does not repair it (0.25). In 136 of 178 sampled repelling draws the terms stop
-decaying, which is a warning rather than a theorem. Our conservative policy is
-to compute the adjoint whenever the loop repels, regardless of γ's magnitude.
-Our headline state is repelling at ρ = 1.19, and there we do.
+The boundary is equally important. Correlation is 0.993 for attracting loops
+but only **0.36 for repelling ones**, where the inverse in (2) may amplify the
+residual. We therefore compute the adjoint whenever the loop repels, including
+the headline state at ρ = 1.19; γ is not advertised as a theorem.
 
 ![**One VJP, no physics.** Left: measured relative error of the component-wise
 gradient against γ on 2,377 randomly generated coupled fixed points, spanning
@@ -331,21 +282,11 @@ with medians marked. Nothing γ called SAFE exceeded 1.4% error, and everything
 it called UNSAFE genuinely exceeded 5%.
 ](orchestrator/results/fig11_generalization.png)
 
-**Using it as a budget.** Because γ costs one VJP against the tens the adjoint
-needs, it can be measured *before* deciding whether to pay. Gating the optimiser
-on it (`--mode gamma_gated`, 48², 80 iterations, gate 0.10) gives γ ∈ [0.020,
-0.074] throughout: the exact adjoint is never purchased, cross-boundary VJPs
-fall from 1015 to 80, and the final objective is within 0.51% (J = 1.3113 against
-1.3180); no layout-equivalence claim is made. At the Ra = 3 × 10⁴ state of
-Section 7 the same gate returns γ = 0.404 and refuses, against a measured error
-of 115%; the repeated
-VJP norms are (0.404, 0.211, 0.145, 0.153). They are diagnostics, not a
-convergent Neumann series at this repelling fixed point.
-
-The reading that matters is not the speed-up. J, the residual and convergence
-history look similar across the safe and damaged cases, while one VJP separates
-them in this benchmark. That VJP differentiates *through* the loop, using the
-same composition the gate may decline to use for the full adjoint.
+**Using it as a budget.** At 48² over 80 iterations, a 0.10 gate sees
+γ ∈ [0.020, 0.074], reduces cross-boundary VJPs from 1015 to 80 and finishes
+within 0.51% (J = 1.3113 versus 1.3180); no layout-equivalence claim is made. At
+Ra = 3 × 10⁴ it returns γ = 0.404 and refuses, against 115% measured error. One
+VJP thus separates these benchmark regimes even when forward histories do not.
 
 ## 6. The design problem
 
@@ -373,11 +314,11 @@ its gradient is right.
 
 We therefore tested a discrete engineering action at the strong state instead
 (`intervention_test.py`, 20², Ra = 3 × 10⁴). Each gradient receives the same
-zero-net-material budget: add material to its twenty most favourable cells and
-remove it from its twenty least favourable. We then discard both linear
-predictions and re-solve the true coupled forward problem:
+zero-sum raw-design rule: increase its twenty most favourable raw variables and
+decrease its twenty least favourable by the same amplitude. We then discard
+both linear predictions and re-solve the true coupled forward problem:
 
-| material step | ΔJ, composed choice | ΔJ, shortcut choice | more cooling |
+| raw-design step | ΔJ, composed choice | ΔJ, shortcut choice | more cooling |
 | --- | ---: | ---: | ---: |
 | 0.010 | −0.01715 | −0.01121 | 53% |
 | 0.025 | −0.04322 | −0.02800 | 54% |
@@ -385,18 +326,26 @@ predictions and re-solve the true coupled forward problem:
 
 The gradients agree on only 40% of the add set and 10% of the remove set. The
 composed choice wins all three fresh forward solves, delivering **58% more
-realised cooling** at the largest step for exactly the same material budget.
+realised cooling** at the largest step for the same raw-variable count and
+amplitude. The nonlinear material map means this is not an equal realised
+physical-density budget.
 
-At fixed Ra = 2 × 10⁴ and step 0.025, a fixed contiguous 12-seed sweep produced
-**10 wins, 0 observed losses and 2 inconclusive attempts**: one failed base
-solve and one incomplete action pair. Among comparable designs, median extra
-cooling was 36% (range 6–276%). The revised driver evaluates both actions
-independently; solver failure is not presented as proof of non-existence.
+A retrospectively frozen 16-seed × 3-Rayleigh extension retains all 48
+attempts: **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable**, or 35/39 among
+comparable cases, with an **81.1%** post-freeze descriptive
+seed-cluster-bootstrap lower endpoint. Thirteen
+cells overlap prior evidence; among the other 35, the exact action leads in
+24/28 comparable cases (one shortcut win, three ties). This is a robustness extension,
+not an independent confirmation set.
 
-In attribution (`sensitivity_ranking.py`, 32², Ra = 3 × 10⁴), the shortcut keeps
-the sign of the true top fifty—enough for descent—but ranks their magnitudes at
-chance level (Spearman −0.011), misses 44%, and promotes cell #1016 of 1024.
+A frozen eight-step showdown also stopped when the composed step-six candidate
+failed to converge after five accepted decisions; the shortcuts completed
+eight. The incomplete primary endpoint is **not evaluable**, so there is **no
+eight-step endpoint verdict**. Post-hoc, the common five-step reductions are
+11.83% composed, **5.16%** loop cut and **4.71%** frozen flow—not a protocol win.
 
-Limitations: this is a 2D, one-application study, not a population study. The
-strong-coupling steady solve failed from the optimiser's near-uniform start,
-and repelling cases are excluded from γ's threshold calibration.
+In attribution (`sensitivity_ranking.py`), the shortcut keeps the true top-50
+signs yet ranks magnitudes at chance (Spearman −0.011), misses 44%, and promotes
+cell #1016 of 1024. Limitations: this is one 2D application; the strong solve
+failed from the optimiser's near-uniform start; and repelling cases are outside
+γ's threshold calibration.

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -219,7 +220,7 @@ def main() -> int:
     intervention = load("intervention_test.json")
     if intervention:
         rows = intervention["rows"]
-        check("exact-gradient intervention wins every equal-budget re-solve",
+        check("exact-gradient intervention wins every equal raw-design re-solve",
               intervention["exact_wins"] == intervention["n_amplitudes"]
               and all(r["exact_advantage"] > 0 for r in rows))
         check("every exact-gradient intervention reduces the true objective",
@@ -296,34 +297,158 @@ def main() -> int:
               protocol["status"] == "retrospectively_frozen_design"
               and "prior_observation_disclosure" in protocol
               and bool(docs_contain("retrospective")))
-        check("all showdown branches complete all eight accepted decisions",
-              showdown["complete"] is True
-              and summary["all_branches_complete"] is True
-              and summary["required_iterations_per_branch"] == 8
-              and summary["common_initial_objective_verified"] is True
-              and all(branch["completed_iterations"] == 8
-                      and len(branch["rows"]) == 8
-                      and len(branch["proposals"]) == 8
-                      and len(branch["objectives"]) == 9
-                      and all(row["status"] == "accepted" for row in branch["rows"])
-                      for branch in showdown["branches"]))
-        initial_values = [branch["objectives"][0] for branch in showdown["branches"]]
-        check("showdown branches share one measured initial objective",
-              max(initial_values) - min(initial_values) <= 1e-12)
-        reductions = {
-            branch["method"]: branch["metrics"]["reduction_percent"]
-            for branch in showdown["branches"]
+        branches = showdown.get("branches", [])
+        branch_by_method = {
+            branch.get("method"): branch for branch in branches
+            if isinstance(branch, dict)
         }
-        print("showdown reductions: " + ", ".join(
-            f"{name}={value:.2f}%" for name, value in reductions.items()
-        ))
-        for method, value in reductions.items():
-            check(f"README/PAPER quote the {method} showdown reduction",
-                  bool(docs_contain(f"{value:.2f}%")), f"measured {value:.2f}%")
-        if summary["frozen_success_condition_met"]:
-            check("stored comparisons support the documented composed showdown win",
-                  all(row["relation"] == "composed_lower"
-                      for row in summary["final_objective_comparisons"]))
+        expected_methods = {"composed", "one_way", "frozen"}
+        initial_values = [
+            branch.get("objectives", [None])[0]
+            for branch in branches if branch.get("objectives")
+        ]
+        shared_initial = (
+            len(branches) == 3
+            and set(branch_by_method) == expected_methods
+            and len(initial_values) == 3
+            and all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and math.isfinite(float(value)) for value in initial_values)
+            and max(initial_values) - min(initial_values) <= 1e-12
+        )
+        check("showdown branches share one measured initial objective", shared_initial)
+
+        if showdown.get("complete") is True:
+            check("all showdown branches complete all eight accepted decisions",
+                  summary["all_branches_complete"] is True
+                  and summary["required_iterations_per_branch"] == 8
+                  and summary["common_initial_objective_verified"] is True
+                  and all(branch["completed_iterations"] == 8
+                          and len(branch["rows"]) == 8
+                          and len(branch["proposals"]) == 8
+                          and len(branch["objectives"]) == 9
+                          and all(row["status"] == "accepted" for row in branch["rows"])
+                          for branch in branches))
+            reductions = {
+                branch["method"]: branch["metrics"]["reduction_percent"]
+                for branch in branches
+            }
+            print("showdown reductions: " + ", ".join(
+                f"{name}={value:.2f}%" for name, value in reductions.items()
+            ))
+            for method, value in reductions.items():
+                check(f"README/PAPER quote the {method} showdown reduction",
+                      bool(docs_contain(f"{value:.2f}%")),
+                      f"measured {value:.2f}%")
+            if summary["frozen_success_condition_met"]:
+                check("stored comparisons support the documented composed showdown win",
+                      all(row["relation"] == "composed_lower"
+                          for row in summary["final_objective_comparisons"]))
+        else:
+            composed = branch_by_method.get("composed", {})
+            shortcuts = [branch_by_method.get(name, {}) for name in ("one_way", "frozen")]
+            failure = composed.get("failure", {})
+            proposals = composed.get("proposals", [])
+            frozen_failure_is_durable = (
+                summary.get("all_branches_complete") is False
+                and summary.get("frozen_success_condition_met") is False
+                and summary.get("final_objective_comparisons") == []
+                and composed.get("complete") is False
+                and composed.get("completed_iterations") == 5
+                and len(composed.get("rows", [])) == 5
+                and len(proposals) == 6
+                and all(row.get("status") == "accepted"
+                        for row in composed.get("rows", []))
+                and proposals[-1].get("status") == "candidate_not_converged"
+                and failure.get("stage") == "candidate_forward"
+                and failure.get("iteration") == 6
+                and math.isclose(
+                    float(failure.get("residual", math.nan)),
+                    float(proposals[-1].get("candidate_residual", math.inf)),
+                    rel_tol=0.0,
+                    abs_tol=1e-15,
+                )
+                and all(branch.get("complete") is True
+                        and branch.get("completed_iterations") == 8
+                        and len(branch.get("rows", [])) == 8
+                        and len(branch.get("proposals", [])) == 8
+                        and branch.get("failure") is None
+                        for branch in shortcuts)
+            )
+            check("incomplete showdown preserves the frozen candidate failure",
+                  frozen_failure_is_durable,
+                  f"composed stopped at step {failure.get('iteration')} with "
+                  f"residual {failure.get('residual')}")
+            common_horizon = min(
+                int(branch.get("completed_iterations", 0)) for branch in branches
+            ) if branches else 0
+            prefix_reductions = {
+                method: 100.0 * (
+                    float(branch["objectives"][0])
+                    - float(branch["objectives"][common_horizon])
+                ) / float(branch["objectives"][0])
+                for method, branch in branch_by_method.items()
+                if len(branch.get("objectives", [])) > common_horizon
+            }
+            print(
+                f"showdown: no eight-step endpoint verdict; common {common_horizon}-step "
+                "descriptive reductions: "
+                + ", ".join(
+                    f"{name}={value:.2f}%" for name, value in prefix_reductions.items()
+                )
+            )
+            check("showdown common-prefix comparison is five-step and fully observed",
+                  common_horizon == 5
+                  and set(prefix_reductions) == expected_methods)
+            check("README/PAPER explicitly withhold an eight-step showdown verdict",
+                  bool(docs_contain("no eight-step endpoint verdict")))
+            check("README/PAPER label the showdown incomplete and non-evaluable",
+                  bool(docs_contain("incomplete"))
+                  and bool(docs_contain("not evaluable"))
+                  and bool(docs_contain("post-hoc")))
+            for method, value in prefix_reductions.items():
+                check(f"README/PAPER quote the {method} five-step reduction",
+                      bool(docs_contain(f"{value:.2f}%")),
+                      f"measured {value:.2f}%")
+            interpretation = load("strong_coupling_showdown_interpretation.json")
+            source_hash = hashlib.sha256(
+                (RES / "strong_coupling_showdown.json").read_bytes()
+            ).hexdigest()
+            interpreted_methods = (
+                interpretation.get("descriptive_common_prefix", {}).get("methods", {})
+                if isinstance(interpretation, dict) else {}
+            )
+            check("showdown interpretation is hash-bound and withholds primary ranking",
+                  isinstance(interpretation, dict)
+                  and interpretation.get("source_sha256") == source_hash
+                  and interpretation.get("protocol_sha256") == showdown["protocol_sha256"]
+                  and interpretation.get("execution_status")
+                      == "incomplete_frozen_execution"
+                  and interpretation.get("common_initial_objective_verified") is True
+                  and interpretation.get("primary_endpoint", {}).get("evaluable") is False
+                  and interpretation.get("primary_endpoint", {}).get("ranking") == []
+                  and interpretation.get("primary_endpoint", {}).get("comparisons") == []
+                  and interpretation.get("descriptive_common_prefix", {}).get("steps") == 5
+                  and interpretation.get("descriptive_common_prefix", {}).get(
+                      "pre_specified"
+                  ) is False
+                  and all(
+                      method in interpreted_methods
+                      and math.isclose(
+                          interpreted_methods[method]["reduction_percent"],
+                          value,
+                          rel_tol=0.0,
+                          abs_tol=1e-12,
+                      )
+                      for method, value in prefix_reductions.items()
+                  ))
+            forbidden_showdown_claims = (
+                "composed wins the showdown",
+                "composed finishes with the lowest",
+                "all showdown branches completed",
+                "eight-step showdown win",
+            )
+            check("docs make no winner claim for the incomplete showdown",
+                  not any(docs_contain(phrase) for phrase in forbidden_showdown_claims))
 
     # ---- 48-attempt robustness matrix ----------------------------------
     matrix = load("intervention_robustness_matrix_48.json")
@@ -366,10 +491,16 @@ def main() -> int:
         losses = outcomes["shortcut_wins"]
         ties = outcomes["tie"]
         noncomparable = summary["attempts_recorded"] - comparable
-        print(f"matrix: {wins} exact wins, {losses} losses, {ties} ties, "
+        shortcut_word = "shortcut win" if losses == 1 else "shortcut wins"
+        print(f"matrix: {wins} exact wins, {losses} {shortcut_word}, {ties} ties, "
               f"{noncomparable} noncomparable; {comparable}/48 comparable")
-        for value, label in ((wins, "exact wins"), (losses, "losses"),
-                             (ties, "ties"), (noncomparable, "noncomparable")):
+        quoted_outcomes = (
+            (wins, "exact win" if wins == 1 else "exact wins"),
+            (losses, shortcut_word),
+            (ties, "tie" if ties == 1 else "ties"),
+            (noncomparable, "noncomparable"),
+        )
+        for value, label in quoted_outcomes:
             check(f"README/PAPER quote matrix {label}",
                   bool(docs_contain(f"{value} {label}")), f"measured {value}")
         cluster_lower = 100.0 * bootstrap["lower"]
@@ -388,7 +519,10 @@ def main() -> int:
                       and row["solver"]["fluid"]["relative_residual"] <= 1e-12
                       for row in cavity))
         check("all six N=32 cavity metrics are within the stated 15% tolerance",
-              all(row["N"] == 32 and row["within_coarse_grid_tolerance"]
+              all(row["N"] == 32
+                      and row["within_coarse_grid_tolerance"]
+                      and max(row["relative_error"].values())
+                      <= row["coarse_grid_tolerance"]
                       for row in cavity))
         check("README/PAPER quote the measured maximum cavity error",
               bool(docs_contain(f"{100*max_error:.1f}%")),
@@ -398,25 +532,44 @@ def main() -> int:
     if physical:
         layouts = physical["layouts"]
         mesh = physical["mesh_refinement"]
+        mesh_layouts = [
+            layout
+            for row in mesh["rows"]
+            for layout in row["layouts"].values()
+        ]
+        converged_mesh_solves = sum(
+            bool(layout["solver"]["ok"]) for layout in mesh_layouts
+        )
         check("dimensional chip discretization preserves exactly one watt",
               abs(physical["grid"]["represented_heat_load_W"] - 1.0) <= 1e-12)
-        check("dimensional solves expose converged inner and outer nonlinear states",
-              physical["evidence_valid"] is True
-              and all(row["solver"]["ok"]
-                      and row["solver"]["fluid"]["converged"]
-                      for row in layouts.values()))
+        check("dimensional artifact retains its invalid comparison instead of promoting it",
+              physical["evidence_valid"] is False
+              and layouts["baseline"]["solver"]["ok"] is True
+              and layouts["finned"]["solver"]["ok"] is False
+              and mesh["all_solves_converged"] is False)
+        check("every dimensional inner fluid solve exposes convergence evidence",
+              all(layout["solver"]["fluid"]["converged"]
+                      for layout in mesh_layouts))
         check("dimensional comparison is explicitly unequal-material and illustrative",
               physical["comparison"]["equal_material_budget"] is False
               and physical["comparison"]["kind"] == "illustrative_unequal_material"
               and bool(docs_contain("unequal-material")))
-        check("dimensional mesh refinement covers 16, 24, and 32 with converged solves",
+        check("dimensional mesh audit covers 16, 24, and 32 and retains all six outcomes",
               mesh["grids"] == [16, 24, 32]
               and mesh["finest_grid"] == 32
-              and mesh["all_solves_converged"] is True)
-        for name in ("baseline", "finned"):
-            value = layouts[name]["thermal_resistance_K_W"]
-            check(f"README/PAPER quote dimensional {name} Rth",
-                  bool(docs_contain(f"{value:.2f}")), f"measured {value:.4f} K/W")
+              and len(mesh_layouts) == 6
+              and converged_mesh_solves == 3)
+        check("README/PAPER disclose that only 3 of 6 dimensional solves converged",
+              len(docs_contain("3 of 6")) == 2)
+        check("README/PAPER disclose the dimensional constitutive-model failure",
+              len(docs_contain("outside the constant-property liquid-water regime")) == 2)
+        baseline_rth = layouts["baseline"]["thermal_resistance_K_W"]
+        invalid_finned_rth = layouts["finned"]["thermal_resistance_K_W"]
+        invalid_reduction = physical["finned_thermal_resistance_reduction_percent"]
+        check("README/PAPER do not promote any invalid dimensional performance number",
+              not docs_contain(f"{baseline_rth:.2f}")
+              and not docs_contain(f"{invalid_finned_rth:.2f}")
+              and not docs_contain(f"{invalid_reduction:.2f}%"))
 
     # ---- randomized generalization study -------------------------------
     gg = load("gamma_generalization.json")
@@ -486,7 +639,7 @@ def main() -> int:
               all(path.is_file() and path.stat().st_size > 0 for path in media))
         if all(path.is_file() and path.stat().st_size > 0 for path in media):
             from validate_video import validate_release_video
-            report = validate_release_video(video, video_manifest, captions)
+            report = validate_release_video(video, video_manifest, captions, poster)
             manifest = json.loads(video_manifest.read_text(encoding="utf-8"))
             check("rendered video is a verified sub-five-minute 1080p delivery",
                   180.0 <= report["duration_seconds"] <= 300.0
@@ -530,6 +683,30 @@ def main() -> int:
         ROOT / "orchestrator" / "make_extended_figures.py",
     ]
     joined = "\n".join(p.read_text(encoding="utf-8") for p in source_files)
+    delivered_files = [
+        ROOT / "README.md",
+        ROOT / "PAPER.md",
+        ROOT / "DEMO_SCRIPT.md",
+        ROOT / "release" / "RELEASE_NOTES.md",
+    ]
+    delivered = "\n".join(path.read_text(encoding="utf-8") for path in delivered_files)
+    for bad in (
+        "three converged random designs",
+        "Seventy-three component tests",
+        "73 tests",
+        "every command is public",
+    ):
+        check(f"no stale delivered-prose phrase '{bad}'", bad.lower() not in delivered.lower())
+    check(
+        "delivered prose never claims an equal material budget for the intervention",
+        re.search(r"(?:same|identical|exactly\s+the\s+same)\s+material[- ]budget", delivered, re.I)
+        is None,
+    )
+    for pattern, label in (
+        (r"composed\s+(?:branch\s+)?wins\s+the\s+showdown", "showdown winner claim"),
+        (r"wins?\s+the\s+(?:frozen\s+)?eight[- ]step", "eight-step winner claim"),
+    ):
+        check(f"no delivered {label}", re.search(pattern, delivered, re.I) is None)
     for bad in ("40-150%", "74% wrong sign", "four languages", "four containers"):
         check(f"no stale '{bad}' wording", bad.lower() not in joined.lower())
     for pattern, label in (

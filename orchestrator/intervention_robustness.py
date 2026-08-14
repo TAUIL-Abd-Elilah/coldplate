@@ -1,6 +1,6 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Repeat the equal-budget intervention across a fixed contiguous seed range.
+"""Repeat the equal zero-sum raw-design intervention across fixed seeds.
 
 ``intervention_test.py`` sweeps three action sizes at one state. This companion
 holds the action size and Rayleigh number fixed and varies the random design.

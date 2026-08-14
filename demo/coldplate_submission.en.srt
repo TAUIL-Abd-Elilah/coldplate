@@ -1,0 +1,218 @@
+1
+00:00:00,500 --> 00:00:04,748
+What if every component derivative is correct, yet the
+engineering decision is wrong?
+
+2
+00:00:04,748 --> 00:00:09,380
+Coldplate asks where a limited amount of metal should go
+in a buoyancy-cooled chip.
+
+3
+00:00:09,380 --> 00:00:15,644
+At strong coupling, cutting one feedback loop changes
+which cells we choose and how much cooling we realize.
+
+4
+00:00:15,894 --> 00:00:21,798
+The pipeline serves a PyTorch material map, a C plus plus
+Eigen flow solver, and a thermal solver.
+
+5
+00:00:21,798 --> 00:00:27,822
+Temperature drives buoyancy; velocity advects heat, so the
+converged state is a two-way fixed point.
+
+6
+00:00:27,822 --> 00:00:34,830
+Newton Krylov crosses the component boundary with J V P's;
+the implicit adjoint crosses it again with V J P's.
+
+7
+00:00:34,830 --> 00:00:43,974
+The thermal slot swaps JAX autodiff for independent
+Fortran differentiated by Enzyme at LLVM I R, and the full
+coupled pipeline is checked again after the swap.
+
+8
+00:00:44,224 --> 00:00:49,720
+Finite-difference component samples confirm the composed
+gradient to 3.7 parts per million.
+
+9
+00:00:49,720 --> 00:00:55,720
+The strongest shortcut still differentiates every
+component, but freezes temperature inside buoyancy.
+
+10
+00:00:55,720 --> 00:01:04,432
+At this strong setting it has 86 percent relative error
+and wrong signs in 33 percent of the design field, while
+the forward temperature gives no warning.
+
+11
+00:01:04,682 --> 00:01:13,274
+A norm is not an outcome, so each gradient proposes the
+same count and amplitude of positive and negative
+raw-design changes and is judged by a fresh coupled solve.
+
+12
+00:01:13,274 --> 00:01:16,802
+The composed choice wins all 3 tested action sizes.
+
+13
+00:01:16,802 --> 00:01:23,234
+At the largest step it delivers 58 percent more realized
+cooling under the same zero-sum raw-design rule.
+
+14
+00:01:23,484 --> 00:01:29,078
+We froze the repeated procedure before storing these
+trajectories, but the same operating point already had
+
+15
+00:01:29,078 --> 00:01:34,428
+favorable one-step evidence, so this is follow-up rather
+than an untouched independent confirmation.
+
+16
+00:01:34,428 --> 00:01:42,396
+The protocol gives every branch the same start,
+projected-volume target, eight update opportunities, and
+true candidate-solve budget.
+
+17
+00:01:42,396 --> 00:01:52,526
+The frozen eight-step endpoint has no winner because the
+composed step-six candidate did not converge. Over the
+shared first 5 accepted decisions, the descriptive
+
+18
+00:01:52,526 --> 00:02:00,324
+reductions are 11.83, 5.16, and 4.71 percent; that common
+prefix was examined after the failure and is not the
+frozen endpoint.
+
+19
+00:02:00,324 --> 00:02:03,996
+The failure is retained without parameter tuning or
+selective rerun.
+
+20
+00:02:04,246 --> 00:02:13,510
+This retrospective frozen extension retains every failure;
+13 attempts overlap the earlier pilot and 35 cells had no
+stored result when the design was frozen.
+
+21
+00:02:13,510 --> 00:02:20,398
+Among 39 comparable cases, the exact action wins 35, the
+shortcut wins 1, and 3 are ties.
+
+22
+00:02:20,398 --> 00:02:27,375
+The post-freeze descriptive 95 percent seed-cluster
+bootstrap interval has a lower endpoint of 81.1 percent;
+
+23
+00:02:27,375 --> 00:02:31,606
+the other 9 attempts remain visible as noncomparable, not
+deleted.
+
+24
+00:02:31,856 --> 00:02:40,304
+The de Vahl Davis reference activates full nonlinear
+Navier Stokes inertia, hot and cold side walls, and
+insulated horizontal walls.
+
+25
+00:02:40,304 --> 00:02:47,888
+At Rayleigh 1000 and 10000, all 6 Nusselt and
+centerline-velocity metrics are within 1.2 percent of the
+published reference.
+
+26
+00:02:47,888 --> 00:02:57,056
+A separate 5 by 5 by 2 millimeter sealed-water example
+maps every nondimensional group back to S I units and
+preserves exactly 1 watt on the discretized chip.
+
+27
+00:02:57,056 --> 00:03:06,680
+Only 3 of 6 planned layout and mesh solves converged; the
+N equals 32 finned solve stalled, so its apparent
+reduction is withheld rather than promoted as evidence.
+
+28
+00:03:06,680 --> 00:03:14,072
+Even the converged baseline predicts a temperature above
+water's liquid range, outside the constant-property model
+used for this scaling exercise.
+
+29
+00:03:14,072 --> 00:03:20,648
+The retained failure is a boundary on the dimensional
+illustration, not a performance or equal-material
+optimization claim.
+
+30
+00:03:20,898 --> 00:03:30,786
+The loop-cut adjoint's exact equation residual is Phi
+transpose g; normalizing it costs one V J P and retains
+the objective direction spectral radius discards.
+
+31
+00:03:30,786 --> 00:03:37,578
+Across 14 converged physical configurations, its log
+correlation with measured error is 0.995.
+
+32
+00:03:37,578 --> 00:03:45,906
+Across 2,377 synthetic fixed points, it is 0.989, versus
+0.691 for spectral radius.
+
+33
+00:03:46,156 --> 00:03:56,956
+The limit is explicit: correlation falls to 0.36 when the
+loop repels, so the reusable PyTree utility provides no
+universal threshold and never calls that regime safe.
+
+34
+00:03:56,956 --> 00:04:03,964
+An upstream-ready Tesseract JAX issue and test plan are
+prepared, but nothing will be submitted before publication
+review.
+
+35
+00:04:04,214 --> 00:04:11,702
+At the weaker-coupling topology-optimization start both
+gradients can descend, which is precisely why the
+strong-setting decision studies matter.
+
+36
+00:04:11,702 --> 00:04:17,942
+The full composed run over 120 iterations lowers the chip
+objective by 84.6 percent.
+
+37
+00:04:17,942 --> 00:04:23,366
+It forms a branching conductor toward the cold sink while
+preserving channels for buoyant coolant flow.
+
+38
+00:04:23,616 --> 00:04:32,784
+Linux C I runs the tests and claim audit, while a separate
+job rebuilds all four component images and serves three at
+a time across the real derivative boundary.
+
+39
+00:04:32,784 --> 00:04:42,120
+The August twenty-ninth release workflow records exact O C
+I digests, checksums the paper and video, and refuses to
+publish until anonymous pulls succeed.
+
+40
+00:04:42,120 --> 00:04:49,536
+Coldplate is a two-way equilibrium whose composition
+changes a measured engineering decision, with the evidence
+and the failure modes attached.

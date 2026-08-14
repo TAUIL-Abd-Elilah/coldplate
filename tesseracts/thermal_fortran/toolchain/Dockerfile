@@ -19,11 +19,9 @@
 FROM debian:bookworm-slim
 
 ARG LLVM_VERSION=19
-# The upstream nightly workflow deletes and recreates release assets, so its
-# numeric asset IDs are not durable. The stable download name is intentionally
-# paired with the exact published digest: a changed nightly byte fails closed
-# instead of silently changing derivative compilers.
-ARG ENZYME_URL=https://github.com/EnzymeAD/Enzyme/releases/download/nightly/LLVMEnzyme-19.so
+# The official LLVM-19 nightly asset is vendored because Enzyme's nightly
+# workflow deletes and recreates its release assets. The digest is still
+# checked in-image so repository corruption fails closed before compilation.
 ARG ENZYME_SHA256=5b43014ab23fdf212b5c0852e5ae1d2e9d3062bf0aa2323bbbf63b33369ef031
 
 # Retries matter here: large apt downloads on some networks arrive corrupted,
@@ -55,14 +53,11 @@ RUN set -eux; \
     done; \
     ln -sf /usr/bin/flang-new-${LLVM_VERSION} /usr/local/bin/flang-new 2>/dev/null || true
 
-# Enzyme's LLVM plugin, matching the toolchain version. The URL can move but
-# the accepted bytes cannot: verify the digest before the plugin is installed.
+# Enzyme's LLVM plugin, matching the toolchain version. Keep the upstream
+# Apache-2.0-with-LLVM-exceptions licence next to the redistributed object.
+COPY vendor/LLVMEnzyme-19.so /usr/local/lib/LLVMEnzyme-19.so
+COPY vendor/LICENSE.Enzyme.txt /usr/local/share/licenses/enzyme/LICENSE
 RUN set -eux; \
-    for i in 1 2 3 4 5; do \
-        wget -q "${ENZYME_URL}" \
-            -O /usr/local/lib/LLVMEnzyme-${LLVM_VERSION}.so && break || \
-        { echo "retry $i"; sleep 10; }; \
-    done; \
     test -s /usr/local/lib/LLVMEnzyme-${LLVM_VERSION}.so; \
     echo "${ENZYME_SHA256}  /usr/local/lib/LLVMEnzyme-${LLVM_VERSION}.so" | sha256sum -c -
 

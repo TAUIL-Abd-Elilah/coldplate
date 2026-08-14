@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "source_file": "orchestrator/results/strong_coupling_showdown.json",
+  "source_sha256": "7052370672697ce264e1ef2ba8572cf6802ac7a3c49e00c24929e14158d1a78f",
+  "protocol_sha256": "b0bc44a51d5dc88c3922f55fc98bd19471b377a084de0ada3b2aed4b233781fb",
+  "generated_by": "orchestrator/interpret_showdown.py",
+  "execution_status": "incomplete_frozen_execution",
+  "common_initial_objective_verified": true,
+  "common_initial_objective": 2.685538241250139,
+  "common_projected_volume_target_verified": true,
+  "primary_endpoint": {
+    "name": "true coupled objective after eight frozen-protocol decisions",
+    "evaluable": false,
+    "reason": "composed candidate_forward nonconvergence at iteration 6",
+    "ranking": [],
+    "comparisons": [],
+    "frozen_success_condition_met": false
+  },
+  "terminal_failure": {
+    "method": "composed",
+    "stage": "candidate_forward",
+    "iteration": 6,
+    "residual": 0.010699124619954148,
+    "proposal_raw_design_sha256": "7d1918446a5c9718defc86f1d2cfa9a9f3d9e83b3b73a13faaed63aa2708aa85"
+  },
+  "completed_eight_step_branches_noncomparative": [
+    "one_way",
+    "frozen"
+  ],
+  "descriptive_common_prefix": {
+    "steps": 5,
+    "pre_specified": false,
+    "status": "post_hoc_descriptive_only",
+    "selection_reason": "minimum accepted-step count after the recorded failure",
+    "methods": {
+      "composed": {
+        "J_at_horizon": 2.367795168662111,
+        "reduction_percent": 11.831634631280329,
+        "trajectory_auc": 12.75301301371022,
+        "improving_steps": 5
+      },
+      "one_way": {
+        "J_at_horizon": 2.5468896565356896,
+        "reduction_percent": 5.162785715905785,
+        "trajectory_auc": 13.080475139682282,
+        "improving_steps": 5
+      },
+      "frozen": {
+        "J_at_horizon": 2.558947171045241,
+        "reduction_percent": 4.713806277655875,
+        "trajectory_auc": 13.109126076888938,
+        "improving_steps": 5
+      }
+    }
+  }
+}

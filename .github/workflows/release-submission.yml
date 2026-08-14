@@ -147,7 +147,9 @@ jobs:
             demo/coldplate_submission.en.srt
             demo/poster.png
             demo/video_manifest.json
+            orchestrator/results/EVIDENCE_PROVENANCE.json
             orchestrator/results/strong_coupling_showdown.json
+            orchestrator/results/strong_coupling_showdown_interpretation.json
             orchestrator/results/intervention_robustness_matrix_48.json
             orchestrator/results/de_vahl_davis.json
             orchestrator/results/dimensional_coldplate.json
@@ -160,12 +162,16 @@ jobs:
           python scripts/validate_video.py \
             --video demo/coldplate_submission.mp4 \
             --manifest demo/video_manifest.json \
-            --captions demo/coldplate_submission.en.srt
+            --captions demo/coldplate_submission.en.srt \
+            --poster demo/poster.png
 
       - name: Verify source, measurements, eligibility, and paper
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python -m pytest tests -q
+          python scripts/validate_evidence_provenance.py --verify-github
           python scripts/audit_claims.py
           python scripts/check_submission.py --strict-public
           bash scripts/build_paper.sh
@@ -453,6 +459,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PREPARED_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .visibility)" = public
           gh api "repos/$GITHUB_REPOSITORY/environments/submission-production" \
             > "$RUNNER_TEMP/submission-environment.json"
           python - <<'PY'
@@ -466,11 +473,13 @@ jobs:
           PY
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
+          python -m pip install -r requirements-video.txt
           python scripts/validate_image_manifest.py "$VERIFY_DIR/image-digests.txt"
           python scripts/validate_video.py \
             --video "$VERIFY_DIR/coldplate_submission.mp4" \
             --manifest "$VERIFY_DIR/video_manifest.json" \
-            --captions "$VERIFY_DIR/coldplate_submission.en.srt"
+            --captions "$VERIFY_DIR/coldplate_submission.en.srt" \
+            --poster "$VERIFY_DIR/poster.png"
           cmp "$VERIFY_DIR/PAPER.pdf" PAPER.pdf
           cmp "$VERIFY_DIR/coldplate_submission.mp4" demo/coldplate_submission.mp4
           cmp "$VERIFY_DIR/coldplate_submission.en.srt" demo/coldplate_submission.en.srt
