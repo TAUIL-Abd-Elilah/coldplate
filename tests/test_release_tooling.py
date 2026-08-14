@@ -105,3 +105,13 @@ def test_every_github_action_is_pinned_to_a_full_commit_sha():
            if "@" not in value
            or re.fullmatch(r"[0-9a-f]{40}", value.rsplit("@", 1)[1]) is None]
     assert not bad
+
+
+def test_enzyme_nightly_download_is_byte_pinned_not_asset_id_pinned():
+    dockerfile = (
+        ROOT / "tesseracts" / "thermal_fortran" / "toolchain" / "Dockerfile"
+    ).read_text(encoding="utf-8")
+    assert "releases/download/nightly/LLVMEnzyme-19.so" in dockerfile
+    assert "5b43014ab23fdf212b5c0852e5ae1d2e9d3062bf0aa2323bbbf63b33369ef031" in dockerfile
+    assert "ENZYME_ASSET_ID" not in dockerfile
+    assert "releases/assets/" not in dockerfile

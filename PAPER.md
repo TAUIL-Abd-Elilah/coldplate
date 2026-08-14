@@ -197,12 +197,13 @@ unchanged to numerical precision.
 ## 3. Validation
 
 **Classical critical Rayleigh number.** Stokes flow is the infinite-Prandtl
-limit, which is the regime in which the classical onset result Ra_c = 1707.762
-is derived, so it is the correct benchmark for this solver. (A Navier–Stokes
-benchmark such as de Vahl Davis is not: at Pr = 0.71 the inertia term we omit is
-not small, and disagreement would prove nothing.) At the conduction state the
-coupling loop *is* the linear stability operator, so onset occurs exactly where
-ρ(Φ_T) = 1. Bisecting on Ra (`benchmark_critical_rayleigh.py`):
+limit in which the classical onset result Ra_c = 1707.762 is derived, so it is
+the correct benchmark for the original `inertia=0` path. A separate de Vahl
+Davis side-heated cavity check activates `inertia=1` at Pr = 0.71 and therefore
+tests the nonlinear finite-Prandtl path on its own terms. At the conduction
+state the coupling loop *is* the linear stability operator, so onset occurs
+exactly where ρ(Φ_T) = 1. Bisecting on Ra
+(`benchmark_critical_rayleigh.py`):
 
 | aspect ratio | 1 | 2 | 4 | 8 |
 | --- | --- | --- | --- | --- |

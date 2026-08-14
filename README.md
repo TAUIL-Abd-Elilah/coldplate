@@ -753,8 +753,10 @@ has deliberately not been posted upstream without maintainer coordination.
 
 ## Physics
 
-Steady, non-dimensional, Boussinesq, Stokes flow with Brinkman penalisation of
-solid regions, on a staggered MAC grid:
+Steady, non-dimensional Boussinesq flow with Brinkman penalisation of solid
+regions, on a staggered MAC grid. The original studies use the Stokes
+(`inertia = 0`) limit; the nonlinear validation and dimensional illustration
+activate steady Navier–Stokes (`inertia = 1`):
 
 ```
 fluid     -Pr ∇²u + ∇p + Pr·alpha(rho)·u = Ra·Pr·T ê_y
@@ -848,14 +850,15 @@ check.
 
 ### Application scope
 
-This is a **nondimensional research prototype**, not a manufacturing-ready cold
-plate. Its Rayleigh number, conductivity ratio, heat flux, and material budget
-can be mapped to a physical fluid, length scale, and temperature scale, but no
-particular coolant, package geometry, pressure drop, contact resistance, or
-manufacturing constraint is claimed here. A deployable design would need those
-inputs plus three-dimensional finite-Prandtl flow and experimental validation.
-The present model is deliberately small enough to isolate and verify the
-cross-component derivative question.
+This is a **research prototype**, not a manufacturing-ready cold plate. The
+core studies remain nondimensional. `dimensional_coldplate.py` now makes one
+mapping explicit—a sealed 5 × 5 × 2 mm water/aluminium cavity near 25 °C with a
+1 W chip and a stated out-of-plane depth—and reports its nondimensional inputs,
+SI temperatures, velocities and K/W. The base-versus-fins comparison is an
+**unequal-material illustration**, not an efficiency or optimisation claim.
+Pressure drop, contact resistance, temperature-dependent properties,
+manufacturing constraints, three-dimensional effects and experimental
+validation remain outside scope.
 
 ---
 
@@ -865,11 +868,11 @@ cross-component derivative question.
 
 A fluid layer heated from below stays motionless until buoyancy overcomes
 viscous and thermal diffusion. For rigid walls the onset is a precisely known
-number, **Ra_c = 1707.762**. That is the right benchmark for *this* solver:
-Stokes flow is the infinite-Prandtl limit, which is the regime the classical
-result is derived in. (A Navier–Stokes benchmark such as de Vahl Davis would
-not be — it runs at Pr = 0.71, where the inertia term we omit is not small, so
-disagreement there would prove nothing.)
+number, **Ra_c = 1707.762**. This remains the right benchmark for the Stokes
+path: it is the infinite-Prandtl regime in which the classical onset result is
+derived. The separate de Vahl Davis cavity check below activates `inertia = 1`
+at Pr = 0.71, so it validates the nonlinear path rather than asking the Stokes
+approximation to reproduce finite-Prandtl flow.
 
 Onset is also exactly where our own machinery puts it. At the conduction state
 the coupling loop *is* the linear stability operator, so convection begins
@@ -973,8 +976,9 @@ driver runs jax 0.11 while the JAX Tesseract runs 0.10.2 inside its image,
 which is the isolation working as intended rather than an oversight. Keep the
 published pins for reproduction; update them only with a fresh validation run.
 
-As built: LLVM/flang 19.1.7 with Enzyme release asset `512646543` pinned by
-SHA-256 `5b43014a…69ef031`, Eigen 3.4,
+As built: LLVM/flang 19.1.7 with the Enzyme LLVM-19 nightly download pinned by
+SHA-256 `5b43014a…69ef031` (its numeric GitHub asset ID is deliberately not used,
+because the upstream nightly job recreates it), Eigen 3.4,
 tesseract-core 1.11.0, tesseract-jax 0.4.1. Regenerate this list with
 `scripts/capture_versions.sh`.
 

@@ -19,10 +19,11 @@
 FROM debian:bookworm-slim
 
 ARG LLVM_VERSION=19
-# Immutable GitHub release-asset ID captured on 2026-08-13. The upstream
-# browser URL is called "nightly" and moves; the asset ID plus checksum makes
-# this build fail closed instead of silently changing derivative compilers.
-ARG ENZYME_ASSET_ID=512646543
+# The upstream nightly workflow deletes and recreates release assets, so its
+# numeric asset IDs are not durable. The stable download name is intentionally
+# paired with the exact published digest: a changed nightly byte fails closed
+# instead of silently changing derivative compilers.
+ARG ENZYME_URL=https://github.com/EnzymeAD/Enzyme/releases/download/nightly/LLVMEnzyme-19.so
 ARG ENZYME_SHA256=5b43014ab23fdf212b5c0852e5ae1d2e9d3062bf0aa2323bbbf63b33369ef031
 
 # Retries matter here: large apt downloads on some networks arrive corrupted,
@@ -54,13 +55,11 @@ RUN set -eux; \
     done; \
     ln -sf /usr/bin/flang-new-${LLVM_VERSION} /usr/local/bin/flang-new 2>/dev/null || true
 
-# Enzyme's LLVM plugin, matching the toolchain version. Fetch the immutable
-# release asset through the GitHub API and verify the digest published with it.
+# Enzyme's LLVM plugin, matching the toolchain version. The URL can move but
+# the accepted bytes cannot: verify the digest before the plugin is installed.
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-        wget -q --header="Accept: application/octet-stream" \
-            --header="X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/EnzymeAD/Enzyme/releases/assets/${ENZYME_ASSET_ID} \
+        wget -q "${ENZYME_URL}" \
             -O /usr/local/lib/LLVMEnzyme-${LLVM_VERSION}.so && break || \
         { echo "retry $i"; sleep 10; }; \
     done; \
