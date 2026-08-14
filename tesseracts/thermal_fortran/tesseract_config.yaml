@@ -5,7 +5,8 @@ description: |
   Enzyme at the LLVM IR level.
 
   This is a drop-in replacement for the `thermal_advdiff` Tesseract: the same
-  discretised physics and schema, independently implemented and numerically
+  discretised physics and schema (including the cold-plate, Rayleigh-Benard,
+  and de Vahl Davis wall modes), independently implemented and numerically
   cross-validated. What differs is how the derivatives are produced.
 
     thermal_advdiff  residual in JAX      -> jax.jvp / jax.vjp

@@ -83,7 +83,12 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, &
       end if
       fe = uu * (w * TL + (1.0d0 - w) * TR)
       if (i + 1 == Nx) then
-        qe = 0.0d0
+        if (bc_mode > 1.5d0) then
+          ! de Vahl Davis: cold right wall half a cell from the centre
+          qe = -k(j*Nx + Nx) * (0.0d0 - T(j*Nx + Nx)) / (0.5d0 * h)
+        else
+          qe = 0.0d0
+        end if
       else
         qe = -kf * (T(j*Nx + i + 2) - T(j*Nx + i + 1)) / h
       end if
@@ -104,7 +109,12 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, &
       TR = T(j*Nx + i + 1)
       fw = uu * (w * TL + (1.0d0 - w) * TR)
       if (i == 0) then
-        qw = 0.0d0
+        if (bc_mode > 1.5d0) then
+          ! de Vahl Davis: hot left wall half a cell from the centre
+          qw = -k(j*Nx + 1) * (T(j*Nx + 1) - t_hot) / (0.5d0 * h)
+        else
+          qw = 0.0d0
+        end if
       else
         qw = -kf * (T(j*Nx + i + 1) - T(j*Nx + i)) / h
       end if
@@ -125,8 +135,13 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, &
       end if
       fn = vv * (w * TB + (1.0d0 - w) * TT)
       if (j + 1 == Ny) then
-        ! cold sink at T = 0, half a cell away
-        qn = 2.0d0 * k((Ny-1)*Nx + i + 1) * T((Ny-1)*Nx + i + 1) / h
+        if (bc_mode > 1.5d0) then
+          ! de Vahl Davis: adiabatic horizontal wall
+          qn = 0.0d0
+        else
+          ! cold sink at T = 0, half a cell away
+          qn = 2.0d0 * k((Ny-1)*Nx + i + 1) * T((Ny-1)*Nx + i + 1) / h
+        end if
       else
         qn = -kf * (T((j+1)*Nx + i + 1) - T(j*Nx + i + 1)) / h
       end if
@@ -147,7 +162,10 @@ subroutine thermal_residual(Nx, Ny, T, u, v, k, q_chip, chip_frac, &
       TT = T(j*Nx + i + 1)
       fs = vv * (w * TB + (1.0d0 - w) * TT)
       if (j == 0) then
-        if (bc_mode > 0.5d0) then
+        if (bc_mode > 1.5d0) then
+          ! de Vahl Davis: adiabatic horizontal wall
+          qs = 0.0d0
+        else if (bc_mode > 0.5d0) then
           ! Rayleigh-Benard: isothermal hot wall half a cell below the centre
           qs = -k(i + 1) * (T(i + 1) - t_hot) / (0.5d0 * h)
         else

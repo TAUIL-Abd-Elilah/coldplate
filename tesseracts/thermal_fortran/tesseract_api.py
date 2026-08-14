@@ -173,10 +173,11 @@ class InputSchema(BaseModel):
     chip_frac: Float64 = Field(default=0.4, description="Chip width as a fraction of the wall.")
     bc_mode: Float64 = Field(
         default=0.0,
-        description="Bottom wall: 0 = chip heat flux (design problem), "
-        "1 = isothermal hot wall (Rayleigh-Benard benchmark).",
+        description="Wall mode: 0 = chip heat flux on bottom/cold top, "
+        "1 = isothermal hot bottom/cold top (Rayleigh-Benard), "
+        "2 = hot left/cold right/adiabatic horizontal walls (de Vahl Davis).",
     )
-    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature when bc_mode=1.")
+    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature for bc_mode 1 or 2.")
 
 
 class OutputSchema(BaseModel):

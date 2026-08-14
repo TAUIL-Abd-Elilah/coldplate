@@ -6,8 +6,11 @@ description: |
 
       div(u T) - div(k grad T) = 0
 
-  with a chip heat flux on part of the bottom wall, a cold sink on top and
-  adiabatic sides. Linear in T, so A(u, v, k) T = b.
+  The cold-plate mode has a chip heat flux on part of the bottom wall, a cold
+  sink on top and adiabatic sides. Benchmark modes provide Rayleigh-Benard
+  bottom/top temperatures and de Vahl Davis hot-left/cold-right temperatures.
+  The horizontal walls are adiabatic in the latter. Linear in T, so
+  A(u, v, k) T = b.
 
   Differentiation strategy: JAX autodiff. The operator is a 5-point stencil
   (~0.8% dense) so the linear algebra uses a sparse LU, but every parameter

@@ -89,6 +89,46 @@ def compare_components(N: int, rng) -> float:
         e = max(relerr(gf[i], gj[i]) for i in range(3))
         worst = max(worst, e)
         print(f"[1 component] VJP (u, v, k)      rel err {e:.3e}")
+
+        # Repeat the component contract at the de Vahl Davis wall mode. A
+        # deliberately nonzero q_chip catches an accidental fall-through to
+        # the cold-plate boundary condition: mode 2 must ignore that flux.
+        cavity_inputs = {
+            **inputs,
+            "q_chip": 13.0,
+            "bc_mode": 2.0,
+            "t_hot": 1.0,
+        }
+
+        def cavity_block(t, uu, vv, kk):
+            return apply_tesseract(
+                t, {**cavity_inputs, "u": uu, "v": vv, "k": kk}
+            )["T"]
+
+        Tc_jax = cavity_block(jx, u, v, k)
+        Tc_for = cavity_block(fo, u, v, k)
+        e = relerr(Tc_for, Tc_jax)
+        worst = max(worst, e)
+        print(f"[1 cavity  ] forward T          rel err {e:.3e}")
+
+        _, jvp_jax = jax.jvp(
+            lambda a, b, c: cavity_block(jx, a, b, c),
+            (u, v, k), (du, dv, dk),
+        )
+        _, jvp_for = jax.jvp(
+            lambda a, b, c: cavity_block(fo, a, b, c),
+            (u, v, k), (du, dv, dk),
+        )
+        e = relerr(jvp_for, jvp_jax)
+        worst = max(worst, e)
+        print(f"[1 cavity  ] JVP                rel err {e:.3e}")
+
+        _, vjp_jax = jax.vjp(lambda a, b, c: cavity_block(jx, a, b, c), u, v, k)
+        _, vjp_for = jax.vjp(lambda a, b, c: cavity_block(fo, a, b, c), u, v, k)
+        gj, gf = vjp_jax(Tbar), vjp_for(Tbar)
+        e = max(relerr(gf[i], gj[i]) for i in range(3))
+        worst = max(worst, e)
+        print(f"[1 cavity  ] VJP (u, v, k)      rel err {e:.3e}")
     finally:
         for t in served.values():
             try:

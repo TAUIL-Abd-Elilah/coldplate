@@ -60,7 +60,8 @@ class Params:
     inertia: float = 0.0
     # 0 = cold-plate (chip heat flux on part of the bottom wall, the design
     # problem); 1 = Rayleigh-Benard (isothermal hot bottom wall, used to check
-    # the coupled physics against the classical critical Rayleigh number).
+    # the coupled physics against the classical critical Rayleigh number);
+    # 2 = differentially heated cavity (de Vahl Davis nonlinear benchmark).
     bc_mode: float = 0.0
     t_hot: float = 1.0
     # Which functional of the coupled state is being minimised. Changing this

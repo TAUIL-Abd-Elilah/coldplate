@@ -78,13 +78,14 @@ def residual(T, u, v, k, q_chip: float, chip_frac: float,
              bc_mode: float = 0.0, t_hot: float = 1.0):
     """R(T, u, v, k) = div(uT) - div(k grad T) - source. Linear in T.
 
-    bc_mode selects the bottom wall condition:
+    bc_mode selects the wall conditions:
       0  cold-plate: a chip heat flux over part of the wall (the design problem)
       1  Rayleigh-Benard: an isothermal hot wall at t_hot (the benchmark)
+      2  de Vahl Davis: left wall at t_hot, right wall at 0, horizontal
+         walls adiabatic (the differentially heated cavity benchmark)
 
-    The second exists so the solver can be checked against the classical
-    critical Rayleigh number, which is a precise known value for exactly this
-    physics -- Stokes flow is the infinite-Prandtl limit.
+    The benchmark modes check both the classical critical Rayleigh number and
+    the nonlinear de Vahl Davis reference solution.
     """
     Ny, Nx = T.shape
     h = 1.0 / Nx
@@ -115,17 +116,32 @@ def residual(T, u, v, k, q_chip: float, chip_frac: float,
     kx = 0.5 * (k[:, 0 : Nx - 1] + k[:, 1:Nx])
     ky = 0.5 * (k[0 : Ny - 1, :] + k[1:Ny, :])
     qx = jnp.zeros((Ny, Nx + 1)).at[:, 1:Nx].set(-kx * (T[:, 1:Nx] - T[:, 0 : Nx - 1]) / h)
+    # Differentially heated cavity (mode 2): hot left wall, cold right wall.
+    # In modes 0/1 these remain the original adiabatic side conditions.
+    side_heated = bc_mode > 1.5
+    qx = qx.at[:, 0].set(
+        jnp.where(side_heated, -k[:, 0] * (T[:, 0] - t_hot) / (0.5 * h), 0.0)
+    )
+    qx = qx.at[:, Nx].set(
+        jnp.where(side_heated, -k[:, Nx - 1] * (0.0 - T[:, Nx - 1]) / (0.5 * h), 0.0)
+    )
     qy = jnp.zeros((Ny + 1, Nx)).at[1:Ny, :].set(-ky * (T[1:Ny, :] - T[0 : Ny - 1, :]) / h)
-    # Bottom wall: either the chip's incoming heat flux, or an isothermal hot
-    # wall. Both written as the +y component of the heat flux at that face.
+    # Bottom wall: chip flux in mode 0, hot Dirichlet in mode 1, and adiabatic
+    # in mode 2. Values are the +y component of heat flux at that face.
     qy = qy.at[0, :].set(
         jnp.where(
-            bc_mode > 0.5,
+            (bc_mode > 0.5) & (bc_mode < 1.5),
             -k[0, :] * (T[0, :] - t_hot) / (0.5 * h),
-            q_chip * chip_mask(Nx, chip_frac),
+            jnp.where(bc_mode < 0.5, q_chip * chip_mask(Nx, chip_frac), 0.0),
         )
     )
-    qy = qy.at[Ny, :].set(-k[Ny - 1, :] * (0.0 - T[Ny - 1, :]) / (0.5 * h))  # cold top
+    qy = qy.at[Ny, :].set(
+        jnp.where(
+            side_heated,
+            0.0,
+            -k[Ny - 1, :] * (0.0 - T[Ny - 1, :]) / (0.5 * h),
+        )
+    )  # cold top in modes 0/1; adiabatic in mode 2
     diff = (qx[:, 1 : Nx + 1] - qx[:, 0:Nx]) / h + (qy[1 : Ny + 1, :] - qy[0:Ny, :]) / h
 
     return adv + diff
@@ -196,16 +212,26 @@ def assemble(u, v, k, Nx: int, Ny: int, bc_mode: float = 0.0):
     add(T_, B, -kf / h**2)
     add(T_, T_, kf / h**2)
 
-    # ---- cold top wall (Dirichlet T=0 at half-cell distance) ----
+    # ---- cold top wall (Dirichlet T=0 at half-cell distance), modes 0/1 ----
     ii = np.arange(Nx)
-    add(cell(np.full(Nx, Ny - 1), ii), cell(np.full(Nx, Ny - 1), ii),
-        2.0 * k[Ny - 1, :] / h**2)
+    if bc_mode < 1.5:
+        add(cell(np.full(Nx, Ny - 1), ii), cell(np.full(Nx, Ny - 1), ii),
+            2.0 * k[Ny - 1, :] / h**2)
 
     # ---- hot bottom wall, Rayleigh-Benard mode only ----
     # The chip mode puts a Neumann flux there, which loads b rather than A.
-    if bc_mode > 0.5:
+    if 0.5 < bc_mode < 1.5:
         add(cell(np.zeros(Nx, dtype=int), ii), cell(np.zeros(Nx, dtype=int), ii),
             2.0 * k[0, :] / h**2)
+
+    # ---- de Vahl Davis side walls, mode 2 ----
+    if bc_mode > 1.5:
+        jj = np.arange(Ny)
+        add(cell(jj, np.zeros(Ny, dtype=int)),
+            cell(jj, np.zeros(Ny, dtype=int)), 2.0 * k[:, 0] / h**2)
+        add(cell(jj, np.full(Ny, Nx - 1, dtype=int)),
+            cell(jj, np.full(Ny, Nx - 1, dtype=int)),
+            2.0 * k[:, Nx - 1] / h**2)
 
     A = sp.coo_matrix(
         (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
@@ -217,10 +243,13 @@ def assemble(u, v, k, Nx: int, Ny: int, bc_mode: float = 0.0):
 
 def rhs(Nx: int, Ny: int, q_chip: float, chip_frac: float,
         bc_mode: float = 0.0, t_hot: float = 1.0, k=None):
-    """Whatever the bottom wall injects, as a load on the right-hand side."""
+    """Loads from the inhomogeneous wall conditions."""
     h = 1.0 / Nx
     b = np.zeros((Ny, Nx))
-    if bc_mode > 0.5:
+    if bc_mode > 1.5:
+        # hot left wall: 2 k t_hot / h^2 into the first column; right is zero
+        b[:, 0] = 2.0 * np.asarray(k)[:, 0] * t_hot / h**2
+    elif bc_mode > 0.5:
         # isothermal hot wall: 2 k t_hot / h^2 into the first row
         b[0, :] = 2.0 * np.asarray(k)[0, :] * t_hot / h**2
     else:
@@ -247,10 +276,11 @@ class InputSchema(BaseModel):
     chip_frac: Float64 = Field(default=0.4, description="Chip width as a fraction of the wall.")
     bc_mode: Float64 = Field(
         default=0.0,
-        description="Bottom wall: 0 = chip heat flux (design problem), "
-        "1 = isothermal hot wall (Rayleigh-Benard benchmark).",
+        description="Wall mode: 0 = chip heat flux on bottom/cold top, "
+        "1 = isothermal hot bottom/cold top (Rayleigh-Benard), "
+        "2 = hot left/cold right/adiabatic horizontal walls (de Vahl Davis).",
     )
-    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature when bc_mode=1.")
+    t_hot: Float64 = Field(default=1.0, description="Hot wall temperature for bc_mode 1 or 2.")
 
 
 class OutputSchema(BaseModel):

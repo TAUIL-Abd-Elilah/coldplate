@@ -114,6 +114,49 @@ def test_peclet_weighting_is_smooth_through_zero_velocity(th_case):
     assert np.isfinite(float(d)) and float(d) > 0
 
 
+def test_differentially_heated_cavity_assembly_matches_residual(th_case):
+    """Mode 2 must retain the residual/assembled-operator identity."""
+    mod, u, v, k, rng = th_case
+    T = jnp.asarray(rng.normal(size=(N, N)))
+    A = mod.assemble(u, v, k, N, N, bc_mode=2.0)
+    # Deliberately nonzero: mode 2 must ignore the cold-plate chip flux.
+    q, cf = 3.7, 0.4
+    b = mod.rhs(N, N, q, cf, bc_mode=2.0, t_hot=1.0, k=k)
+    lhs = A @ np.asarray(T).ravel() - b
+    ref = np.asarray(mod.residual(T, u, v, k, q, cf, 2.0, 1.0)).ravel()
+    assert relerr(lhs, ref) < 1e-12
+
+
+def test_differentially_heated_cavity_recovers_conduction_profile(th_case):
+    """With zero flow the side-heated square has the exact linear solution."""
+    mod, _, _, _, _ = th_case
+    u = np.zeros((N, N + 1))
+    v = np.zeros((N + 1, N))
+    k = np.ones((N, N))
+    inputs = mod.InputSchema(
+        # A nonzero chip flux would bend this profile if mode 2 fell through
+        # to the cold-plate bottom condition instead of making it adiabatic.
+        u=u, v=v, k=k, q_chip=13.0, chip_frac=0.4,
+        bc_mode=2.0, t_hot=1.0,
+    )
+    T = np.asarray(mod.apply(inputs).T)
+    expected = np.tile(1.0 - (np.arange(N) + 0.5) / N, (N, 1))
+    assert np.max(np.abs(T - expected)) < 2e-14
+    assert np.max(np.abs(mod.residual(T, u, v, k, 13.0, 0.4, 2.0, 1.0))) < 1e-11
+
+
+def test_rayleigh_benard_mode_still_recovers_vertical_conduction(th_case):
+    """The additive mode 2 must not alter the pre-existing mode-1 boundary."""
+    mod, _, _, _, _ = th_case
+    u = np.zeros((N, N + 1))
+    v = np.zeros((N + 1, N))
+    k = np.ones((N, N))
+    inputs = mod.InputSchema(u=u, v=v, k=k, bc_mode=1.0, t_hot=1.0)
+    T = np.asarray(mod.apply(inputs).T)
+    expected = np.tile((1.0 - (np.arange(N) + 0.5) / N)[:, None], (1, N))
+    assert np.max(np.abs(T - expected)) < 2e-14
+
+
 # --------------------------------------------------------------------------
 # material_map
 # --------------------------------------------------------------------------
