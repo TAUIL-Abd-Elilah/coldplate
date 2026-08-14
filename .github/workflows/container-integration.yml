@@ -30,7 +30,7 @@ jobs:
           pip install -r requirements-orchestrator.txt
 
       - name: Build compiler toolchain
-        run: scripts/build_toolchain.sh
+        run: bash scripts/build_toolchain.sh
 
       - name: Build all Tesseracts
         run: |
@@ -40,4 +40,4 @@ jobs:
           tesseract build tesseracts/material_map
 
       - name: Exercise the real container boundary
-        run: scripts/judge_demo.sh --no-build --grid 8
+        run: bash scripts/judge_demo.sh --no-build --grid 8

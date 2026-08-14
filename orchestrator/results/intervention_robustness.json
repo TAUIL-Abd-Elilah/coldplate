@@ -3,20 +3,22 @@
   "Ra": 20000.0,
   "amplitude": 0.025,
   "seeds_attempted": 12,
-  "seeds_converged": 10,
-  "seeds_not_converged": 2,
+  "seeds_comparable": 10,
+  "seeds_inconclusive": 1,
+  "base_state_failures": 1,
   "exact_wins": 10,
   "shortcut_wins": 0,
-  "win_rate_over_converged": 1.0,
+  "ties": 0,
+  "win_rate_over_comparable": 1.0,
   "median_extra_cooling_when_winning": 0.35614125944434427,
   "min_extra_cooling_when_winning": 0.05549630461983379,
   "max_extra_cooling_when_winning": 2.758344535036469,
-  "all_converged_actions_reduce_J": true,
-  "selection_note": "Contiguous seed range declared before running; every seed is reported, including losses and designs with no reachable steady state. No seed was chosen after seeing its result.",
+  "all_comparable_actions_reduce_J": true,
+  "selection_note": "Fixed contiguous seed range; every seed is reported, including losses, failed base solves, and inconclusive action comparisons. No seed was selected after seeing its result.",
   "cases": [
     {
       "seed": 0,
-      "outcome": "not_converged",
+      "outcome": "base_not_converged",
       "reason": "RuntimeError: base coupled state did not converge (residual 5.89e-02)"
     },
     {
@@ -86,8 +88,10 @@
     },
     {
       "seed": 6,
-      "outcome": "not_converged",
-      "reason": "RuntimeError: perturbed state did not converge (residual 2.78e-02)"
+      "outcome": "inconclusive",
+      "reason": "The exact-action solve, evaluated first by the earlier runner, did not converge within its budget (residual 2.78e-02); the shortcut action was not evaluated.",
+      "exact_action_ok": false,
+      "naive_action_ok": null
     },
     {
       "seed": 7,

@@ -229,39 +229,48 @@ def main() -> int:
               f"measured {100*(ratio-1):.1f}%")
 
     robustness = load("intervention_robustness.json")
-    if robustness and "seeds_converged" not in robustness:
+    if robustness and "seeds_comparable" not in robustness:
         # Superseded schema: the first version of that sweep hand-picked its
         # seeds and raised on a loss, so it could not report one. Refuse to
         # audit it rather than quietly validate numbers it could not have
         # falsified.
-        check("intervention robustness uses the pre-registered sweep", False,
-              "results predate the pre-registered rewrite; re-run "
+        check("intervention robustness uses the independently evaluated sweep", False,
+              "results predate the independent-action rewrite; re-run "
               "orchestrator/intervention_robustness.py")
         robustness = None
     if robustness:
-        conv = robustness["seeds_converged"]
+        comparable = robustness["seeds_comparable"]
         wins = robustness["exact_wins"]
-        cases = [c for c in robustness["cases"] if c["outcome"] != "not_converged"]
-        print(f"intervention robustness: {wins}/{conv} wins over converged "
-              f"designs, {robustness['seeds_attempted']} attempted, "
-              f"{robustness['seeds_not_converged']} without a steady state")
-        check("the seed range was declared up front, not selected after the fact",
-              "declared before running" in robustness.get("selection_note", ""))
+        cases = [
+            c for c in robustness["cases"]
+            if c["outcome"] in {"exact_wins", "shortcut_wins", "tie"}
+        ]
+        print(f"intervention robustness: {wins} wins, "
+              f"{robustness['shortcut_wins']} observed losses over "
+              f"{comparable} comparable designs; "
+              f"{robustness['seeds_inconclusive']} inconclusive action pair, "
+              f"{robustness['base_state_failures']} failed base solve")
+        check("the seed range is fixed and not selected after individual results",
+              "Fixed contiguous seed range" in robustness.get("selection_note", ""))
         check("the sweep is a contiguous range with no gaps",
               [c["seed"] for c in robustness["cases"]]
               == list(range(robustness["cases"][0]["seed"],
                             robustness["cases"][0]["seed"]
                             + robustness["seeds_attempted"])))
         check("every attempted seed is accounted for",
-              conv + robustness["seeds_not_converged"]
+              comparable + robustness["seeds_inconclusive"]
+              + robustness["base_state_failures"]
               == robustness["seeds_attempted"])
         check("losses were recordable, and are counted if they occurred",
-              wins + robustness["shortcut_wins"] == conv)
-        check("the composed choice won every converged design",
-              wins == conv and conv > 0, f"{wins}/{conv}")
-        check("README/PAPER quote the 10-of-10 result",
-              bool(docs_contain("10/10")) or bool(docs_contain("10 out of 10")))
-        check("every converged design realizes more cooling",
+              wins + robustness["shortcut_wins"] + robustness["ties"]
+              == comparable)
+        check("the composed choice won every comparable design",
+              wins == comparable and comparable > 0, f"{wins}/{comparable}")
+        check("README/PAPER disclose wins, observed losses, and inconclusive cases",
+              bool(docs_contain("10 wins"))
+              and bool(docs_contain("0 observed losses"))
+              and bool(docs_contain("2 inconclusive")))
+        check("every comparable design realizes more cooling",
               all(c["extra_cooling_fraction"] > 0 for c in cases))
         med = robustness["median_extra_cooling_when_winning"]
         check("docs quote the median extra cooling as 36%",

@@ -253,7 +253,7 @@ class ColdPlate:
             if not accepted:
                 # No step along this direction improves the residual. Either we
                 # are at the accuracy floor, or (for near-uniform designs at
-                # high Ra) there is no reachable steady state to converge to.
+                # high Ra) the configured steady solve may not converge.
                 # Either way, further iterations only burn container calls.
                 ok = res < tol
                 self._T_warm = T if res < 1e-6 else None

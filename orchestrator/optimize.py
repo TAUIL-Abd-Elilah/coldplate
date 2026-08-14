@@ -75,7 +75,7 @@ def run(
     # intermediate density -- exactly where topology optimisation has to start --
     # is the worst case for coupling: low Brinkman drag means nothing damps the
     # flow, and low conductivity means a high Peclet number, both at once. That
-    # design has no reachable steady state above Ra ~ 1e3, whereas the
+    # steady solver does not converge for this design above Ra ~ 1e3, whereas the
     # heterogeneous design used for the gradient study stays solvable to 3e5.
     #
     # This is not a weak-coupling cop-out: at Ra = 1e3 the starting design still

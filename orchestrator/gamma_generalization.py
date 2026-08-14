@@ -239,9 +239,9 @@ def main(trials: int = 2000, n: int = 40, m: int = 25, seed: int = 0,
 
     # Why gamma should degrade for a repelling loop, and whether two more VJPs
     # recover it. gamma is the residual of the adjoint equation; the error it
-    # causes is (I - Phi_x^T)^-1 applied to that residual. When rho < 1 the
-    # amplification is bounded by roughly 1/(1 - rho) and gamma alone carries
-    # the signal. When rho >= 1 the amplification is not bounded that way and a
+    # causes is (I - Phi_x^T)^-1 applied to that residual. For normal operators
+    # with rho < 1 its norm is bounded by 1/(1-rho); non-normal conditioning can
+    # amplify more. When rho >= 1 no contraction-based bound applies and a
     # residual of a given size can mean almost anything. The successive terms
     # ||(Phi_x^T)^k g|| are a power iteration, so their ratio estimates rho for
     # free -- the question is whether correcting gamma by it helps.

@@ -127,7 +127,7 @@ def main(N: int = 16, out: str = "results/inertia_study.json") -> int:
         r = run_case(N, Ra, Pr, rho_mean)
         if r is None:
             print(f"{Ra:8.0e} {Pr:6.2f} {rho_mean:6.2f}   "
-                  f"(no reachable steady state)", flush=True)
+                  f"(steady solver did not converge)", flush=True)
             continue
         rows.append(r)
         print(f"{Ra:8.0e} {Pr:6.2f} {rho_mean:6.2f} "

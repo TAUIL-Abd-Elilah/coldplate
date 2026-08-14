@@ -103,16 +103,26 @@ def main(
         base_T = np.asarray(base["T"])
 
         def true_objective(candidate):
-            # Give every intervention the same warm start so evaluation order
-            # cannot affect convergence.
+            """Evaluate one action without preventing the other from running.
+
+            A failed nonlinear solve is an inconclusive measurement, not
+            evidence that no equilibrium exists.  Return it as data so the
+            caller can still evaluate the competing action from the identical
+            warm start.
+            """
             cp._T_warm = base_T
-            props = cp.material(candidate)
-            T, info = cp.solve_coupled(props["alpha"], props["k"])
+            try:
+                props = cp.material(candidate)
+                T, info = cp.solve_coupled(props["alpha"], props["k"])
+            except Exception as exc:  # noqa: BLE001 - solver failures are data
+                return None, None, f"{type(exc).__name__}: {str(exc)[:160]}"
             if not info["ok"]:
-                raise RuntimeError(
-                    f"perturbed state did not converge (residual {info['residual']:.2e})"
+                residual = float(info["residual"])
+                return None, info, (
+                    "solver did not converge within its budget "
+                    f"(residual {residual:.2e})"
                 )
-            return float(cp.objective(T)), info
+            return float(cp.objective(T)), info, None
 
         rows = []
         print(f"base J = {base['J']:.8f}; coupling residual gamma = {report.gamma:.4f}")
@@ -126,14 +136,31 @@ def main(
             if np.any((r_exact < 0) | (r_exact > 1) | (r_naive < 0) | (r_naive > 1)):
                 raise ValueError("amplitude moves the design outside [0, 1]")
 
-            J_exact, info_exact = true_objective(r_exact)
-            J_naive, info_naive = true_objective(r_naive)
-            delta_exact = J_exact - base["J"]
-            delta_naive = J_naive - base["J"]
-            advantage = delta_naive - delta_exact
+            J_exact, info_exact, reason_exact = true_objective(r_exact)
+            J_naive, info_naive, reason_naive = true_objective(r_naive)
+            exact_ok = J_exact is not None
+            naive_ok = J_naive is not None
+            delta_exact = J_exact - base["J"] if exact_ok else None
+            delta_naive = J_naive - base["J"] if naive_ok else None
+            advantage = (
+                delta_naive - delta_exact if exact_ok and naive_ok else None
+            )
+            if advantage is None:
+                outcome = "inconclusive"
+            elif advantage > 0:
+                outcome = "exact_wins"
+            elif advantage < 0:
+                outcome = "shortcut_wins"
+            else:
+                outcome = "tie"
             rows.append(
                 {
                     "amplitude": amplitude,
+                    "outcome": outcome,
+                    "exact_action_ok": exact_ok,
+                    "naive_action_ok": naive_ok,
+                    "exact_action_reason": reason_exact,
+                    "naive_action_reason": reason_naive,
                     "J_exact_action": J_exact,
                     "J_naive_action": J_naive,
                     "delta_J_exact_action": delta_exact,
@@ -145,16 +172,23 @@ def main(
                     "predicted_delta_naive_action_by_true_gradient": float(
                         amplitude * np.sum(g_exact * d_naive)
                     ),
-                    "residual_exact_action": info_exact["residual"],
-                    "residual_naive_action": info_naive["residual"],
+                    "residual_exact_action": (
+                        float(info_exact["residual"]) if info_exact else None
+                    ),
+                    "residual_naive_action": (
+                        float(info_naive["residual"]) if info_naive else None
+                    ),
                 }
             )
-            print(f"{amplitude:10.3f} {delta_exact:15.7f} {delta_naive:15.7f} "
-                  f"{advantage:17.7f}")
+            exact_text = f"{delta_exact:15.7f}" if exact_ok else f"{'FAILED':>15}"
+            naive_text = f"{delta_naive:15.7f}" if naive_ok else f"{'FAILED':>15}"
+            adv_text = f"{advantage:17.7f}" if advantage is not None else f"{'inconclusive':>17}"
+            print(f"{amplitude:10.3f} {exact_text} {naive_text} {adv_text}")
 
     overlap_add = len(set(add_exact.tolist()) & set(add_naive.tolist()))
     overlap_remove = len(set(remove_exact.tolist()) & set(remove_naive.tolist()))
-    exact_wins = sum(r["exact_advantage"] > 0 for r in rows)
+    exact_wins = sum(r["outcome"] == "exact_wins" for r in rows)
+    comparable = [r for r in rows if r["outcome"] != "inconclusive"]
     result = {
         "N": N,
         "Ra": Ra,
@@ -176,14 +210,20 @@ def main(
         "remove_set_overlap": overlap_remove / k,
         "exact_wins": exact_wins,
         "n_amplitudes": len(rows),
+        "n_comparable_amplitudes": len(comparable),
         "rows": rows,
     }
     target = Path(out)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, indent=2))
-    print(f"\nexact-gradient action wins at {exact_wins}/{len(rows)} amplitudes")
+    print(f"\nexact-gradient action wins at {exact_wins}/{len(comparable)} "
+          "comparable amplitudes")
     print(f"wrote {target}")
-    ok = exact_wins == len(rows) and all(r["delta_J_exact_action"] < 0 for r in rows)
+    ok = (
+        len(comparable) == len(rows)
+        and exact_wins == len(comparable)
+        and all(r["delta_J_exact_action"] < 0 for r in comparable)
+    )
     return 0 if ok else 1
 
 

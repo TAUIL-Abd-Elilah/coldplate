@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-orchestrator.txt
-      - run: scripts/build_toolchain.sh
+      - run: bash scripts/build_toolchain.sh
       - name: Build Tesseracts
         run: |
           for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do

@@ -81,6 +81,21 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
           "Why this needs Tesseract" in readme)
     check("README embeds the hero and architecture visuals",
           "fig1_optimisation.gif" in readme and "fig5_architecture.png" in readme)
+
+    # Direct invocation is the documented Linux golden path. Git on Windows
+    # can hide missing execute bits (core.filemode=false), so inspect the index
+    # rather than the local filesystem permissions.
+    try:
+        modes = subprocess.run(
+            ["git", "ls-files", "--stage", "scripts/*.sh"], cwd=ROOT,
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.splitlines()
+        bad_modes = [line.split(maxsplit=1)[1] for line in modes
+                     if line and not line.startswith("100755 ")]
+        check("shell scripts are executable in fresh Linux clones", not bad_modes,
+              ", ".join(bad_modes[:4]))
+    except Exception as exc:  # noqa: BLE001
+        warn("could not verify shell-script execute bits", str(exc))
     visibility = github_visibility()
     if visibility == "public":
         check("GitHub repository is public (required for eligibility)", True)

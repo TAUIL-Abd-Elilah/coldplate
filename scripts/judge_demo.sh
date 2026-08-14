@@ -70,14 +70,14 @@ if [ "$missing" -eq 1 ]; then
         exit 2
     }
     docker image inspect coldplate-enzyme-toolchain:1.0 >/dev/null 2>&1 \
-        || "$ROOT/scripts/build_toolchain.sh"
+        || bash "$ROOT/scripts/build_toolchain.sh"
     for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
         tesseract build "$ROOT/tesseracts/$component"
     done
 fi
 
 echo "=== 1/2 derivative provenance ==="
-"$ROOT/scripts/verify_integrity.sh"
+bash "$ROOT/scripts/verify_integrity.sh"
 
 echo
 echo "=== 2/2 drop-in backend and end-to-end gradient ==="

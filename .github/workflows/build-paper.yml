@@ -1,0 +1,29 @@
+name: build paper
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install renderer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc weasyprint fonts-dejavu poppler-utils
+
+      - name: Build PDF
+        run: |
+          bash scripts/build_paper.sh
+          pdfinfo PAPER.pdf | grep -E '^(Pages|Title|Author):'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coldplate-paper
+          path: PAPER.pdf
+          if-no-files-found: error

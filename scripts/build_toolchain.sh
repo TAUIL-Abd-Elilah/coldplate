@@ -12,7 +12,7 @@
 # clean failure.
 #
 #   usage:  scripts/build_toolchain.sh [attempts]
-set -uo pipefail
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ATTEMPTS="${1:-4}"

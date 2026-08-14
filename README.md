@@ -20,7 +20,7 @@ any one run.
 | --- | --- |
 | Swap JAX autodiff for Fortran/Enzyme | end-to-end gradient changes by **5.3 × 10⁻¹²**, cosine 1.000000000000 |
 | Validate the composed adjoint | directional derivative matches a true coupled finite difference to **8.3 × 10⁻⁶** |
-| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling**, wins **3/3** amplitudes, and wins **10/10** designs over a seed range declared in advance (median 36% more cooling) |
+| Act on the sensitivities at strong coupling | under the same zero-net-material budget, the exact-gradient action gives **58% more realised cooling** and wins **3/3** amplitudes; a fixed 12-seed sweep records **10 wins, 0 observed losses, 2 inconclusive attempts** (median 36% more cooling among wins) |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 
 The exact and loop-cut gradients can both drive the weakly coupled long
@@ -29,7 +29,7 @@ coupled state the shortcut is 86% wrong and flips a third of the signs; when it
 chooses where to move a fixed material budget, the true forward solver confirms
 that the composed sensitivity makes the better engineering decision.
 
-**Start here:** [4-page paper](PAPER.pdf) · [video storyboard](DEMO_SCRIPT.md) ·
+**Start here:** [technical paper](PAPER.pdf) · [video storyboard](DEMO_SCRIPT.md) ·
 [`scripts/judge_demo.sh`](scripts/judge_demo.sh) (safe 1–3 minute warm smoke test)
 
 ---
@@ -118,39 +118,43 @@ This is the missing link between gradient accuracy and an engineering outcome.
 ![Equal-budget material interventions selected by each gradient and evaluated by the true coupled solver.](orchestrator/results/fig10_intervention.png)
 
 Then we held `Ra=2×10⁴` and the `0.025` action fixed and repeated the true
-forward re-solve over a **seed range declared before running** — 0 through 11,
-no design chosen after seeing its result (`intervention_robustness.py`):
+forward re-solve over the fixed contiguous seed range 0 through 11
+(`intervention_robustness.py`):
 
 | seed | γ | naive rel. err | ΔJ, composed choice | ΔJ, loop-cut choice | extra cooling |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | — | — | *no reachable steady state* | | |
+| 0 | — | — | *base solver did not converge within its budget* | | |
 | 1 | 0.330 | 0.859 | −0.04927 | −0.03925 | 26% |
 | 2 | 0.369 | 0.744 | −0.06034 | −0.04202 | 44% |
 | 3 | 0.215 | 0.332 | −0.05143 | −0.04873 | 6% |
 | 4 | 0.201 | 1.122 | **−0.12222** | −0.03252 | **276%** |
 | 5 | 0.366 | 1.010 | −0.04758 | −0.03728 | 28% |
-| 6 | — | — | *no reachable steady state* | | |
+| 6 | — | — | *exact-action solve did not converge; comparison inconclusive* | | |
 | 7 | 0.360 | 0.713 | **−0.11281** | −0.03024 | **273%** |
 | 8 | 0.375 | 0.864 | −0.04577 | −0.03811 | 20% |
 | 9 | 0.194 | 0.345 | −0.06203 | −0.05268 | 18% |
 | 10 | 0.359 | 0.710 | **−0.10077** | −0.02789 | **261%** |
 | 11 | 0.478 | 1.212 | −0.05243 | −0.02328 | 125% |
 
-**The composed choice won 10 out of 10 designs that had a reachable steady
-state**, with a median of **36% extra cooling** and a range of 6% to 276%. Two
-of the twelve had no steady state to converge to at this Rayleigh number; they
-are listed rather than dropped, because a design with no equilibrium is a fact
-about the physics and not a failed trial.
+The sweep produced **10 wins and 0 observed losses** for the composed choice
+among the ten designs for which both actions could be compared, with a median
+of **36% extra cooling** and a range of 6% to 276%. The other **2 attempts are
+inconclusive**: seed 0's base solve did not converge within the numerical
+budget, while the earlier runner stopped seed 6 after the exact-action solve
+failed and therefore never evaluated the shortcut action. Solver failure is
+reported as solver failure; it is not evidence that an equilibrium does not
+exist.
 
 That structure is deliberate, and it replaced an earlier version of this
 experiment that was not sound. The first version took a hand-picked seed list
 and *raised an exception* whenever the exact gradient lost — so a design that
 disagreed would have crashed the run instead of appearing in the table. A test
-that cannot record a negative is not evidence. This one declares its seeds up
-front, records losses as losses, and reports every attempt; it simply happens
-that no loss occurred.
+that cannot record a negative is not evidence. The current driver fixes a
+contiguous range, records losses as losses, evaluates the two actions
+independently, and reports failed or incomplete comparisons instead of turning
+them into wins.
 
-γ was between 0.194 and 0.478 on every converged design — **UNSAFE on all of
+γ was between 0.194 and 0.478 on every comparable design — **UNSAFE on all of
 them**, which is the correct call: the loop-cut gradient carried 33% to 121%
 relative error there.
 
@@ -401,9 +405,11 @@ than the correlation because a false SAFE verdict is the one that hurts someone
 radius, γ correlates **+0.9925 for attracting fixed points (ρ < 1)** but only
 **+0.36 for repelling ones (ρ ≥ 1)**. The reason is structural: γ is the
 *residual* of the adjoint equation, and the error it causes is
-`(I − Φ_Tᵀ)⁻¹` applied to that residual. For ρ < 1 the amplification is bounded
-by roughly 1/(1 − ρ) and γ carries the signal; for ρ ≥ 1 it is not bounded that
-way, and a residual of a given size can mean almost anything.
+`(I − Φ_Tᵀ)⁻¹` applied to that residual. For a normal operator with ρ < 1,
+the inverse norm is bounded by 1/(1 − ρ); non-normal conditioning can amplify
+far more. The attracting cases nevertheless show the strong empirical
+relationship above. For ρ ≥ 1 no contraction-based bound applies, and a
+residual of a given size can mean almost anything.
 
 Two extra VJPs do not rescue it — correcting γ by the observed decay ratio of
 `‖(Φ_Tᵀ)ᵏg‖` gives +0.25, no better. But the diagnostic is not silent there: in
@@ -496,12 +502,12 @@ provides a cheap objective-aware residual screen.*
 
 ### Why Newton, not Picard
 
-Note the operating point has **ρ(Φ_T) ≈ 1.19 > 1**. The fixed point is
-*repelling*, so Picard iteration cannot converge to it — that is not an
-observation but a consequence of the spectral radius exceeding one. Anderson
-acceleration did not rescue it either in our earlier runs. The steady state is
-nonetheless perfectly well defined and perfectly differentiable; it simply
-cannot be reached by iterating the map.
+Note the operating point has **ρ(Φ_T) ≈ 1.19 > 1**. The fixed point is locally
+unstable under Picard iteration: generic nearby errors grow in at least one
+direction, and our Picard and Anderson runs did not converge. A specially
+chosen initial condition could lie on a stable manifold, so ρ > 1 alone does
+not prove that every Picard trajectory fails. The steady state is nonetheless
+well defined and differentiable, and Newton reaches it.
 
 Newton–Krylov does not care, because it only needs `(Φ_T − I)` to be
 invertible, not contractive. This is the practical reason the composition needs
@@ -677,9 +683,10 @@ for the gradient study. That is a measured constraint, not a preference
 (`probe_startpoint.py`). A near-uniform intermediate density — where topology
 optimisation is obliged to start — is the worst case for coupling: low Brinkman
 drag means nothing damps the flow and low conductivity means a high Péclet
-number, simultaneously. Such designs have no reachable steady state above
-Ra ≈ 10³, because open-cavity natural convection there is genuinely unsteady
-and there is nothing for a steady solver to converge to. The heterogeneous
+number, simultaneously. Our steady solver did not converge from those starts
+above Ra ≈ 10³, consistent with open-cavity natural convection becoming
+unsteady; this numerical failure is not proof that no steady branch exists.
+The heterogeneous
 design used for the gradient study stays solvable to Ra = 3×10⁵. Even at
 Ra = 10³ the starting design has a loop gain of 0.76.
 
@@ -940,12 +947,12 @@ unrelated containers, checks derivative provenance, and swaps the complete
 thermal backend on an 8×8 smoke grid:
 
 ```bash
-scripts/judge_demo.sh
+bash scripts/judge_demo.sh
 ```
 
 Allow roughly 10–30 minutes and 8–10 GB of free disk for a first source build;
 with images cached, the smoke run normally takes 1–3 minutes. Use
-`scripts/judge_demo.sh --no-build --grid 16` when the four images already exist.
+`bash scripts/judge_demo.sh --no-build --grid 16` when the four images already exist.
 
 Versions are pinned to what the published numbers were produced with. The
 orchestrator and the Tesseracts deliberately pin *different* versions — the
@@ -963,7 +970,7 @@ Build the Tesseracts. The Fortran one needs its compiler toolchain image first
 downloads are paid once rather than on every rebuild:
 
 ```bash
-scripts/build_toolchain.sh          # or: docker build -t coldplate-enzyme-toolchain:1.0 \
+bash scripts/build_toolchain.sh     # or: docker build -t coldplate-enzyme-toolchain:1.0 \
                                     #       tesseracts/thermal_fortran/toolchain
 ```
 
@@ -988,7 +995,7 @@ cd orchestrator && python compare_thermal_backends.py 16
 Reproduce the whole gradient validation through *both* backends:
 
 ```bash
-scripts/validate_both_backends.sh 16
+bash scripts/validate_both_backends.sh 16
 ```
 
 Reproduce the headline claim — the composed gradient matches finite differences
@@ -1067,10 +1074,10 @@ no solver involved (a few minutes on one core):
 cd orchestrator && python gamma_generalization.py --trials 2400
 ```
 
-Repeat the equal-budget action experiment over a pre-declared range of designs,
-recording every seed including losses and designs with no reachable steady
-state (slow — a non-convergent design must burn the full Newton budget before
-it can be called non-convergent):
+Repeat the equal-budget action experiment over a fixed contiguous range of
+designs, recording every seed including losses, failed base solves and
+inconclusive action pairs (slow — a difficult design can burn the full Newton
+budget):
 
 ```bash
 cd orchestrator && python intervention_robustness.py --n-seeds 12
@@ -1137,11 +1144,10 @@ orchestrator/
   predict_error.py        what predicts component-wise gradient error (one VJP)
   predictor_statistics.py holdout + bootstrap robustness of that correlation
   intervention_test.py    equal-budget sensitivity action, true forward re-solve
-  intervention_robustness.py  pre-registered seed sweep of the action experiment
+  intervention_robustness.py  fixed-range seed sweep of the action experiment
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
   gamma_generalization.py does gamma predict off this problem? 2,377 random loops
   inertia_study.py        when does dropping (u.grad)u change the gradient?
-  intervention_robustness.py  pre-registered seed sweep of the action experiment
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         figures and animation

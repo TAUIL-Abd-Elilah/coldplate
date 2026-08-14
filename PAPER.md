@@ -130,9 +130,10 @@ Krylov matvec.](orchestrator/results/fig5_architecture.png)
 Both halves of the gradient are Krylov solves whose matvecs cross the container
 boundary: Newton–Krylov forward, applying (Φ_T − I) via JVPs, and GMRES for the
 adjoint of (1), applying (I − Φ_T)ᵀ via VJPs. At our operating point the loop
-gain exceeds one, so Picard iteration provably cannot converge — Newton needs
-the linearisation invertible, not contractive. The JVP endpoints are therefore
-not a convenience; they are what makes the forward problem solvable.
+gain exceeds one, so the fixed point is locally unstable under Picard iteration
+and our Picard runs fail; ρ > 1 alone does not rule out every specially chosen
+trajectory. Newton needs the linearisation invertible, not contractive. The JVP
+endpoints are therefore not a convenience; they make the forward solve robust.
 
 **A nonlinear component, and what the hand derivation costs.** Modelling the
 flow as Stokes is itself an approximation, so the fluid block carries the
@@ -315,8 +316,9 @@ UNSAFE genuinely exceeded it.
 The same study locates the boundary, which we would rather not have found. Split
 by spectral radius, γ correlates 0.993 for attracting fixed points and only
 **0.36 for repelling ones**. This follows from (2): γ is a residual, and the
-error it induces is (I − Φ_Tᵀ)⁻¹ applied to it — an amplification bounded by
-about 1/(1−ρ) only while ρ < 1. Correcting γ by the observed decay of ‖(Φ_Tᵀ)ᵏg‖
+error it induces is (I − Φ_Tᵀ)⁻¹ applied to it. For normal operators its norm is
+bounded by 1/(1−ρ) while ρ < 1; non-normal conditioning can amplify more.
+Correcting γ by the observed decay of ‖(Φ_Tᵀ)ᵏg‖
 does not repair it (0.25). But the terms stop decaying in 136 of 178 repelling
 draws, which is the actionable signal: for a repelling loop, trust γ's *verdict*
 and not its *magnitude*, and compute the adjoint. Our own headline state is
@@ -390,12 +392,14 @@ realised cooling** at the largest step for exactly the same material budget.
 ![**Equal-budget actions checked by fresh coupled solves:** the composed choice
 wins 3/3.](orchestrator/results/fig10_intervention.png)
 
-At fixed Ra = 2 × 10⁴ and step 0.025 we then swept a seed range **declared
-before running** — 0 to 11, with losses recordable and non-convergence reported
-rather than dropped. Ten of the twelve designs had a reachable steady state, and
-**the composed choice won all ten**, median 36% extra cooling, range 6% to 276%.
-The design of that sweep is part of the result: its first version hand-picked
-its seeds and raised on a loss, so it could not have reported one.
+At fixed Ra = 2 × 10⁴ and step 0.025 we then swept the fixed contiguous seed
+range 0 to 11, with losses and incomplete comparisons recordable rather than
+dropped. The result is **10 wins, 0 observed losses and 2 inconclusive
+attempts**: one failed base solve and one earlier run in which the exact-action
+solve failed before the shortcut action was evaluated. Among the ten comparable
+designs, median extra cooling was 36%, range 6% to 276%. The revised driver
+evaluates both actions independently; solver failure is not presented as proof
+that no equilibrium exists.
 
 The same distinction appears in attribution (`sensitivity_ranking.py`, 32²,
 Ra = 3 × 10⁴). The shortcut keeps the sign of all fifty truly most influential
@@ -404,14 +408,14 @@ misses 44% of the true top fifty, and promotes a cell truly ranked 1016th of
 1024. A serviceable search direction can still be a useless sensitivity.
 
 Limitations are important. The intervention evidence spans one state over three
-amplitudes plus twelve pre-declared designs at a second state — a sweep, not a
+amplitudes plus a fixed twelve-seed sweep at a second state — not a
 population study, and both states are strongly coupled by construction. The
 physics is two-dimensional; the fluid block carries the convective term when
 asked (Section 2), but the headline results are computed in the Stokes limit,
 which Section 2 justifies by measurement rather than assertion. The topology
 optimisation
-runs at Ra = 10³ because its near-uniform intermediate-density start has no
-reachable steady state at the strong setting. Finally, γ is measured on one
+runs at Ra = 10³ because its steady solver did not converge from the
+near-uniform intermediate-density start at the strong setting. Finally, γ is measured on one
 *physical* system plus 2,377 synthetic ones; the synthetic study establishes
 that the relationship is not an artefact of this problem, but random operators
 are not a substitute for a second real multiphysics application, and the
@@ -419,7 +423,7 @@ repelling regime remains a stated exclusion rather than a solved case.
 
 ## 8. Reproducibility
 
-Four pinned implementations, three served per run; 61 component tests; and a
+Four pinned implementations, three served per run; 73 component tests; and a
 scheduled job that exercises the real container boundary. The safe reviewer
 path is `scripts/judge_demo.sh`; every experiment has a driver, and
 `scripts/audit_claims.py` re-derives the headline numbers.

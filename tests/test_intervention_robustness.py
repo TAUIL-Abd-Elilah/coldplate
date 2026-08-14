@@ -1,13 +1,13 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the pre-registered intervention sweep.
+"""Tests for the fixed-range intervention sweep.
 
 The point of this sweep is that it can report a negative. An earlier version
 hand-picked its seeds and raised whenever the exact gradient lost, so a
 disagreeing design crashed the run instead of appearing in the table. These
 tests pin the properties that prevent that from coming back: losses are
-counted, non-convergent designs are retained rather than dropped, and every
-attempted seed is accounted for somewhere.
+counted, failed base solves and inconclusive action pairs are retained rather
+than dropped, and every attempted seed is accounted for somewhere.
 """
 
 from __future__ import annotations
@@ -39,68 +39,87 @@ def case(seed, exact, naive):
     }
 
 
-def unconverged(seed):
-    return {"seed": seed, "outcome": "not_converged", "reason": "RuntimeError: x"}
+def base_failure(seed):
+    return {
+        "seed": seed,
+        "outcome": "base_not_converged",
+        "reason": "RuntimeError: base solve did not converge",
+    }
+
+
+def inconclusive(seed):
+    return {
+        "seed": seed,
+        "outcome": "inconclusive",
+        "reason": "exact action solver did not converge",
+    }
 
 
 def test_counts_forward_validated_wins():
     r = summarize([case(0, -0.04, -0.035), case(1, -0.06, -0.02),
                    case(2, -0.05, -0.03)], 20, 2.0e4, 0.025)
     assert r["exact_wins"] == 3
-    assert r["seeds_converged"] == 3
+    assert r["seeds_comparable"] == 3
     assert r["shortcut_wins"] == 0
-    assert r["win_rate_over_converged"] == pytest.approx(1.0)
-    assert r["all_converged_actions_reduce_J"]
+    assert r["win_rate_over_comparable"] == pytest.approx(1.0)
+    assert r["all_comparable_actions_reduce_J"]
 
 
 def test_a_loss_is_recorded_not_hidden():
-    # the shortcut cools more on seed 1: this must survive into the summary
     r = summarize([case(0, -0.04, -0.035), case(1, -0.02, -0.06)],
                   20, 2.0e4, 0.025)
     assert r["exact_wins"] == 1
     assert r["shortcut_wins"] == 1
-    assert r["win_rate_over_converged"] == pytest.approx(0.5)
+    assert r["win_rate_over_comparable"] == pytest.approx(0.5)
 
 
-def test_nonconvergent_designs_are_retained_and_excluded_from_the_rate():
-    r = summarize([case(0, -0.04, -0.02), unconverged(1), unconverged(2)],
+def test_failed_and_inconclusive_designs_are_retained_and_excluded_from_rate():
+    r = summarize([case(0, -0.04, -0.02), base_failure(1), inconclusive(2)],
                   20, 2.0e4, 0.025)
     assert r["seeds_attempted"] == 3
-    assert r["seeds_converged"] == 1
-    assert r["seeds_not_converged"] == 2
-    # the rate is over designs that had a steady state, not over all attempts
-    assert r["win_rate_over_converged"] == pytest.approx(1.0)
+    assert r["seeds_comparable"] == 1
+    assert r["base_state_failures"] == 1
+    assert r["seeds_inconclusive"] == 1
+    assert r["win_rate_over_comparable"] == pytest.approx(1.0)
 
 
 def test_every_attempted_seed_is_accounted_for():
-    cases = [case(0, -0.04, -0.02), case(1, -0.02, -0.06), unconverged(2)]
+    cases = [case(0, -0.04, -0.02), case(1, -0.02, -0.06), inconclusive(2)]
     r = summarize(cases, 20, 2.0e4, 0.025)
-    assert r["seeds_converged"] + r["seeds_not_converged"] == r["seeds_attempted"]
-    assert r["exact_wins"] + r["shortcut_wins"] == r["seeds_converged"]
+    assert (
+        r["seeds_comparable"]
+        + r["seeds_inconclusive"]
+        + r["base_state_failures"]
+        == r["seeds_attempted"]
+    )
+    assert (
+        r["exact_wins"] + r["shortcut_wins"] + r["ties"]
+        == r["seeds_comparable"]
+    )
 
 
 def test_extra_cooling_statistics_describe_only_the_wins():
     r = summarize([case(0, -0.04, -0.02), case(1, -0.03, -0.02),
                    case(2, -0.01, -0.05)], 20, 2.0e4, 0.025)
-    # seed 2 is a loss and must not inflate the "extra cooling" range
     assert r["exact_wins"] == 2
     assert r["min_extra_cooling_when_winning"] == pytest.approx(0.5)
     assert r["max_extra_cooling_when_winning"] == pytest.approx(1.0)
 
 
-def test_summary_states_that_seeds_were_declared_up_front():
+def test_summary_states_that_seed_range_is_fixed_and_complete():
     r = summarize([case(0, -0.04, -0.02)], 20, 2.0e4, 0.025)
-    assert "declared before running" in r["selection_note"]
+    assert "Fixed contiguous seed range" in r["selection_note"]
+    assert "every seed is reported" in r["selection_note"]
 
 
-def test_all_nonconvergent_sweep_reports_no_rate_rather_than_zero():
-    r = summarize([unconverged(0), unconverged(1)], 20, 2.0e4, 0.025)
-    assert r["seeds_converged"] == 0
-    assert r["win_rate_over_converged"] is None
+def test_all_inconclusive_sweep_reports_no_rate_rather_than_zero():
+    r = summarize([base_failure(0), inconclusive(1)], 20, 2.0e4, 0.025)
+    assert r["seeds_comparable"] == 0
+    assert r["win_rate_over_comparable"] is None
     assert r["median_extra_cooling_when_winning"] is None
 
 
 def test_empty_sweep_is_not_a_silent_success():
     r = summarize([], 20, 2.0e4, 0.025)
     assert r["seeds_attempted"] == 0
-    assert r["win_rate_over_converged"] is None
+    assert r["win_rate_over_comparable"] is None

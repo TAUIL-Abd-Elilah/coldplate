@@ -152,15 +152,15 @@ coupled forward solves.
 > derivative stacks, one two-way differentiable equilibrium—and a one-VJP check
 > for when the shortcut is risky.
 >
-> The README starts with a safe judge command. Sixty-one component tests run
+> The README starts with a safe judge command. Seventy-three component tests run
 > in CI without Docker, while a scheduled container job exercises the real
-> boundary. Source, four-page paper, evidence, and every command are public.
+> boundary. Source, technical paper, evidence, and every command are public.
 
 ---
 
 ## Recording notes
 
-- The strongest live command is `scripts/judge_demo.sh --no-build --grid 16`.
+- The strongest live command is `bash scripts/judge_demo.sh --no-build --grid 16`.
   It performs integrity checks and the JAX-versus-Enzyme backend swap while
   cleaning up only Coldplate images.
 - If showing a terminal, `nm -D --defined-only libthermal_ad.so | grep cosh`
