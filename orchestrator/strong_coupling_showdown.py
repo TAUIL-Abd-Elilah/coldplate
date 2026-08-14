@@ -521,8 +521,15 @@ def main(protocol_path: str = str(DEFAULT_PROTOCOL), out: str | None = None) -> 
     return 0 if payload["complete"] else 1
 
 
-if __name__ == "__main__":
+def cli(argv: list[str] | None = None) -> int:
+    """Parse command-line arguments and run the frozen showdown."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--protocol", default=str(DEFAULT_PROTOCOL))
+    parser.add_argument(
+        "--protocol", dest="protocol_path", default=str(DEFAULT_PROTOCOL)
+    )
     parser.add_argument("--out")
-    raise SystemExit(main(**vars(parser.parse_args())))
+    return main(**vars(parser.parse_args(argv)))
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())

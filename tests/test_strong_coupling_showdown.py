@@ -13,12 +13,31 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
+import strong_coupling_showdown as showdown_module  # noqa: E402
+
 from strong_coupling_showdown import (  # noqa: E402
     initial_design,
     load_protocol,
     summarize,
     trajectory_metrics,
 )
+
+
+def test_cli_maps_protocol_option_to_main_parameter(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_main(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    protocol = tmp_path / "protocol.json"
+    out = tmp_path / "result.json"
+    monkeypatch.setattr(showdown_module, "main", fake_main)
+
+    assert showdown_module.cli(
+        ["--protocol", str(protocol), "--out", str(out)]
+    ) == 0
+    assert captured == {"protocol_path": str(protocol), "out": str(out)}
 
 
 def test_frozen_showdown_protocol_is_deterministic_and_discloses_prior_overlap():
