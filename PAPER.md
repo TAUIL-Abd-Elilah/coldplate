@@ -134,6 +134,35 @@ gain exceeds one, so Picard iteration provably cannot converge — Newton needs
 the linearisation invertible, not contractive. The JVP endpoints are therefore
 not a convenience; they are what makes the forward problem solvable.
 
+**A nonlinear component, and what the hand derivation costs.** Modelling the
+flow as Stokes is itself an approximation, so the fluid block carries the
+convective acceleration behind a weight: `inertia = 0` is the infinite-Prandtl
+limit and reproduces every earlier result bitwise, `inertia = 1` is steady
+Navier–Stokes and makes the block nonlinear in w, solved by damped Newton.
+
+The hand-derived adjoint survives intact. (u·∇)u is *bilinear* and involves
+neither α nor T, so every parameter scatter is unchanged and only the inverted
+operator moves from A to the Jacobian at the converged state, J = A + ∂N/∂w.
+That is the practical argument for deriving an adjoint rather than reaching for
+a tool: the structure tells you which part a new nonlinearity touches, and it is
+a small part. All of it is checked against the autodiffed reference —
+forward < 10⁻⁸, JVP and VJP < 10⁻⁷ through the Newton solve, and the adjoint
+identity to 10⁻⁸ — with two tests present solely to stop the rest passing
+vacuously, one asserting that inertia moves the solution and one that the
+inertial tangent differs from the Stokes tangent. The full composition still
+matches a coupled finite difference to 8.5 × 10⁻⁸ with the nonlinear block in
+place.
+
+Having built it, we ask of this shortcut what the rest of the paper asks of
+loop-cutting. At the operating point used throughout — Ra = 3 × 10⁴, mean
+density 0.5 — dropping inertia changes the design gradient by **0.002% in water
+and 0.017% in air**, cosine 1 to eight decimals (`inertia_study.py`). Brinkman
+drag is a linear sink on exactly the velocities the convective term feeds on,
+and at an rms speed of 0.4 that term sits orders of magnitude below the viscous
+one. So the Stokes limit used for every headline number is justified by
+measurement rather than by appeal to Pr → ∞ — and the general point stands
+again: a shortcut's safety is a property of the regime, not of the model.
+
 **Chain versus loop.** The distinction matters and is often blurred. A *chain* —
 A feeds B feeds an objective — is differentiable by one sweep of the chain rule;
 a single `jax.grad` over wrapped components suffices and nothing is solved. This
@@ -377,8 +406,10 @@ misses 44% of the true top fifty, and promotes a cell truly ranked 1016th of
 Limitations are important. The intervention evidence spans one state over three
 amplitudes plus twelve pre-declared designs at a second state — a sweep, not a
 population study, and both states are strongly coupled by construction. The
-physics is
-two-dimensional and Stokes, so inertia is absent. The topology optimisation
+physics is two-dimensional; the fluid block carries the convective term when
+asked (Section 2), but the headline results are computed in the Stokes limit,
+which Section 2 justifies by measurement rather than assertion. The topology
+optimisation
 runs at Ra = 10³ because its near-uniform intermediate-density start has no
 reachable steady state at the strong setting. Finally, γ is measured on one
 *physical* system plus 2,377 synthetic ones; the synthetic study establishes

@@ -747,10 +747,85 @@ flow-blocking — to minimise the mean chip temperature. Solid conducts heat
 away; open channels let buoyancy carry it away. The optimum has to trade the
 two off, which is why the coupled gradient matters.
 
-Both blocks are *linear in their own unknown*; all the nonlinearity lives in
-the composition. That is what makes the per-block adjoints exact and cheap, and
-it isolates the hard part — the coupling — as the only place a gradient can go
-wrong.
+With `inertia = 0` both blocks are *linear in their own unknown* and all the
+nonlinearity lives in the composition. That is what makes the per-block adjoints
+exact and cheap, and it isolates the hard part — the coupling — as the only
+place a gradient can go wrong.
+
+### Inertia: the fluid block can be nonlinear too
+
+Modelling the flow as Stokes is an approximation, and this repository is about
+not taking approximations on trust. So the fluid component now carries the
+convective acceleration behind a weight:
+
+```
+fluid     inertia·(u·∇)u − Pr ∇²u + ∇p + Pr·alpha(rho)·u = Ra·Pr·T ê_y
+```
+
+`inertia = 0` is the infinite-Prandtl limit and reproduces every earlier result
+**bitwise** — the original `sb_create` entry point is still there and still
+takes the linear path, so the pre-existing tests exercise the unmodified code.
+`inertia = 1` is the steady Navier–Stokes–Boussinesq problem, and the fluid
+block stops being linear in `w`: the solve becomes a damped Newton iteration.
+
+**The hand-derived adjoint survives that**, which is the interesting part. The
+convective term is *bilinear* and involves neither `alpha` nor `T`, so every
+parameter scatter in the JVP and VJP is untouched; the only thing that changes
+is the operator being inverted, from `A` to the Jacobian at the converged state
+`J = A + ∂N/∂w`. Deriving an adjoint by hand tells you exactly which part of
+the derivation a new nonlinearity touches, and here it is a small part.
+
+Because a hand-derived Jacobian is exactly the kind of thing that is quietly
+wrong, all of it is checked against `prototype/reference_jax.py`, where the same
+residual is differentiated by autodiff instead (`tests/test_navier_stokes.py`,
+12 tests):
+
+| check, at Pr = 0.71 and Ra = 10⁶ | agreement |
+| --- | --- |
+| forward solve vs the JAX reference | < 10⁻⁸ |
+| JVP vs `jax.jvp` through the Newton solve | < 10⁻⁷ |
+| VJP vs `jax.vjp` | < 10⁻⁷ |
+| adjoint identity `⟨J dx, y⟩ = ⟨dx, Jᵀy⟩` | < 10⁻⁸ |
+| `inertia = 0` vs the original entry point | **bitwise identical** |
+
+Two of those tests exist only to stop the others passing vacuously: one asserts
+that inertia actually moves the solution, and one asserts that the inertial
+tangent genuinely differs from the Stokes tangent — otherwise a JVP that kept
+inverting `A` instead of `J` would sail through everything else on a weak flow.
+
+The whole composition still validates end to end with the nonlinear block in
+place: at 16×16, Ra = 3×10⁴, Pr = 0.71, the composed gradient matches a coupled
+finite difference to **8.5 × 10⁻⁸**
+(`validate_pipeline.py 16 thermal_advdiff 1.0 0.71`).
+
+#### So does dropping inertia cost anything here?
+
+Having built it, the honest thing is to ask the same question of this shortcut
+that the rest of the repository asks of loop-cutting — and answer it by
+measurement (`inertia_study.py`, 16×16, each configuration solved twice):
+
+| Ra | Pr | mean ρ | rms speed | flow change | gradient change | cosine |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3×10⁴ | 7.0 (water) | 0.50 | 0.40 | 0.001% | **0.002%** | 1.00000000 |
+| 3×10⁴ | 0.71 (air) | 0.50 | 0.40 | 0.011% | **0.017%** | 1.00000000 |
+
+**At the operating point this repository actually uses, inertia is worth
+nothing** — it moves the design gradient by two hundredths of a percent, with a
+cosine of 1 to eight decimals. Two effects conspire: the Brinkman drag is a
+linear sink that damps exactly the velocities the convective term feeds on, and
+the resulting rms speed of 0.4 leaves the convective term orders of magnitude
+below the viscous one.
+
+That is a result, not a disappointment. It means every earlier number in this
+README stands, and it says so on the basis of a measurement rather than an
+appeal to the infinite-Prandtl limit. The tests establish the converse — at
+Pr = 0.71, Ra = 10⁶ and a nearly open domain, inertia moves the flow and the
+tangents by orders of magnitude more, which is why those are the conditions the
+test suite uses.
+
+The general lesson is the same one γ makes for the coupling loop: **a shortcut's
+safety is a property of the regime, not of the model**, and it is cheap to
+check.
 
 ### Application scope
 
@@ -969,6 +1044,21 @@ realised outcome with the true forward solver:
 cd orchestrator && python intervention_test.py --N 20 --Ra 3e4
 ```
 
+Validate the composed gradient with the **nonlinear** Navier–Stokes fluid block
+in place, so the adjoint is a solve against the Jacobian at a converged Newton
+state rather than against a fixed factorisation:
+
+```bash
+cd orchestrator && python validate_pipeline.py 16 thermal_advdiff 1.0 0.71
+```
+
+Measure when dropping inertia actually changes the design gradient — the same
+"is this shortcut safe?" question asked of a second approximation:
+
+```bash
+cd orchestrator && python inertia_study.py --N 16
+```
+
 Test whether γ predicts anything outside this problem — thousands of random
 coupled fixed points where the exact answer is closed form, no containers and
 no solver involved (a few minutes on one core):
@@ -1050,6 +1140,7 @@ orchestrator/
   intervention_robustness.py  pre-registered seed sweep of the action experiment
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
   gamma_generalization.py does gamma predict off this problem? 2,377 random loops
+  inertia_study.py        when does dropping (u.grad)u change the gradient?
   intervention_robustness.py  pre-registered seed sweep of the action experiment
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation

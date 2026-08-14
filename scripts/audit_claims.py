@@ -313,6 +313,22 @@ def main() -> int:
               and bool(docs_contain("repelling")),
               f"repelling corr {gg['repelling']['log_gamma_correlation']:+.3f}")
 
+    # ---- inertia: is the Stokes limit justified where it is used? -------
+    rows = load("inertia_study.json")
+    if rows:
+        design = [r for r in rows if abs(r["Ra"] - 3.0e4) < 1 and r["rho_mean"] == 0.5]
+        print(f"inertia study: {len(rows)} configurations solved twice")
+        check("dropping inertia is negligible at the operating point used",
+              all(r["grad_rel_change"] < 1e-3 for r in design) and bool(design),
+              "; ".join(f"Pr={r['Pr']}: {100*r['grad_rel_change']:.3f}%"
+                        for r in design))
+        check("the Stokes and Navier-Stokes gradients are collinear there",
+              all(r["grad_cosine"] > 0.9999999 for r in design))
+        for r in design:
+            quoted = f"{100 * r['grad_rel_change']:.3f}%"
+            check(f"docs quote the Pr={r['Pr']:g} gradient change as {quoted}",
+                  bool(docs_contain(quoted)), f"measured {quoted}")
+
     # ---- claims that must NOT appear ----------------------------------
     print("\n=== retracted claims must not reappear ===")
     for bad, why in [

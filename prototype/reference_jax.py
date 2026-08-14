@@ -65,6 +65,12 @@ class Config:
     alpha_max: float = 1.0e5  # Brinkman penalty inside solid
     q_chip: float = 1.0  # heat flux into the chip strip
     chip_frac: float = 0.4  # chip covers middle 40% of the bottom wall
+    # Weight on the convective acceleration (u.grad)u in the momentum equation.
+    # 0 is the infinite-Prandtl (Stokes) limit and keeps the fluid block linear
+    # in w, which is what the original solver assumed everywhere. 1 is the full
+    # steady Navier-Stokes-Boussinesq problem. Intermediate values exist so the
+    # Newton solve can be continued in from the Stokes solution at high Ra.
+    inertia: float = 0.0
 
     @property
     def h(self) -> float:
@@ -134,6 +140,18 @@ def fluid_residual(w: jnp.ndarray, T: jnp.ndarray, alpha: jnp.ndarray, cfg: Conf
     lap_u = (u_xm - 2 * uc + u_xp) / h**2 + (u_ym - 2 * uc + u_yp) / h**2
     dpdx = (p[:, 1:Nx] - p[:, 0 : Nx - 1]) / h
     Ru = -cfg.Pr * lap_u + dpdx + cfg.Pr * alpha_u[:, 1:Nx] * uc
+    if cfg.inertia:
+        # (u.grad)u on the u-faces. Central differences reusing the same
+        # reflected ghosts as the Laplacian, so the wall treatment is
+        # consistent between the two terms. v is averaged from the four
+        # surrounding v-faces.
+        v_at_u = 0.25 * (
+            v[0:Ny, 0 : Nx - 1] + v[0:Ny, 1:Nx]
+            + v[1 : Ny + 1, 0 : Nx - 1] + v[1 : Ny + 1, 1:Nx]
+        )
+        Ru = Ru + cfg.inertia * (
+            uc * (u_xp - u_xm) / (2 * h) + v_at_u * (u_yp - u_ym) / (2 * h)
+        )
 
     # --- y-momentum on interior horizontal faces j = 1 .. Ny-1 ---
     vc = v[1:Ny, :]
@@ -150,6 +168,14 @@ def fluid_residual(w: jnp.ndarray, T: jnp.ndarray, alpha: jnp.ndarray, cfg: Conf
         + cfg.Pr * alpha_v[1:Ny, :] * vc
         - cfg.Ra * cfg.Pr * T_face
     )
+    if cfg.inertia:
+        u_at_v = 0.25 * (
+            u[0 : Ny - 1, 0:Nx] + u[0 : Ny - 1, 1 : Nx + 1]
+            + u[1:Ny, 0:Nx] + u[1:Ny, 1 : Nx + 1]
+        )
+        Rv = Rv + cfg.inertia * (
+            u_at_v * (v_xp - v_xm) / (2 * h) + vc * (v_yp - v_ym) / (2 * h)
+        )
 
     # --- continuity at cell centres ---
     div = (u[:, 1 : Nx + 1] - u[:, 0:Nx]) / h + (v[1 : Ny + 1, :] - v[0:Ny, :]) / h
@@ -182,10 +208,59 @@ def fluid_rhs(T: jnp.ndarray, alpha: jnp.ndarray, cfg: Config):
 
 @functools.partial(jax.jit, static_argnums=2)
 def solve_fluid(T: jnp.ndarray, alpha: jnp.ndarray, cfg: Config):
-    """Solve the (linear) fluid block for the given temperature and design."""
+    """Solve the fluid block for the given temperature and design.
+
+    Without inertia the block is linear in w and this is a single solve. With
+    inertia it is the steady Navier-Stokes-Boussinesq problem, so we take the
+    Stokes solution as the initial guess and run Newton on the full residual.
+    The Stokes start is a good one precisely because the convective term is
+    quadratic: it vanishes at w = 0 and is small wherever the flow is slow.
+    """
     A = assemble_fluid(alpha, cfg)
     w = jnp.linalg.solve(A, fluid_rhs(T, alpha, cfg))
+    if cfg.inertia:
+        # Converge with derivatives switched off. `lax.while_loop` has no
+        # reverse-mode rule, and even where it does, differentiating the
+        # iteration history is the wrong thing: the derivative of a converged
+        # fixed point depends on where it landed, not how it got there.
+        w = jax.lax.stop_gradient(
+            _newton_fluid(jax.lax.stop_gradient(w), jax.lax.stop_gradient(T),
+                          jax.lax.stop_gradient(alpha), cfg)
+        )
+        # One differentiable Newton correction taken at the converged state.
+        # Because R(w*) is at the solver floor, this leaves the value alone but
+        # carries the exact implicit derivative dw = -J^-1 dR/dparams -- the
+        # same quantity the C++ component obtains from its hand-derived
+        # Jacobian, which is what the test suite compares.
+        resid = lambda ww: fluid_residual(ww, T, alpha, cfg)  # noqa: E731
+        w = w - jnp.linalg.solve(jax.jacfwd(resid)(w), resid(w))
     return _unpack_fluid(w, cfg)
+
+
+def _newton_fluid(w0, T, alpha, cfg: Config, tol: float = 1e-12,
+                  max_iter: int = 40):
+    """Newton on the full nonlinear fluid residual, exact Jacobian by autodiff.
+
+    This is the reference implementation, so the Jacobian is taken by
+    `jax.jacfwd` rather than derived. That is the entire point: the C++
+    component derives the same Jacobian by hand, and the test suite checks the
+    two against each other to machine precision.
+    """
+    resid = lambda ww: fluid_residual(ww, T, alpha, cfg)  # noqa: E731
+
+    def cond(state):
+        _, it, r = state
+        return (r > tol) & (it < max_iter)
+
+    def body(state):
+        w, it, _ = state
+        R = resid(w)
+        J = jax.jacfwd(resid)(w)
+        w_new = w - jnp.linalg.solve(J, R)
+        return w_new, it + 1, jnp.max(jnp.abs(resid(w_new)))
+
+    w, _, _ = jax.lax.while_loop(cond, body, (w0, 0, jnp.inf))
+    return w
 
 
 # --------------------------------------------------------------------------

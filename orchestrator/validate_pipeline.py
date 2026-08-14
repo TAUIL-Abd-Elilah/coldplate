@@ -32,14 +32,19 @@ def relerr(a, b):
     return float(np.max(np.abs(a - b)) / max(np.max(np.abs(b)), 1e-300))
 
 
-def main(N: int = 20, backend: str = "thermal_advdiff") -> int:
-    p = Params(Nx=N, Ny=N, Ra=3.0e4)
+def main(N: int = 20, backend: str = "thermal_advdiff",
+         inertia: float = 0.0, Pr: float = 7.0) -> int:
+    p = Params(Nx=N, Ny=N, Ra=3.0e4, Pr=Pr, inertia=inertia)
     rng = np.random.default_rng(0)
     rho = rng.uniform(0.25, 0.75, size=(N, N))
 
     how = {"thermal_advdiff": "JAX autodiff",
            "thermal_fortran": "Fortran + Enzyme compiler AD"}.get(backend, backend)
+    fluid = ("Stokes-Brinkman, linear in w" if inertia == 0.0
+             else f"Navier-Stokes-Brinkman, inertia={inertia:g}, "
+                  f"nonlinear in w")
     print(f"grid {N}x{N}, Ra={p.Ra:.0e}, Pr={p.Pr}")
+    print(f"fluid block: {fluid}")
     print(f"composing: material_map [PyTorch] -> stokes_brinkman [C++] "
           f"<-> {backend} [{how}]\n")
 
@@ -148,7 +153,15 @@ def main(N: int = 20, backend: str = "thermal_advdiff") -> int:
 
 
 if __name__ == "__main__":
-    # usage: validate_pipeline.py [N] [thermal backend]
+    # usage: validate_pipeline.py [N] [thermal backend] [inertia] [Pr]
+    #
+    # inertia = 1 turns the fluid block from Stokes into steady Navier-Stokes,
+    # so the composed gradient is then being validated through a *nonlinear*
+    # component whose adjoint is a solve against the Jacobian at its converged
+    # state. Pass a small Prandtl number with it; at Pr = 7 the convective term
+    # is negligible and the two runs are indistinguishable.
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     be = sys.argv[2] if len(sys.argv) > 2 else "thermal_advdiff"
-    sys.exit(main(n, be))
+    inertia = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
+    pr = float(sys.argv[4]) if len(sys.argv) > 4 else 7.0
+    sys.exit(main(n, be, inertia, pr))

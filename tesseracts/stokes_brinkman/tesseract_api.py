@@ -1,9 +1,9 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Tesseract wrapping a C++/Eigen Stokes-Brinkman-Boussinesq solver.
+"""Tesseract wrapping a C++/Eigen Brinkman-Boussinesq flow solver.
 
 Derivatives here come from a hand-derived discrete adjoint, not from an AD
-tool. The system is linear in the unknown w = (u, v, p):
+tool. With `inertia = 0` the system is linear in the unknown w = (u, v, p):
 
     A(alpha) w = b(T)
 
@@ -12,6 +12,18 @@ sparse factorisation:
 
     VJP   lam = A^{-T} wbar ,  then scatter lam against dA/dalpha and db/dT
     JVP   dw  = A^{-1} ( db/dT dT - (dA/dalpha dalpha) w )
+
+With `inertia = 1` the convective acceleration (u.grad)u is included and the
+block becomes steady Navier-Stokes, i.e. nonlinear in w:
+
+    R(w) = A(alpha) w + N(w) - b(T) = 0
+
+solved by damped Newton. The adjoint survives that intact, because N is
+bilinear and involves neither alpha nor T: every scatter above is unchanged and
+only the operator being inverted moves from A to the Jacobian at the converged
+state, J = A + dN/dw. That is the practical point of deriving an adjoint by
+hand rather than reaching for a tool -- the structure tells you exactly which
+part of the derivation the nonlinearity touches, and it is a small part.
 
 The factorisation is cached across endpoint calls keyed on the design field, so
 within one optimisation step the forward solve, the tangent and the adjoint all
@@ -43,8 +55,11 @@ _lib = ctypes.CDLL(str(_LIB_PATH))
 
 _dp = ctypes.POINTER(ctypes.c_double)
 
-_lib.sb_create.restype = ctypes.c_void_p
-_lib.sb_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double, ctypes.c_double, _dp]
+_lib.sb_create_ns.restype = ctypes.c_void_p
+_lib.sb_create_ns.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double,
+                              ctypes.c_double, ctypes.c_double, _dp]
+_lib.sb_residual.restype = ctypes.c_double
+_lib.sb_residual.argtypes = [ctypes.c_void_p, _dp]
 _lib.sb_destroy.restype = None
 _lib.sb_destroy.argtypes = [ctypes.c_void_p]
 _lib.sb_apply.restype = ctypes.c_int
@@ -83,18 +98,27 @@ class _Handle:
             self.ptr = None
 
 
-def _solver(alpha: np.ndarray, Pr: float, Ra: float) -> _Handle:
-    """Assemble+factorise A(alpha), reusing the LU when the design repeats."""
+def _solver(alpha: np.ndarray, Pr: float, Ra: float, inertia: float = 0.0) -> _Handle:
+    """Assemble+factorise A(alpha), reusing the LU when the design repeats.
+
+    With inertia the cached object still owns A, but the operator the tangent
+    and adjoint invert is the Jacobian at the converged state, which depends on
+    T as well. That is rebuilt by every `sb_apply`, and both derivative
+    endpoints below call the forward solve first, so the Jacobian is always the
+    one belonging to the state being differentiated.
+    """
     Ny, Nx = alpha.shape
     key = hashlib.blake2b(
-        alpha.tobytes() + np.array([Pr, Ra, Nx, Ny], dtype=np.float64).tobytes(),
+        alpha.tobytes()
+        + np.array([Pr, Ra, inertia, Nx, Ny], dtype=np.float64).tobytes(),
         digest_size=16,
     ).hexdigest()
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
 
-    ptr = _lib.sb_create(Nx, Ny, ctypes.c_double(Pr), ctypes.c_double(Ra), _p(alpha))
+    ptr = _lib.sb_create_ns(Nx, Ny, ctypes.c_double(Pr), ctypes.c_double(Ra),
+                            ctypes.c_double(inertia), _p(alpha))
     if not ptr:
         raise RuntimeError(
             "Stokes-Brinkman factorisation failed (singular system). "
@@ -124,6 +148,15 @@ class InputSchema(BaseModel):
     )
     Ra: Float64 = Field(default=3.0e4, description="Rayleigh number.")
     Pr: Float64 = Field(default=7.0, description="Prandtl number.")
+    inertia: Float64 = Field(
+        default=0.0,
+        description="Weight on the convective acceleration (u.grad)u. 0 is the "
+        "infinite-Prandtl Stokes limit, in which the block is linear in "
+        "(u,v,p) and one factorisation serves the solve, the tangent and the "
+        "adjoint. 1 is steady Navier-Stokes: the solve becomes a damped Newton "
+        "iteration and the derivatives invert the Jacobian at the converged "
+        "state instead. Values in between exist for continuation.",
+    )
 
 
 class OutputSchema(BaseModel):
@@ -140,9 +173,9 @@ class OutputSchema(BaseModel):
 # --------------------------------------------------------------------------
 
 
-def _forward(alpha: np.ndarray, T: np.ndarray, Pr: float, Ra: float):
+def _forward(alpha: np.ndarray, T: np.ndarray, Pr: float, Ra: float, inertia: float = 0.0):
     Ny, Nx = alpha.shape
-    h = _solver(alpha, Pr, Ra)
+    h = _solver(alpha, Pr, Ra, inertia)
     u = np.zeros((Ny, Nx + 1), dtype=np.float64)
     v = np.zeros((Ny + 1, Nx), dtype=np.float64)
     p = np.zeros((Ny, Nx), dtype=np.float64)
@@ -153,7 +186,8 @@ def _forward(alpha: np.ndarray, T: np.ndarray, Pr: float, Ra: float):
 
 def apply(inputs: InputSchema) -> OutputSchema:
     alpha, T = _c(inputs.alpha), _c(inputs.T)
-    u, v = _forward(alpha, T, float(inputs.Pr), float(inputs.Ra))
+    u, v = _forward(alpha, T, float(inputs.Pr), float(inputs.Ra),
+                    float(inputs.inertia))
     return OutputSchema(u=u, v=v)
 
 
@@ -174,10 +208,11 @@ def jacobian_vector_product(
 ):
     alpha, T = _c(inputs.alpha), _c(inputs.T)
     Pr, Ra = float(inputs.Pr), float(inputs.Ra)
+    inertia = float(inputs.inertia)
     Ny, Nx = alpha.shape
 
-    u, v = _forward(alpha, T, Pr, Ra)
-    h = _solver(alpha, Pr, Ra)
+    u, v = _forward(alpha, T, Pr, Ra, inertia)
+    h = _solver(alpha, Pr, Ra, inertia)
 
     d_alpha = _c(tangent_vector["alpha"]) if "alpha" in jvp_inputs else None
     d_T = _c(tangent_vector["T"]) if "T" in jvp_inputs else None
@@ -206,10 +241,11 @@ def vector_jacobian_product(
 ):
     alpha, T = _c(inputs.alpha), _c(inputs.T)
     Pr, Ra = float(inputs.Pr), float(inputs.Ra)
+    inertia = float(inputs.inertia)
     Ny, Nx = alpha.shape
 
-    u, v = _forward(alpha, T, Pr, Ra)
-    h = _solver(alpha, Pr, Ra)
+    u, v = _forward(alpha, T, Pr, Ra, inertia)
+    h = _solver(alpha, Pr, Ra, inertia)
 
     ubar = _c(cotangent_vector["u"]) if "u" in vjp_outputs else np.zeros((Ny, Nx + 1))
     vbar = _c(cotangent_vector["v"]) if "v" in vjp_outputs else np.zeros((Ny + 1, Nx))

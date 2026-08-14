@@ -52,6 +52,11 @@ class Params:
     Pr: float = 7.0  # component-wise gradients point the wrong way
     q_chip: float = 1.0
     chip_frac: float = 0.4
+    # Weight on the convective acceleration in the fluid block. 0 is the
+    # infinite-Prandtl Stokes limit used for every result that predates it; 1
+    # is steady Navier-Stokes, which makes the fluid component nonlinear and
+    # its adjoint a solve against the Jacobian at the converged state.
+    inertia: float = 0.0
     # 0 = cold-plate (chip heat flux on part of the bottom wall, the design
     # problem); 1 = Rayleigh-Benard (isothermal hot bottom wall, used to check
     # the coupled physics against the classical critical Rayleigh number).
@@ -141,7 +146,7 @@ class ColdPlate:
         """One trip around the coupling loop: T -> (u,v) -> T. Crosses C++/JAX."""
         p = self.params
         flow = apply_tesseract(
-            self._t["fluid"], {"alpha": alpha, "T": T, "Ra": p.Ra, "Pr": p.Pr}
+            self._t["fluid"], {"alpha": alpha, "T": T, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia}
         )
         out = apply_tesseract(
             self._t["thermal"],
@@ -330,7 +335,7 @@ class ColdPlate:
             naive = self.one_way_grad if mode == "one_way" else self.frozen_flow_grad
             p = self.params
             flow = apply_tesseract(
-                self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr}
+                self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia}
             )
             return {
                 "J": float(self.objective(T_star)),
@@ -362,7 +367,7 @@ class ColdPlate:
                 p = self.params
                 flow = apply_tesseract(
                     self._t["fluid"],
-                    {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr},
+                    {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia},
                 )
                 return {
                     "J": float(self.objective(T_star)),
@@ -400,7 +405,7 @@ class ColdPlate:
         # cached factorisation, so this is a back-substitution, not a re-solve)
         p = self.params
         flow = apply_tesseract(
-            self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr}
+            self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia}
         )
 
         return {
@@ -438,7 +443,7 @@ class ColdPlate:
 
         def J_of(a, kk):
             flow = apply_tesseract(
-                self._t["fluid"], {"alpha": a, "T": T_frozen, "Ra": p.Ra, "Pr": p.Pr}
+                self._t["fluid"], {"alpha": a, "T": T_frozen, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia}
             )
             out = apply_tesseract(
                 self._t["thermal"],
@@ -477,7 +482,7 @@ class ColdPlate:
 
         p = self.params
         flow = apply_tesseract(
-            self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr}
+            self._t["fluid"], {"alpha": alpha, "T": T_star, "Ra": p.Ra, "Pr": p.Pr, "inertia": p.inertia}
         )
         u_f = jax.lax.stop_gradient(flow["u"])
         v_f = jax.lax.stop_gradient(flow["v"])

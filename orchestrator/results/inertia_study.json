@@ -1,0 +1,28 @@
+[
+  {
+    "Ra": 30000.0,
+    "Pr": 7.0,
+    "rho_mean": 0.5,
+    "rms_speed_stokes": 0.3989382325000436,
+    "J_stokes": 2.6263425351228897,
+    "J_navier_stokes": 2.626342034200382,
+    "J_rel_change": 1.907300747022853e-07,
+    "flow_rel_change": 1.1531523848598558e-05,
+    "grad_rel_change": 1.7472048111374932e-05,
+    "grad_cosine": 0.9999999999603567,
+    "grad_sign_flip": 0.0
+  },
+  {
+    "Ra": 30000.0,
+    "Pr": 0.71,
+    "rho_mean": 0.5,
+    "rms_speed_stokes": 0.3989382324716707,
+    "J_stokes": 2.6263425352133445,
+    "J_navier_stokes": 2.626337602892146,
+    "J_rel_change": 1.8780190064507771e-06,
+    "flow_rel_change": 0.0001136920710783612,
+    "grad_rel_change": 0.00017227327283018826,
+    "grad_cosine": 0.999999996145986,
+    "grad_sign_flip": 0.0
+  }
+]
