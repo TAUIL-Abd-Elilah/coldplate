@@ -1,0 +1,44 @@
+{
+  "protocol": "strong-coupling-optimisation-showdown",
+  "version": 1,
+  "locked_utc": "2026-08-14T00:00:00Z",
+  "purpose": "Test whether accounting for the two-way fixed-point feedback changes repeated design decisions, not only a single derivative check.",
+  "parameters": {
+    "N": 20,
+    "Ra": 30000.0,
+    "Pr": 7.0,
+    "seed": 0,
+    "initial_design_distribution": "numpy PCG64 uniform[0.25, 0.75)",
+    "methods": [
+      "composed",
+      "one_way",
+      "frozen"
+    ],
+    "iterations": 8,
+    "fraction_each_way": 0.05,
+    "amplitude": 0.025,
+    "beta": 1.0,
+    "volume_constraint": "Preserve the initial mean projected density by a deterministic uniform-shift bisection after every balanced action.",
+    "candidate_policy": "At every iteration add amplitude to the 5% most beneficial cells and remove it from the 5% least beneficial cells according to that method's gradient, then solve the true coupled forward problem once.",
+    "nonconvergence_policy": "Record the failed candidate and stop only that branch. Do not replace the seed, Rayleigh number, step size, or method."
+  },
+  "fairness": {
+    "same_initial_design": true,
+    "same_outer_gradient_budget": true,
+    "same_true_candidate_forward_budget": true,
+    "same_update_rule": true,
+    "same_hyperparameters": true,
+    "note": "The composed adjoint intentionally costs more inner VJPs. Runtime and VJP counts are reported rather than hidden."
+  },
+  "endpoints": {
+    "primary": "True coupled objective after eight fixed-budget decisions, provided the branch completes.",
+    "secondary": [
+      "Percentage reduction from the common initial objective",
+      "Area under the eight-step objective trajectory",
+      "Number of objectively improving candidate steps",
+      "Wall time and cross-component adjoint VJP count"
+    ],
+    "success_condition": "The composed-gradient branch finishes with a lower true objective than both shortcut branches; all failures and contrary outcomes remain reportable."
+  },
+  "result_path": "orchestrator/results/strong_coupling_showdown.json"
+}

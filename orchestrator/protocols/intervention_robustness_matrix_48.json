@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "study_id": "intervention-robustness-matrix-48-v1",
+  "status": "preregistered",
+  "locked_utc": "2026-08-14T00:00:00Z",
+  "execution_unit": "orchestrator/intervention_robustness.py",
+  "design": {
+    "N": 20,
+    "amplitude": 0.025,
+    "rayleigh_numbers": [
+      10000.0,
+      20000.0,
+      30000.0
+    ],
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "attempts_planned": 48,
+    "ordering": "rayleigh_numbers_then_seeds_as_listed"
+  },
+  "analysis": {
+    "hypothesis": "the exact-gradient action wins more often than the shortcut action across comparable cases",
+    "primary_estimand": "exact-gradient wins divided by comparable action pairs",
+    "comparable_outcomes": [
+      "exact_wins",
+      "shortcut_wins",
+      "tie"
+    ],
+    "confidence_interval": "two-sided Wilson score interval",
+    "confidence_level": 0.95,
+    "z": 1.959963984540054,
+    "secondary_estimands": [
+      "exact-gradient wins divided by all attempted cases",
+      "comparable action pairs divided by all attempted cases"
+    ],
+    "ties_count_as_exact_wins": false
+  },
+  "sampling": {
+    "seed_selection": "fixed contiguous seeds 0 through 15 at every Rayleigh number",
+    "stopping_rule": "run and report all 48 planned attempts; do not stop based on outcomes"
+  },
+  "failure_policy": {
+    "base_not_converged": "retain as a solver failure; exclude from the comparable-case denominator",
+    "inconclusive": "retain as an action-comparison failure; exclude from the comparable-case denominator",
+    "runner_failure": "retain as an orchestration failure; exclude from the comparable-case denominator and include in the all-attempt denominator",
+    "nonzero_exit_with_valid_report": "use the report; intervention_robustness.py uses a nonzero exit when no comparison is available",
+    "resume": "never rerun an attempt with a valid durable attempt record"
+  },
+  "execution": {
+    "attempt_timeout_seconds": 7200
+  }
+}
