@@ -404,7 +404,5 @@ physics is 2D; and the headline results use the measured Stokes limit. The
 strong-setting steady solve failed from the optimiser's near-uniform start.
 Finally, γ is measured on one physical system plus 2,377 synthetic ones—not a
 substitute for a second real application—and the repelling regime is excluded.
-
-**Reproducibility.** Four pinned implementations, three served per run; 73
-tests; scheduled container integration; `scripts/judge_demo.sh`; and a
-data-backed claim audit.
+**Reproducibility:** pinned implementations, 73 tests, scheduled container
+integration, a one-command judge demo, and a data-backed claim audit.
