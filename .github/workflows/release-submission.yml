@@ -38,6 +38,7 @@ jobs:
     environment:
       name: submission-production
     permissions:
+      actions: read
       contents: write
       packages: write
     steps:
@@ -351,6 +352,7 @@ jobs:
     environment:
       name: submission-production
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Validate manual authorization, tag, and UTC publication date

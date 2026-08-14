@@ -61,6 +61,7 @@ def test_release_workflow_pins_actions_and_serializes_manual_phases():
     assert "cancel-in-progress: false" in workflow
     assert "permissions: {}" in workflow
     assert workflow.count("name: submission-production") == 2
+    assert workflow.count("actions: read") == 2
     assert "2026-08-29 00:00 UTC" in workflow
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in workflow
     assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in workflow
