@@ -1,0 +1,112 @@
+name: extended submission evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: Evidence bundle to run after building the four components
+        required: true
+        default: physics
+        type: choice
+        options:
+          - physics
+          - showdown
+          - robustness
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install driver
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-orchestrator.txt
+
+      - name: Build compiler toolchain and all four Tesseracts
+        run: |
+          bash scripts/build_toolchain.sh
+          for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
+            tesseract build "tesseracts/$component"
+          done
+
+      - name: Nonlinear benchmark and dimensional cold plate
+        if: inputs.experiment == 'physics' || inputs.experiment == 'all'
+        working-directory: orchestrator
+        run: |
+          set -euo pipefail
+          python -u benchmark_de_vahl_davis.py --N 32 --Ra 1000 10000 \
+            --out results/de_vahl_davis.json
+          python -u dimensional_coldplate.py --N 24 \
+            --out results/dimensional_coldplate.json
+
+      - name: Equal-budget strong-coupling optimisation showdown
+        if: inputs.experiment == 'showdown' || inputs.experiment == 'all'
+        working-directory: orchestrator
+        run: |
+          python -u strong_coupling_showdown.py \
+            --out results/strong_coupling_showdown.json
+
+      - name: Preregistered 48-attempt robustness matrix
+        if: inputs.experiment == 'robustness' || inputs.experiment == 'all'
+        working-directory: orchestrator
+        run: |
+          set -euo pipefail
+          for ra in 10000 20000 30000; do
+            report="results/intervention_robustness_Ra${ra}.json"
+            # The execution unit returns nonzero for inconclusive or contrary
+            # scientific outcomes. Preserve its JSON and continue: only a
+            # missing/incomplete record is an orchestration failure here.
+            set +e
+            python -u intervention_robustness.py --N 20 --Ra "$ra" \
+              --seed-start 0 --n-seeds 16 --amplitude 0.025 --out "$report"
+            code="$?"
+            set -e
+            echo "Ra=$ra execution-unit exit code: $code"
+            python - "$report" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text())
+          assert data.get("complete") is True, data
+          assert data.get("seeds_planned") == 16, data
+          assert len(data.get("cases", [])) == 16, data
+          PY
+          done
+          python -u intervention_robustness_matrix.py \
+            --ingest-report results/intervention_robustness_Ra10000.json \
+            --ingest-report results/intervention_robustness_Ra20000.json \
+            --ingest-report results/intervention_robustness_Ra30000.json \
+            --out results/intervention_robustness_matrix_48.json \
+            --attempt-dir results/intervention_robustness_matrix_48_attempts
+
+      - name: Show compact evidence summary
+        if: always()
+        run: |
+          find orchestrator/results -maxdepth 1 -type f -name '*.json' \
+            -printf '%f %s bytes\n' | sort
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: extended-evidence-${{ inputs.experiment }}-${{ github.sha }}
+          path: |
+            orchestrator/results/de_vahl_davis.json
+            orchestrator/results/dimensional_coldplate.json
+            orchestrator/results/strong_coupling_showdown.json
+            orchestrator/results/intervention_robustness_Ra*.json
+            orchestrator/results/intervention_robustness_matrix_48.json
+            orchestrator/results/intervention_robustness_matrix_48_attempts/*.json
+          if-no-files-found: warn

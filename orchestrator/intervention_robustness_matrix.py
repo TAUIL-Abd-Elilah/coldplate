@@ -10,6 +10,7 @@ Usage::
 
     python intervention_robustness_matrix.py
     python intervention_robustness_matrix.py --aggregate-only
+    python intervention_robustness_matrix.py --ingest-report results/ra-10000.json
 """
 
 from __future__ import annotations
@@ -180,6 +181,88 @@ def failure_record(attempt: dict, protocol_hash: str, stage: str) -> dict:
             "failure_stage": stage}
 
 
+def _validated_ingest_cases(report_path: Path, protocol: dict) -> tuple[list[tuple[dict, dict]], str]:
+    """Validate a complete one-Ra execution-unit report before any writes."""
+    try:
+        raw = report_path.read_bytes()
+        report = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read ingest report {report_path}: {type(exc).__name__}") from exc
+    if not isinstance(report, dict):
+        raise ValueError(f"ingest report {report_path} must contain a JSON object")
+
+    design = protocol["design"]
+    if report.get("N") != int(design["N"]):
+        raise ValueError(f"ingest report {report_path} has the wrong N")
+    if report.get("amplitude") != float(design["amplitude"]):
+        raise ValueError(f"ingest report {report_path} has the wrong amplitude")
+    allowed_ras = {float(ra) for ra in design["rayleigh_numbers"]}
+    try:
+        ra = float(report["Ra"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"ingest report {report_path} has an invalid Ra") from exc
+    if ra not in allowed_ras:
+        raise ValueError(f"ingest report {report_path} has a non-preregistered Ra")
+
+    attempts = [attempt for attempt in planned_attempts(protocol) if attempt["Ra"] == ra]
+    by_seed = {attempt["seed"]: attempt for attempt in attempts}
+    cases = report.get("cases")
+    if not isinstance(cases, list):
+        raise ValueError(f"ingest report {report_path} has no cases list")
+    seen: dict[int, dict] = {}
+    for case in cases:
+        if not isinstance(case, dict) or type(case.get("seed")) is not int:
+            raise ValueError(f"ingest report {report_path} contains an invalid seed")
+        seed = case["seed"]
+        if seed not in by_seed:
+            raise ValueError(f"ingest report {report_path} contains non-preregistered seed {seed}")
+        if seed in seen:
+            raise ValueError(f"ingest report {report_path} contains duplicate seed {seed}")
+        if case.get("outcome") not in OUTCOMES:
+            raise ValueError(f"ingest report {report_path} contains an invalid outcome")
+        seen[seed] = case
+    if set(seen) != set(by_seed):
+        missing = sorted(set(by_seed) - set(seen))
+        raise ValueError(f"ingest report {report_path} is missing seeds {missing}")
+    if report.get("seeds_planned") != len(attempts):
+        raise ValueError(f"ingest report {report_path} has the wrong seeds_planned")
+    if report.get("complete") is not True:
+        raise ValueError(f"ingest report {report_path} is not complete")
+
+    ordered = [(attempt, seen[attempt["seed"]]) for attempt in attempts]
+    return ordered, hashlib.sha256(raw).hexdigest()
+
+
+def ingest_report(report_path: Path, protocol: dict, protocol_hash: str,
+                  attempt_dir: Path) -> dict:
+    """Ingest one complete Ra slice without replacing any existing record."""
+    cases, report_hash = _validated_ingest_cases(report_path, protocol)
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    counts = {"written": 0, "existing_valid": 0, "existing_invalid": 0}
+    for attempt, case in cases:
+        record_path = attempt_dir / f"{attempt['attempt_id']}.json"
+        existing, error = read_record(record_path, attempt, protocol_hash)
+        if existing is not None:
+            counts["existing_valid"] += 1
+            continue
+        if error is not None:
+            counts["existing_invalid"] += 1
+            continue
+        record = {
+            "schema_version": 1,
+            "protocol_sha256": protocol_hash,
+            **attempt,
+            "execution_returncode": None,
+            "outcome": case["outcome"],
+            "case": case,
+            "source": "ingested_report",
+            "source_report_sha256": report_hash,
+        }
+        atomic_json_write(record_path, record)
+        counts["written"] += 1
+    return counts
+
+
 def _group_summary(attempts: list[dict], records: list[dict], z: float) -> dict:
     outcomes = {name: 0 for name in sorted(OUTCOMES | {"runner_failure"})}
     for record in records:
@@ -242,13 +325,21 @@ Executor = Callable[[dict, Path, float], subprocess.CompletedProcess]
 
 def run_matrix(protocol_path: Path = DEFAULT_PROTOCOL, out: Path = DEFAULT_OUT,
                attempt_dir: Path = DEFAULT_ATTEMPT_DIR, aggregate_only: bool = False,
-               executor: Executor = execute_attempt) -> dict:
+               executor: Executor = execute_attempt,
+               ingest_reports: list[Path] | None = None) -> dict:
     """Run missing attempts, checkpoint after each one, and return aggregation."""
     protocol, digest = load_protocol(protocol_path)
     attempt_dir.mkdir(parents=True, exist_ok=True)
     timeout = float(protocol["execution"]["attempt_timeout_seconds"])
+    ingest_reports = ingest_reports or []
 
-    if not aggregate_only:
+    for report_path in ingest_reports:
+        ingest_report(report_path, protocol, digest, attempt_dir)
+        atomic_json_write(out, aggregate(protocol, digest, attempt_dir))
+
+    # Ingestion is deliberately non-executing. This lets CI ingest one or more
+    # already-produced Ra slices without unexpectedly starting missing cases.
+    if not aggregate_only and not ingest_reports:
         for attempt in planned_attempts(protocol):
             record_path = attempt_dir / f"{attempt['attempt_id']}.json"
             record, error = read_record(record_path, attempt, digest)
@@ -292,6 +383,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--attempt-dir", type=Path, default=DEFAULT_ATTEMPT_DIR)
     parser.add_argument("--aggregate-only", action="store_true")
+    parser.add_argument("--ingest-report", action="append", type=Path,
+                        dest="ingest_reports", default=[])
     args = parser.parse_args()
     result = run_matrix(**vars(args))
     summary = result["summary"]

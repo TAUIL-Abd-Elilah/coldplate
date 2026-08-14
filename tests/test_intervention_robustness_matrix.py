@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "orchestrator"))
 
 from intervention_robustness_matrix import (  # noqa: E402
     aggregate,
+    ingest_report,
     load_protocol,
     planned_attempts,
     run_matrix,
@@ -51,6 +52,24 @@ def _small_protocol(tmp_path: Path) -> Path:
     protocol["design"]["attempts_planned"] = 4
     path = tmp_path / "protocol.json"
     path.write_text(json.dumps(protocol), encoding="utf-8")
+    return path
+
+
+def _report(path: Path, attempts: list[dict], outcomes=None, **overrides) -> Path:
+    outcomes = outcomes or ["exact_wins"] * len(attempts)
+    payload = {
+        "N": attempts[0]["N"],
+        "Ra": attempts[0]["Ra"],
+        "amplitude": attempts[0]["amplitude"],
+        "seeds_planned": len(attempts),
+        "complete": True,
+        "cases": [
+            {"seed": attempt["seed"], "outcome": outcome}
+            for attempt, outcome in zip(attempts, outcomes)
+        ],
+        **overrides,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
@@ -131,3 +150,103 @@ def test_aggregate_surfaces_invalid_record_without_rerunning(tmp_path):
     ]
     assert not result["summary"]["study_complete"]
     assert aggregate(protocol, digest, attempt_dir) == result
+
+
+def test_ingest_report_writes_durable_records_and_never_executes(tmp_path):
+    protocol_path = _small_protocol(tmp_path)
+    protocol, _ = load_protocol(protocol_path)
+    attempts = planned_attempts(protocol)
+    report = _report(
+        tmp_path / "report.json",
+        attempts,
+        ["exact_wins", "shortcut_wins", "base_not_converged", "inconclusive"],
+    )
+
+    def must_not_execute(*args):
+        raise AssertionError("ingestion must not launch an attempt")
+
+    result = run_matrix(
+        protocol_path,
+        tmp_path / "out.json",
+        tmp_path / "attempts",
+        executor=must_not_execute,
+        ingest_reports=[report],
+    )
+    assert result["summary"]["study_complete"]
+    assert result["summary"]["outcomes"]["exact_wins"] == 1
+    records = result["attempts"]
+    assert [record["seed"] for record in records] == [0, 1, 2, 3]
+    assert all(record["source"] == "ingested_report" for record in records)
+    assert len({record["source_report_sha256"] for record in records}) == 1
+
+
+def test_repeatable_ingest_accepts_locked_16_seed_ra_slices(tmp_path):
+    protocol, _ = load_protocol(PROTOCOL)
+    attempts = planned_attempts(protocol)
+    reports = []
+    for ra in (1.0e4, 2.0e4):
+        ra_attempts = [attempt for attempt in attempts if attempt["Ra"] == ra]
+        assert len(ra_attempts) == 16
+        reports.append(_report(tmp_path / f"Ra-{ra:.0f}.json", ra_attempts))
+
+    def must_not_execute(*args):
+        raise AssertionError("repeatable ingestion must not launch an attempt")
+
+    result = run_matrix(
+        PROTOCOL,
+        tmp_path / "out.json",
+        tmp_path / "attempts",
+        executor=must_not_execute,
+        ingest_reports=reports,
+    )
+    assert result["summary"]["attempts_recorded"] == 32
+    assert result["summary"]["attempts_pending"] == 16
+    assert not result["summary"]["study_complete"]
+    assert [group["attempts_recorded"] for group in result["by_rayleigh_number"]] == [16, 16, 0]
+
+
+def test_ingest_does_not_replace_valid_or_invalid_existing_records(tmp_path):
+    protocol_path = _small_protocol(tmp_path)
+    protocol, digest = load_protocol(protocol_path)
+    attempts = planned_attempts(protocol)
+    attempt_dir = tmp_path / "attempts"
+    first_report = _report(tmp_path / "first.json", attempts)
+    assert ingest_report(first_report, protocol, digest, attempt_dir)["written"] == 4
+
+    valid_path = attempt_dir / f"{attempts[0]['attempt_id']}.json"
+    valid_before = valid_path.read_bytes()
+    invalid_path = attempt_dir / f"{attempts[1]['attempt_id']}.json"
+    invalid_path.write_text("invalid durable record", encoding="utf-8")
+    invalid_before = invalid_path.read_bytes()
+    replacement = _report(
+        tmp_path / "replacement.json", attempts, ["shortcut_wins"] * len(attempts)
+    )
+    counts = ingest_report(replacement, protocol, digest, attempt_dir)
+    assert counts == {"written": 0, "existing_valid": 3, "existing_invalid": 1}
+    assert valid_path.read_bytes() == valid_before
+    assert invalid_path.read_bytes() == invalid_before
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload.update(N=21),
+        lambda payload: payload.update(Ra=99999.0),
+        lambda payload: payload.update(amplitude=0.05),
+        lambda payload: payload["cases"].append({"seed": 99, "outcome": "exact_wins"}),
+        lambda payload: payload["cases"].__setitem__(0, {"seed": 0, "outcome": "unknown"}),
+        lambda payload: payload["cases"].pop(),
+    ],
+)
+def test_ingest_rejects_invalid_report_before_writing(tmp_path, mutation):
+    protocol_path = _small_protocol(tmp_path)
+    protocol, digest = load_protocol(protocol_path)
+    attempts = planned_attempts(protocol)
+    report = _report(tmp_path / "bad.json", attempts)
+    payload = json.loads(report.read_text())
+    mutation(payload)
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    attempt_dir = tmp_path / "attempts"
+    with pytest.raises(ValueError):
+        ingest_report(report, protocol, digest, attempt_dir)
+    assert not attempt_dir.exists()
