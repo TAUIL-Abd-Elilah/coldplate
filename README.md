@@ -738,10 +738,18 @@ So what is left?
    and it is demonstrably not sufficient — constant while the error moves 136×.
 3. **γ as an operational check.** The analysis behind it is standard; making it
    a single VJP that runs as a pipeline assertion, and measuring what it
-   predicts, is the contribution.
+   predicts, is the contribution. The reusable implementation is
+   [`fixed_point_adjoint.py`](fixed_point_adjoint.py): it accepts arbitrary JAX
+   PyTrees, reports the unlabelled residual and repeated VJP norms, and produces
+   a verdict only when the caller supplies application-calibrated thresholds.
+   A known repelling map can never be labelled `SAFE`.
 
-If you take one thing from this repository, take `coupling_check.py` and the
-finding that motivates it — not the cold plate.
+If you take one thing from this repository, take `fixed_point_adjoint.py` and
+the finding that motivates it — not the cold plate. `coupling_check.py` is the
+cold-plate policy wrapper around that generic utility. A contribution-ready
+issue/PR design is recorded in
+[`upstream/TESSERACT_JAX_PROPOSAL.md`](upstream/TESSERACT_JAX_PROPOSAL.md); it
+has deliberately not been posted upstream without maintainer coordination.
 
 ## Physics
 
@@ -1147,6 +1155,8 @@ python -m pytest tests -q
 ## Layout
 
 ```
+fixed_point_adjoint.py  reusable, objective-aware fixed-point adjoint residual
+coupling_check.py       cold-plate thresholds and served-component adapter
 tesseracts/
   stokes_brinkman/    C++/Eigen fluid solver, hand-derived adjoint
   thermal_advdiff/    JAX advection-diffusion, sparse LU
@@ -1164,12 +1174,17 @@ orchestrator/
   predictor_statistics.py holdout + bootstrap robustness of that correlation
   intervention_test.py    equal-budget sensitivity action, true forward re-solve
   intervention_robustness.py  fixed-range seed sweep of the action experiment
+  intervention_robustness_matrix.py  durable 48-attempt matrix and aggregation
+  strong_coupling_showdown.py  repeated equal-rule decision comparison
+  benchmark_de_vahl_davis.py  nonlinear cavity benchmark against literature
+  dimensional_coldplate.py  explicit SI mapping and mesh-refinement report
   sensitivity_ranking.py  the attribution task: which cells each gradient blames
   gamma_generalization.py does gamma predict off this problem? 2,377 random loops
   inertia_study.py        when does dropping (u.grad)u change the gradient?
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
-  make_figures.py         figures and animation
+  make_figures.py         core figures and animation
+  make_extended_figures.py  showdown, robustness, and physics figures
 prototype/
   reference_jax.py    independent monolithic reference implementation
 ```

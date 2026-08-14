@@ -1,12 +1,68 @@
 {
   "schema_version": 1,
   "study_id": "intervention-robustness-matrix-48-v1",
-  "status": "preregistered",
-  "locked_utc": "2026-08-14T00:00:00Z",
+  "status": "retrospectively_frozen_design",
+  "frozen_design_provenance": {
+    "commit": "bcf2aa8be4cb8cda6269326e24922bbe1b62dc4e",
+    "commit_time_utc": "2026-08-14T14:54:29Z",
+    "scope": "The 48-case matrix, primary attempt-level estimand, Wilson interval, ordering, and stopping rule were first committed here before the extended matrix result was stored.",
+    "qualification": "This is a retrospective frozen design, not a prospective preregistration. The present file contains later integrity metadata and analysis clarifications and is not claimed to be byte-for-byte untouched since first execution."
+  },
+  "prior_observation_disclosure": {
+    "observed_before_freeze": "Thirteen of the 48 planned cells already had stored outcomes. A robustness report stored Ra=20000 seeds 0 through 11 (10 exact wins, 0 shortcut wins, 0 ties, 1 base-state failure, and 1 inconclusive action comparison). An earlier multi-amplitude single-state intervention separately stored an exact win at Ra=30000, seed=0, amplitude=0.025.",
+    "source_reports": [
+      {
+        "commit": "d127397508710d3d0e82cde4ca231918871afb60",
+        "path": "orchestrator/results/intervention_robustness.json",
+        "scope": "Ra=20000, seeds 0 through 11, amplitude 0.025"
+      },
+      {
+        "commit": "3aba876edb996a4eb77f17ddda1cb62fd17ecf94",
+        "path": "orchestrator/results/intervention_test.json",
+        "scope": "Ra=30000, seed 0, amplitude 0.025 row within a three-amplitude single-state report"
+      }
+    ],
+    "observed_cells": [
+      {
+        "Ra": 20000.0,
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "Ra": 30000.0,
+        "seeds": [
+          0
+        ]
+      }
+    ],
+    "observed_cells_count": 13,
+    "not_previously_stored_cells_count": 35,
+    "overlap_fraction": "13/48",
+    "new_cells_at_freeze": "The other 35 Ra/seed cells and the complete Ra-stratified matrix result were not stored before the frozen-design commit.",
+    "interpretation": "The full matrix is a frozen robustness extension of favourable prior evidence, not an untouched independent confirmation set. Results must report the overlap and may additionally separate previously observed from new cells."
+  },
+  "integrity_amendments_after_freeze": [
+    "Corrected the original 'preregistered' wording and replaced the placeholder lock time with the actual Git commit provenance.",
+    "Added strict case-evidence validation, numerical-equivalence handling, durable runner-failure semantics, and a cluster-aware seed bootstrap. The original attempt-level Wilson estimand is retained; the added bootstrap is explicitly secondary and post-freeze.",
+    "Corrected the prior-overlap count from 12 to 13 after identifying the Ra=30000, seed=0, amplitude=0.025 row in the earlier stored multi-amplitude intervention report; added explicit 13-cell versus 35-cell descriptive strata."
+  ],
   "execution_unit": "orchestrator/intervention_robustness.py",
   "design": {
     "N": 20,
     "amplitude": 0.025,
+    "action_budget_definition": "For each method, perturb the same count of raw-design cells by +amplitude and -amplitude. This is an equal zero-sum raw-design perturbation, not a claim of equal realised physical-density or wall-time budget.",
     "rayleigh_numbers": [
       10000.0,
       20000.0,
@@ -44,10 +100,30 @@
     "confidence_interval": "two-sided Wilson score interval",
     "confidence_level": 0.95,
     "z": 1.959963984540054,
+    "outcome_numerical_equivalence": {
+      "absolute_delta_J": 1e-10,
+      "relative_delta_J": 1e-8,
+      "rule": "Classify as a tie when abs(delta_J_shortcut - delta_J_exact) <= absolute_delta_J + relative_delta_J * max(abs(delta_J_exact), abs(delta_J_shortcut))."
+    },
     "secondary_estimands": [
       "exact-gradient wins divided by all attempted cases",
-      "comparable action pairs divided by all attempted cases"
+      "comparable action pairs divided by all attempted cases",
+      "seed-cluster bootstrap interval for the pooled exact-win rate, resampling the 16 complete seed clusters across Rayleigh numbers",
+      "descriptive outcome summaries stratified into the 13 previously observed and 35 not-previously-stored cells"
     ],
+    "prior_observation_stratification": {
+      "analysis_timing": "added after the frozen design as a descriptive provenance amendment",
+      "estimands": "Within each stratum, report planned, recorded, pending, outcome counts, comparable count, exact-win rate over comparable cases, exact-win rate over attempted cases, and comparability rate.",
+      "interpretation": "This stratification exposes prior overlap; it does not convert the 35-cell stratum into a prospectively preregistered confirmation study."
+    },
+    "cluster_aware_secondary": {
+      "analysis_timing": "added after the frozen design as a descriptive integrity amendment",
+      "cluster_unit": "seed",
+      "bootstrap_seed": 20260814,
+      "bootstrap_samples": 10000,
+      "interval": "two-sided percentile interval at the protocol confidence level",
+      "incomplete_cluster_policy": "Only seed clusters with a durable record at every planned Rayleigh number enter the bootstrap; report their count and whether all planned clusters are present."
+    },
     "ties_count_as_exact_wins": false
   },
   "sampling": {
@@ -58,8 +134,10 @@
     "base_not_converged": "retain as a solver failure; exclude from the comparable-case denominator",
     "inconclusive": "retain as an action-comparison failure; exclude from the comparable-case denominator",
     "runner_failure": "retain as an orchestration failure; exclude from the comparable-case denominator and include in the all-attempt denominator",
+    "unexpected_execution_unit_exception": "classify as runner_failure, never as an inconclusive scientific comparison",
     "nonzero_exit_with_valid_report": "use the report; intervention_robustness.py uses a nonzero exit when no comparison is available",
-    "resume": "never rerun an attempt with a valid durable attempt record"
+    "resume": "never rerun an attempt with a valid durable attempt record",
+    "ingestion": "validate complete per-case evidence and recompute the outcome with the recorded tolerance before creating a durable matrix record; never trust a reported outcome label alone"
   },
   "execution": {
     "attempt_timeout_seconds": 7200

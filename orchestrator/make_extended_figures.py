@@ -1,6 +1,6 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Render the preregistered showdown, robustness, and physics evidence.
+"""Render the frozen showdown, robustness, and physics evidence.
 
 The three source JSON files are produced by ``extended submission evidence``.
 This script has no fallback numbers: a missing result is an error, preventing a
@@ -39,6 +39,11 @@ def _save(fig, path: Path) -> None:
 
 
 def showdown_figure(data: dict, path: Path) -> None:
+    if not data.get("complete") or not data.get("summary", {}).get("all_branches_complete"):
+        raise ValueError("showdown is incomplete; refusing to render a finish")
+    expected_steps = int(data["protocol"]["outer_steps"])
+    if any(len(branch.get("objectives", [])) != expected_steps + 1 for branch in data["branches"]):
+        raise ValueError("showdown branch does not contain every frozen-protocol step")
     colors = {"composed": TEAL, "one_way": ORANGE, "frozen": RED}
     labels = {"composed": "composed adjoint", "one_way": "loop cut", "frozen": "flow frozen"}
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8), gridspec_kw={"width_ratios": [1.65, 1]})
@@ -81,10 +86,15 @@ def showdown_figure(data: dict, path: Path) -> None:
 def robustness_figure(data: dict, path: Path) -> None:
     groups = data["by_rayleigh_number"]
     pooled = data["summary"]
+    if not pooled.get("study_complete"):
+        raise ValueError("robustness matrix is incomplete; refusing to render a finish")
+    cluster = pooled["cluster_aware_seed_analysis"]
+    if not cluster.get("all_planned_clusters_complete"):
+        raise ValueError("seed-cluster analysis is incomplete")
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8), gridspec_kw={"width_ratios": [1.25, 1]})
     ax, stack = axes
-    labels = [f"{row['Ra']:.0e}".replace("e+0", "e") for row in groups] + ["pooled"]
-    rows = groups + [pooled]
+    labels = [f"{row['Ra']:.0e}".replace("e+0", "e") for row in groups] + ["pooled\nclustered"]
+    rows = groups
     rates, lower, upper = [], [], []
     for row in rows:
         interval = row["exact_win_rate_over_comparable"]
@@ -92,15 +102,23 @@ def robustness_figure(data: dict, path: Path) -> None:
         rates.append(100 * estimate)
         lower.append(100 * (estimate - (interval["lower"] or 0.0)))
         upper.append(100 * ((interval["upper"] or estimate) - estimate))
-    x = np.arange(len(rows))
+    cluster_interval = cluster["bootstrap"]
+    cluster_estimate = cluster["pooled_exact_win_rate_over_comparable_in_complete_clusters"]
+    if cluster_estimate is None or cluster_interval["lower"] is None or cluster_interval["upper"] is None:
+        raise ValueError("cluster bootstrap has no comparable-case interval")
+    rates.append(100 * cluster_estimate)
+    lower.append(100 * max(0.0, cluster_estimate - cluster_interval["lower"]))
+    upper.append(100 * max(0.0, cluster_interval["upper"] - cluster_estimate))
+    x = np.arange(len(labels))
     ax.errorbar(x, rates, yerr=np.vstack([lower, upper]), fmt="o", ms=8,
                 capsize=5, lw=2, color=TEAL)
     ax.set_xticks(x, labels)
     ax.set_ylim(0, 105)
     ax.set_ylabel("exact action wins among comparable cases (%)")
-    ax.set_title("Wilson 95% intervals", loc="left", weight="bold")
+    ax.set_title("Per-Ra Wilson · pooled seed-cluster bootstrap (95%)", loc="left", weight="bold")
     ax.grid(axis="y", color="#e8ebf0", lw=0.8)
-    for xx, row, rate in zip(x, rows, rates):
+    display_rows = groups + [pooled]
+    for xx, row, rate in zip(x, display_rows, rates):
         ax.text(xx, min(rate + 5, 100), f"{row['outcomes']['exact_wins']}/{row['comparable_cases']}",
                 ha="center", fontsize=9, weight="bold")
 
@@ -115,7 +133,7 @@ def robustness_figure(data: dict, path: Path) -> None:
             left += count
     stack.set_xlim(0, pooled["attempts_planned"])
     stack.set_yticks([])
-    stack.set_xlabel("all preregistered attempts")
+    stack.set_xlabel("all frozen-protocol attempts")
     stack.set_title("Every outcome remains in the denominator audit", loc="left", weight="bold")
     stack.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, -0.03), ncol=1)
     stack.grid(axis="x", color="#e8ebf0", lw=0.8)
@@ -134,7 +152,10 @@ def physics_figure(cavity: list[dict], physical: dict, path: Path) -> None:
         reference = [row["reference"][metric] for row in cavity]
         measured = [row[metric] for row in cavity]
         compare.plot(reference, measured, marker=marker, ms=7, lw=1.8, label=metric.replace("_", " "))
-    max_value = max(max(row["reference"].values()) for row in cavity) * 1.12
+    max_value = max(
+        max(max(row["reference"].values()), *(row[name] for name in metric_names))
+        for row in cavity
+    ) * 1.12
     compare.plot([0, max_value], [0, max_value], "--", color=GREY, lw=1.2, label="perfect agreement")
     compare.set_xlim(0, max_value)
     compare.set_ylim(0, max_value)
@@ -155,14 +176,17 @@ def physics_figure(cavity: list[dict], physical: dict, path: Path) -> None:
     colors = [GREY, TEAL]
     rects = bars.bar(["base only", "+ four fins"], values, color=colors, width=0.62)
     bars.set_ylabel("chip-wall thermal resistance (K/W)")
-    bars.set_title("Dimensional 1 W case", loc="left", weight="bold")
+    bars.set_title("Dimensional 1 W illustration", loc="left", weight="bold")
     bars.grid(axis="y", color="#e8ebf0", lw=0.8)
     for rect, value in zip(rects, values):
         bars.text(rect.get_x() + rect.get_width() / 2, value, f"{value:.2f}",
                   ha="center", va="bottom", weight="bold")
     change = physical["finned_thermal_resistance_reduction_percent"]
-    bars.text(0.5, 0.92, f"{change:.1f}% lower", transform=bars.transAxes,
+    direction = "lower" if change >= 0 else "higher"
+    bars.text(0.5, 0.92, f"{abs(change):.1f}% {direction}", transform=bars.transAxes,
               ha="center", color=TEAL if change >= 0 else RED, weight="bold")
+    bars.text(0.5, 0.84, "unequal material; illustrative only", transform=bars.transAxes,
+              ha="center", color=NAVY, fontsize=8)
     fig.suptitle("Recognised physics reference + explicit SI engineering map",
                  x=0.045, ha="left", fontsize=17, weight="bold", color=NAVY)
     fig.tight_layout()

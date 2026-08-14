@@ -98,7 +98,7 @@ def finned_layout(N: int) -> np.ndarray:
 
 
 def base_layout(N: int) -> np.ndarray:
-    """Aluminium base only, used as the preregistered engineering baseline."""
+    """Aluminium base only, used as an illustrative reference geometry."""
     rho = np.zeros((N, N), dtype=np.float64)
     rho[: max(1, round(0.10 * N)), :] = 1.0
     return rho
@@ -120,6 +120,18 @@ def discretized_chip(case: PhysicalCase, N: int) -> dict[str, float | np.ndarray
         "effective_width_m": effective_width,
         "heat_flux_W_m2": flux,
         "represented_heat_load_W": flux * effective_width * case.depth_m,
+    }
+
+
+def fluid_solver_status(flow) -> dict[str, float | int | bool]:
+    """Extract nonlinear convergence evidence from a served fluid result."""
+    residual = float(np.asarray(flow["nonlinear_residual"]))
+    converged = bool(round(float(np.asarray(flow["nonlinear_converged"]))))
+    iterations = int(round(float(np.asarray(flow["nonlinear_iterations"]))))
+    return {
+        "converged": bool(converged and np.isfinite(residual)),
+        "relative_residual": residual,
+        "newton_iterations": iterations,
     }
 
 
@@ -151,6 +163,11 @@ def run(case: PhysicalCase, N: int = 24, verbose: bool = False) -> dict:
                 "inertia": p.inertia,
             },
         )
+        fluid_info = fluid_solver_status(flow)
+        solver = dict(info)
+        solver["coupled_converged"] = bool(info["ok"])
+        solver["fluid"] = fluid_info
+        solver["ok"] = bool(info["ok"] and fluid_info["converged"])
         mask = np.asarray(chip["mask"], dtype=bool)
         T_array = np.asarray(T)
         k_array = np.asarray(material["k"])
@@ -164,7 +181,7 @@ def run(case: PhysicalCase, N: int = 24, verbose: bool = False) -> dict:
         return {
             "name": name,
             "solid_volume_fraction": float(np.mean(np.asarray(material["rho_phys"]))),
-            "solver": info,
+            "solver": solver,
             "chip_cell_mean_nondimensional": cell_mean_nd,
             "chip_wall_mean_nondimensional": wall_mean_nd,
             "chip_wall_mean_temperature_K": case.sink_temperature_K + rise,
@@ -181,6 +198,8 @@ def run(case: PhysicalCase, N: int = 24, verbose: bool = False) -> dict:
 
     baseline_rth = float(baseline["thermal_resistance_K_W"])
     finned_rth = float(finned["thermal_resistance_K_W"])
+    baseline_volume = float(baseline["solid_volume_fraction"])
+    finned_volume = float(finned["solid_volume_fraction"])
     return {
         "assumptions": {
             "model": "steady 2-D Boussinesq; heat load uses stated out-of-plane depth",
@@ -189,6 +208,10 @@ def run(case: PhysicalCase, N: int = 24, verbose: bool = False) -> dict:
             "momentum": "steady nonlinear Navier-Stokes-Brinkman (inertia=1)",
             "boundaries": "chip heat flux at bottom; isothermal top; other walls adiabatic",
             "omissions": "radiation, contact resistance, phase change, and temperature-dependent properties",
+            "comparison_scope": (
+                "illustrative geometry comparison only; the base and finned "
+                "layouts contain unequal aluminium volume"
+            ),
         },
         "physical_inputs": asdict(case),
         "nondimensional_inputs": {**nd, "q_chip_used": solver_q_chip, "inertia": 1.0},
@@ -200,14 +223,93 @@ def run(case: PhysicalCase, N: int = 24, verbose: bool = False) -> dict:
             "represented_heat_load_W": chip["represented_heat_load_W"],
         },
         "layouts": {"baseline": baseline, "finned": finned},
+        "comparison": {
+            "kind": "illustrative_unequal_material",
+            "equal_material_budget": False,
+            "baseline_solid_volume_fraction": baseline_volume,
+            "finned_solid_volume_fraction": finned_volume,
+            "finned_to_baseline_solid_volume_ratio": finned_volume / baseline_volume,
+            "interpretation": (
+                "This isolates neither fin shape nor material efficiency: the "
+                "finned layout adds aluminium. It is an illustrative dimensional "
+                "case, not an equal-budget optimisation result."
+            ),
+        },
+        "evidence_valid": bool(baseline["solver"]["ok"] and finned["solver"]["ok"]),
         "finned_thermal_resistance_reduction_percent": (
             100.0 * (baseline_rth - finned_rth) / baseline_rth
         ),
     }
 
 
-def main(N=24, out="results/dimensional_coldplate.json", verbose=False):
+def summarize_mesh_refinement(results_by_grid: dict[int, dict]) -> dict:
+    """Create a compact, auditable mesh-study table from completed runs."""
+    if len(results_by_grid) < 2:
+        raise ValueError("mesh refinement requires at least two distinct grid sizes")
+    grids = sorted(results_by_grid)
+    finest = results_by_grid[grids[-1]]
+    finest_values = {
+        name: float(finest["layouts"][name]["thermal_resistance_K_W"])
+        for name in ("baseline", "finned")
+    }
+    rows = []
+    for grid in grids:
+        result = results_by_grid[grid]
+        layouts = {}
+        for name in ("baseline", "finned"):
+            layout = result["layouts"][name]
+            rth = float(layout["thermal_resistance_K_W"])
+            layouts[name] = {
+                "thermal_resistance_K_W": rth,
+                "relative_difference_from_finest": abs(rth / finest_values[name] - 1.0),
+                "solid_volume_fraction": float(layout["solid_volume_fraction"]),
+                "solver": layout["solver"],
+            }
+        rows.append({
+            "N": grid,
+            "represented_heat_load_W": float(result["grid"]["represented_heat_load_W"]),
+            "evidence_valid": bool(result["evidence_valid"]),
+            "layouts": layouts,
+        })
+    return {
+        "grids": grids,
+        "finest_grid": grids[-1],
+        "all_solves_converged": all(row["evidence_valid"] for row in rows),
+        "comparison_scope": "same illustrative unequal-material layouts on each mesh",
+        "rows": rows,
+    }
+
+
+def run_mesh_refinement(
+    case: PhysicalCase,
+    grid_sizes: list[int] | tuple[int, ...],
+    *,
+    verbose: bool = False,
+    precomputed: dict[int, dict] | None = None,
+) -> dict:
+    """Run the dimensional case on multiple meshes and summarize Rth drift."""
+    grids = sorted(set(int(n) for n in grid_sizes))
+    if len(grids) < 2 or grids[0] < 4:
+        raise ValueError("provide at least two distinct mesh sizes, each >= 4")
+    results = dict(precomputed or {})
+    for grid in grids:
+        if grid not in results:
+            results[grid] = run(case, grid, verbose)
+    return summarize_mesh_refinement({grid: results[grid] for grid in grids})
+
+
+def main(
+    N=24,
+    out="results/dimensional_coldplate.json",
+    verbose=False,
+    mesh_sizes: list[int] | tuple[int, ...] | None = None,
+):
     result = run(PhysicalCase(), N, verbose)
+    if mesh_sizes:
+        grids = sorted(set([N, *(int(n) for n in mesh_sizes)]))
+        result["mesh_refinement"] = run_mesh_refinement(
+            PhysicalCase(), grids, verbose=verbose, precomputed={N: result}
+        )
     path = Path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2))
@@ -229,4 +331,11 @@ if __name__ == "__main__":
     ap.add_argument("--N", type=int, default=24)
     ap.add_argument("--out", default="results/dimensional_coldplate.json")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument(
+        "--mesh-sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="optional additional N values; writes a mesh-refinement table",
+    )
     main(**vars(ap.parse_args()))

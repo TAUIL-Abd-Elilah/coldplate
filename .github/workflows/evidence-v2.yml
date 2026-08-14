@@ -22,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
 
@@ -47,48 +47,28 @@ jobs:
           set -euo pipefail
           python -u benchmark_de_vahl_davis.py --N 32 --Ra 1000 10000 \
             --out results/de_vahl_davis.json
-          python -u dimensional_coldplate.py --N 24 \
+          python -u dimensional_coldplate.py --N 32 --mesh-sizes 16 24 \
             --out results/dimensional_coldplate.json
 
-      - name: Equal-budget strong-coupling optimisation showdown
+      - name: Common raw-proposal strong-coupling optimisation showdown
         if: inputs.experiment == 'showdown' || inputs.experiment == 'all'
         working-directory: orchestrator
         run: |
+          set -euo pipefail
           python -u strong_coupling_showdown.py \
             --out results/strong_coupling_showdown.json
 
-      - name: Preregistered 48-attempt robustness matrix
+      - name: Retrospectively frozen 48-attempt robustness matrix
         if: inputs.experiment == 'robustness' || inputs.experiment == 'all'
         working-directory: orchestrator
         run: |
           set -euo pipefail
-          for ra in 10000 20000 30000; do
-            report="results/intervention_robustness_Ra${ra}.json"
-            # The execution unit returns nonzero for inconclusive or contrary
-            # scientific outcomes. Preserve its JSON and continue: only a
-            # missing/incomplete record is an orchestration failure here.
-            set +e
-            python -u intervention_robustness.py --N 20 --Ra "$ra" \
-              --seed-start 0 --n-seeds 16 --amplitude 0.025 --out "$report"
-            code="$?"
-            set -e
-            echo "Ra=$ra execution-unit exit code: $code"
-            python - "$report" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          data = json.loads(path.read_text())
-          assert data.get("complete") is True, data
-          assert data.get("seeds_planned") == 16, data
-          assert len(data.get("cases", [])) == 16, data
-          PY
-          done
+          # Execute one (Ra, seed) case per subprocess. The matrix runner owns
+          # the per-attempt timeout and atomically checkpoints every outcome,
+          # including timeout/runner_failure, before moving to the next case.
+          # A nonzero final status means the matrix itself is incomplete; the
+          # always-upload step below still preserves all durable records.
           python -u intervention_robustness_matrix.py \
-            --ingest-report results/intervention_robustness_Ra10000.json \
-            --ingest-report results/intervention_robustness_Ra20000.json \
-            --ingest-report results/intervention_robustness_Ra30000.json \
             --out results/intervention_robustness_matrix_48.json \
             --attempt-dir results/intervention_robustness_matrix_48_attempts
 
@@ -98,7 +78,7 @@ jobs:
           find orchestrator/results -maxdepth 1 -type f -name '*.json' \
             -printf '%f %s bytes\n' | sort
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: extended-evidence-${{ inputs.experiment }}-${{ github.sha }}

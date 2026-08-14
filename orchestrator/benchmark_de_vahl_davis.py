@@ -55,6 +55,18 @@ def cavity_metrics(T, u, v) -> dict[str, float]:
     }
 
 
+def fluid_solver_status(flow) -> dict[str, float | int | bool]:
+    """Extract the fail-closed nonlinear diagnostics exported by the fluid block."""
+    residual = float(np.asarray(flow["nonlinear_residual"]))
+    converged = bool(round(float(np.asarray(flow["nonlinear_converged"]))))
+    iterations = int(round(float(np.asarray(flow["nonlinear_iterations"]))))
+    return {
+        "converged": bool(converged and np.isfinite(residual)),
+        "relative_residual": residual,
+        "newton_iterations": iterations,
+    }
+
+
 def run_case(N: int, Ra: float, verbose: bool = False) -> dict:
     p = Params(
         Nx=N, Ny=N, Ra=Ra, Pr=0.71, inertia=1.0,
@@ -73,21 +85,29 @@ def run_case(N: int, Ra: float, verbose: bool = False) -> dict:
             {"alpha": alpha, "T": T, "Ra": Ra, "Pr": p.Pr, "inertia": 1.0},
         )
         metrics = cavity_metrics(T, flow["u"], flow["v"])
+        fluid_info = fluid_solver_status(flow)
 
     ref = REFERENCE[float(Ra)]
     errors = {name: abs(metrics[name] / ref[name] - 1.0) for name in ref}
+    solver = dict(info)
+    solver["coupled_converged"] = bool(info["ok"])
+    solver["fluid"] = fluid_info
+    # Preserve the existing top-level `ok` key, but strengthen its meaning:
+    # both the outer temperature fixed point and the inner nonlinear momentum
+    # solve must have converged.
+    solver["ok"] = bool(info["ok"] and fluid_info["converged"])
     return {
         "N": N,
         "Ra": Ra,
         "Pr": p.Pr,
         "inertia": p.inertia,
-        "solver": info,
+        "solver": solver,
         **metrics,
         "reference": ref,
         "relative_error": errors,
         "coarse_grid_tolerance": 0.15,
         "within_coarse_grid_tolerance": (
-            bool(info["ok"]) and N >= 32 and max(errors.values()) <= 0.15
+            solver["ok"] and N >= 32 and max(errors.values()) <= 0.15
         ),
     }
 

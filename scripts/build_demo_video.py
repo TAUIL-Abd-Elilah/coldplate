@@ -28,6 +28,13 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+from validate_video import (
+    probe_video,
+    sha256_file,
+    validate_probe,
+    validate_release_video,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "orchestrator" / "results"
 DEMO = ROOT / "demo"
@@ -75,8 +82,20 @@ def make_story() -> list[Section]:
         raise ValueError("the 48-case robustness result is incomplete")
     if any(not row["solver"]["ok"] for row in cavity):
         raise ValueError("a de Vahl Davis nonlinear solve did not converge")
+    if any(not row["solver"].get("fluid", {}).get("converged") for row in cavity):
+        raise ValueError("the cavity result lacks inner nonlinear convergence evidence")
     if any(not row["solver"]["ok"] for row in physical["layouts"].values()):
         raise ValueError("a dimensional cold-plate solve did not converge")
+    if any(not row["solver"].get("fluid", {}).get("converged")
+           for row in physical["layouts"].values()):
+        raise ValueError("the dimensional result lacks inner nonlinear convergence evidence")
+    if physical.get("comparison", {}).get("equal_material_budget") is not False:
+        raise ValueError("the dimensional geometry comparison must disclose unequal material")
+    if abs(float(physical["grid"]["represented_heat_load_W"]) - 1.0) > 1.0e-12:
+        raise ValueError("the dimensional result does not preserve the stated one-watt load")
+    mesh = physical.get("mesh_refinement")
+    if not isinstance(mesh, dict) or not mesh.get("all_solves_converged"):
+        raise ValueError("the dimensional case lacks a converged mesh-refinement study")
 
     shortcut = gradient["stats_one-way"]
     largest = max(intervention["rows"], key=lambda row: row["amplitude"])
@@ -87,7 +106,7 @@ def make_story() -> list[Section]:
 
     branches = {row["method"]: row for row in showdown["branches"]}
     reductions = {name: row["metrics"]["reduction_percent"] for name, row in branches.items()}
-    condition = showdown["summary"]["preregistered_success_condition_met"]
+    condition = showdown["summary"]["frozen_success_condition_met"]
     if condition:
         showdown_outcome = (
             f"The composed branch cut the objective by {reductions['composed']:.2f} percent, "
@@ -97,11 +116,11 @@ def make_story() -> list[Section]:
         showdown_claim = "COMPOSED FINISHES WITH THE LOWEST TRUE OBJECTIVE"
     else:
         showdown_outcome = (
-            f"The preregistered finish was {reductions['composed']:.2f}, "
+            f"The frozen-protocol finish was {reductions['composed']:.2f}, "
             f"{reductions['one_way']:.2f}, and {reductions['frozen']:.2f} percent reduction; "
-            "the stored result does not meet the preregistered composed-win condition."
+            "the stored result does not meet the frozen composed-win condition."
         )
-        showdown_claim = "PREREGISTERED OUTCOME REPORTED WITHOUT RETUNING"
+        showdown_claim = "FROZEN-PROTOCOL OUTCOME REPORTED WITHOUT RETUNING"
 
     pooled = robustness["summary"]
     wins = pooled["outcomes"]["exact_wins"]
@@ -109,8 +128,16 @@ def make_story() -> list[Section]:
     ties = pooled["outcomes"]["tie"]
     comparable = pooled["comparable_cases"]
     noncomparable = pooled["attempts_recorded"] - comparable
-    interval = pooled["exact_win_rate_over_comparable"]
-    lower = 100.0 * interval["lower"] if interval["lower"] is not None else 0.0
+    cluster = pooled["cluster_aware_seed_analysis"]
+    cluster_lower_raw = cluster["bootstrap"]["lower"]
+    if not cluster.get("all_planned_clusters_complete") or cluster_lower_raw is None:
+        raise ValueError("the robustness result lacks a complete seed-cluster analysis")
+    cluster_lower = 100.0 * cluster_lower_raw
+    observation_strata = robustness.get("by_prior_observation_status")
+    if not isinstance(observation_strata, dict):
+        raise ValueError("the robustness result lacks the prior-observation disclosure")
+    observed_attempts = observation_strata["observed_before_frozen_design"]["attempts_planned"]
+    new_attempts = observation_strata["not_stored_before_frozen_design"]["attempts_planned"]
 
     max_cavity_error = 100.0 * max(
         error for row in cavity for error in row["relative_error"].values()
@@ -127,6 +154,16 @@ def make_story() -> list[Section]:
     baseline = physical["layouts"]["baseline"]
     finned = physical["layouts"]["finned"]
     physical_change = physical["finned_thermal_resistance_reduction_percent"]
+    physical_change_label = (
+        f"{abs(physical_change):.1f}% LOWER"
+        if physical_change >= 0
+        else f"{abs(physical_change):.1f}% HIGHER"
+    )
+    mesh_max_difference = 100.0 * max(
+        layout["relative_difference_from_finest"]
+        for row in mesh["rows"]
+        for layout in row["layouts"].values()
+    )
 
     return [
         Section(
@@ -166,47 +203,49 @@ def make_story() -> list[Section]:
         ),
         Section(
             "A fresh forward solve decides",
-            "IDENTICAL MATERIAL ACTION · NO GRADIENT GETS TO GRADE ITSELF",
+            "SAME RAW-DESIGN CELL COUNT · NO GRADIENT GETS TO GRADE ITSELF",
             f"3 / 3 EXACT WINS · {realised_more:.0f}% MORE COOLING AT THE LARGEST STEP",
             RESULTS / "fig10_intervention.png",
             (
-                "A norm is not an outcome, so each gradient adds material to twenty cells, removes the same amount from twenty others, and is judged by a fresh coupled solve.",
+                "A norm is not an outcome, so each gradient proposes the same count and amplitude of positive and negative raw-design changes and is judged by a fresh coupled solve.",
                 "The composed choice wins all three tested action sizes.",
-                f"At the largest step it delivers {realised_more:.0f} percent more realized cooling for zero extra material.",
+                f"At the largest step it delivers {realised_more:.0f} percent more realized cooling under the same zero-sum raw-design rule.",
             ),
         ),
         Section(
             "Eight decisions at the strong setting",
-            "PREREGISTERED BEFORE THE RESULT EXISTED",
+            "RETROSPECTIVE FROZEN PROTOCOL · PRIOR OVERLAP DISCLOSED",
             showdown_claim,
             RESULTS / "fig12_showdown.png",
             (
-                "Before generating a result, we locked a repeated showdown where all three branches share the start, volume constraint, eight updates, and true candidate-solve budget.",
+                "We froze the repeated procedure before storing these trajectories, but the same operating point already had favorable one-step evidence, so this is follow-up rather than an untouched independent confirmation.",
+                "All branches share the start, projected-volume target, eight update opportunities, and true candidate-solve budget.",
                 showdown_outcome,
-                "The extra inner adjoint work is counted rather than hidden; the outer decision budget is identical.",
+                "The composed branch's extra inner adjoint work is counted rather than hidden.",
             ),
         ),
         Section(
-            "Forty-eight attempts, including failures",
+            "Forty-eight attempts, with overlap disclosed",
             "16 FIXED SEEDS × 3 RAYLEIGH LEVELS",
             f"{wins} EXACT WINS · {losses} LOSSES · {ties} TIES · {noncomparable} NONCOMPARABLE",
             RESULTS / "fig13_robustness_matrix.png",
             (
-                "One seed is not robustness, so a second locked protocol uses sixteen contiguous seeds at each of three coupling levels and retains every failure.",
+                f"This retrospective frozen extension retains every failure; {observed_attempts} attempts overlap the earlier pilot and {new_attempts} cells had no stored result when the design was frozen.",
                 f"Among {comparable} comparable cases, the exact action wins {wins}, loses {losses}, and ties {ties}.",
-                f"Its Wilson ninety-five percent lower bound is {lower:.1f} percent; the other {noncomparable} attempts remain visible as noncomparable, not deleted.",
+                f"A seed-cluster bootstrap gives a ninety-five percent lower bound of {cluster_lower:.1f} percent; the other {noncomparable} attempts remain visible as noncomparable, not deleted.",
             ),
         ),
         Section(
             "Physics outside the original design point",
             "DE VAHL DAVIS 1983 + AN EXPLICIT S I MAP",
-            f"MAX CAVITY ERROR {max_cavity_error:.1f}% · FINNED Rth CHANGE {physical_change:.1f}%",
+            f"MAX CAVITY ERROR {max_cavity_error:.1f}% · FINNED Rth {physical_change_label}",
             RESULTS / "fig14_physics_validation.png",
             (
                 "The de Vahl Davis reference activates full nonlinear Navier Stokes inertia, hot and cold side walls, and insulated horizontal walls.",
                 cavity_sentence,
                 "A separate five by five by two millimeter sealed-water example maps every nondimensional group back to S I units and preserves exactly one watt on the discretized chip.",
-                f"Base-only resistance is {baseline['thermal_resistance_K_W']:.2f} kelvin per watt and four aluminum fins give {finned['thermal_resistance_K_W']:.2f}; the steady two-dimensional limits stay explicit.",
+                f"Base-only resistance is {baseline['thermal_resistance_K_W']:.2f} kelvin per watt and the unequal-material four-fin illustration gives {finned['thermal_resistance_K_W']:.2f}.",
+                f"Across meshes {', '.join(str(grid) for grid in mesh['grids'])}, the largest resistance difference from the finest grid is {mesh_max_difference:.1f} percent; this remains a steady two-dimensional illustration, not an equal-material optimization claim.",
             ),
         ),
         Section(
@@ -244,10 +283,10 @@ def make_story() -> list[Section]:
         Section(
             "Auditable in one judge path",
             "SOURCE BUILD OR DIGEST-PINNED RELEASE",
-            "TESTS · CLAIM AUDIT · FOUR CONTAINERS · PAPER · CHECKSUMS",
+            "TESTS · CLAIM AUDIT · FOUR COMPONENT IMAGES · PAPER · CHECKSUMS",
             RESULTS / "fig5_architecture.png",
             (
-                "Linux C I runs the tests and claim audit, while a separate job rebuilds all four containers and exercises the real served derivative boundary.",
+                "Linux C I runs the tests and claim audit, while a separate job rebuilds all four component images and serves three at a time across the real derivative boundary.",
                 "The August twenty-ninth release records exact O C I digests, checksums the paper and video, and proves anonymous pulls before publication.",
                 "Coldplate is a two-way equilibrium whose composition changes a measured engineering decision, with the evidence and the failure modes attached.",
             ),
@@ -481,23 +520,31 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         "-metadata", "comment=Tesseract Hackathon 2026 submission",
         "-movflags", "+faststart", "-shortest", str(final),
     ])
-    rendered_duration = _duration(final)
-    if rendered_duration > 300.0:
-        raise ValueError(f"rendered video exceeds the five-minute competition cap: {rendered_duration}")
+    media = validate_probe(probe_video(final))
+    rendered_duration = media["duration_seconds"]
     _write_script(sections, timings, rendered_duration)
     report = {
         "output": str(final.relative_to(ROOT)),
         "duration_seconds": rendered_duration,
-        "width": WIDTH,
-        "height": HEIGHT,
+        "width": media["width"],
+        "height": media["height"],
+        "video_codec": media["video_codec"],
+        "pixel_format": media["pixel_format"],
+        "audio_codec": media["audio_codec"],
+        "audio_sample_rate_hz": media["audio_sample_rate_hz"],
+        "audio_channels": media["audio_channels"],
         "voice": voice,
         "rate": rate,
         "sections": len(sections),
         "captions": str(captions.relative_to(ROOT)),
-        "sha256": hashlib.sha256(final.read_bytes()).hexdigest(),
+        "sha256": sha256_file(final),
         "bytes": final.stat().st_size,
     }
-    (DEMO / "video_manifest.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    manifest = DEMO / "video_manifest.json"
+    manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    # Re-read the committed-deliverable shape through the same validator used
+    # on release day.  This catches muxing surprises and stale manifests.
+    validate_release_video(final, manifest, captions)
     print(json.dumps(report, indent=2))
     return report
 

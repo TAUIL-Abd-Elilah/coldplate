@@ -14,6 +14,7 @@ files and asserts that the documents agree.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -282,6 +283,141 @@ def main() -> int:
               2.7 < best < 2.8 and bool(docs_contain("276%")),
               f"measured {100*best:.1f}%")
 
+    # ---- retrospectively frozen repeated-decision showdown -------------
+    showdown = load("strong_coupling_showdown.json")
+    if showdown:
+        protocol_path = ROOT / showdown["protocol_file"]
+        protocol_hash = hashlib.sha256(protocol_path.read_bytes()).hexdigest()
+        protocol = showdown["protocol"]
+        summary = showdown["summary"]
+        check("showdown embeds the exact committed protocol bytes",
+              showdown["protocol_sha256"] == protocol_hash)
+        check("showdown provenance is retrospective rather than mislabelled preregistration",
+              protocol["status"] == "retrospectively_frozen_design"
+              and "prior_observation_disclosure" in protocol
+              and bool(docs_contain("retrospective")))
+        check("all showdown branches complete all eight accepted decisions",
+              showdown["complete"] is True
+              and summary["all_branches_complete"] is True
+              and summary["required_iterations_per_branch"] == 8
+              and summary["common_initial_objective_verified"] is True
+              and all(branch["completed_iterations"] == 8
+                      and len(branch["rows"]) == 8
+                      and len(branch["proposals"]) == 8
+                      and len(branch["objectives"]) == 9
+                      and all(row["status"] == "accepted" for row in branch["rows"])
+                      for branch in showdown["branches"]))
+        initial_values = [branch["objectives"][0] for branch in showdown["branches"]]
+        check("showdown branches share one measured initial objective",
+              max(initial_values) - min(initial_values) <= 1e-12)
+        reductions = {
+            branch["method"]: branch["metrics"]["reduction_percent"]
+            for branch in showdown["branches"]
+        }
+        print("showdown reductions: " + ", ".join(
+            f"{name}={value:.2f}%" for name, value in reductions.items()
+        ))
+        for method, value in reductions.items():
+            check(f"README/PAPER quote the {method} showdown reduction",
+                  bool(docs_contain(f"{value:.2f}%")), f"measured {value:.2f}%")
+        if summary["frozen_success_condition_met"]:
+            check("stored comparisons support the documented composed showdown win",
+                  all(row["relation"] == "composed_lower"
+                      for row in summary["final_objective_comparisons"]))
+
+    # ---- 48-attempt robustness matrix ----------------------------------
+    matrix = load("intervention_robustness_matrix_48.json")
+    if matrix:
+        protocol_path = ROOT / "orchestrator" / "protocols" / "intervention_robustness_matrix_48.json"
+        protocol_hash = hashlib.sha256(protocol_path.read_bytes()).hexdigest()
+        summary = matrix["summary"]
+        outcomes = summary["outcomes"]
+        check("robustness matrix uses the exact committed protocol bytes",
+              matrix["protocol_sha256"] == protocol_hash)
+        check("all 48 matrix attempts have valid durable records",
+              summary["study_complete"] is True
+              and summary["attempts_planned"] == 48
+              and summary["attempts_recorded"] == 48
+              and summary["attempts_pending"] == 0
+              and summary["invalid_attempt_record_count"] == 0
+              and sum(outcomes.values()) == 48)
+        check("every Rayleigh stratum accounts for sixteen attempts",
+              len(matrix["by_rayleigh_number"]) == 3
+              and all(row["attempts_planned"] == 16
+                      and row["attempts_recorded"] == 16
+                      and row["accounting_complete"]
+                      for row in matrix["by_rayleigh_number"]))
+        strata = matrix["by_prior_observation_status"]
+        check("matrix discloses exactly 13 prior-overlap and 35 previously unstored cells",
+              strata["observed_before_frozen_design"]["attempts_planned"] == 13
+              and strata["not_stored_before_frozen_design"]["attempts_planned"] == 35
+              and bool(docs_contain("13")) and bool(docs_contain("35")))
+        cluster = summary["cluster_aware_seed_analysis"]
+        bootstrap = cluster["bootstrap"]
+        check("cluster-aware analysis preserves all sixteen repeated-seed clusters",
+              cluster["all_planned_clusters_complete"] is True
+              and cluster["complete_clusters"] == 16
+              and bootstrap["samples_with_comparable_cases"]
+              == bootstrap["samples_requested"]
+              and bootstrap["lower"] is not None
+              and bootstrap["upper"] is not None)
+        comparable = summary["comparable_cases"]
+        wins = outcomes["exact_wins"]
+        losses = outcomes["shortcut_wins"]
+        ties = outcomes["tie"]
+        noncomparable = summary["attempts_recorded"] - comparable
+        print(f"matrix: {wins} exact wins, {losses} losses, {ties} ties, "
+              f"{noncomparable} noncomparable; {comparable}/48 comparable")
+        for value, label in ((wins, "exact wins"), (losses, "losses"),
+                             (ties, "ties"), (noncomparable, "noncomparable")):
+            check(f"README/PAPER quote matrix {label}",
+                  bool(docs_contain(f"{value} {label}")), f"measured {value}")
+        cluster_lower = 100.0 * bootstrap["lower"]
+        check("README/PAPER quote the seed-cluster bootstrap lower bound",
+              bool(docs_contain(f"{cluster_lower:.1f}%")),
+              f"measured {cluster_lower:.1f}%")
+
+    # ---- nonlinear reference and explicit SI map -----------------------
+    cavity = load("de_vahl_davis.json")
+    if cavity:
+        max_error = max(error for row in cavity for error in row["relative_error"].values())
+        check("both de Vahl Davis cases have outer and inner convergence evidence",
+              len(cavity) == 2
+              and all(row["solver"]["ok"]
+                      and row["solver"]["fluid"]["converged"]
+                      and row["solver"]["fluid"]["relative_residual"] <= 1e-12
+                      for row in cavity))
+        check("all six N=32 cavity metrics are within the stated 15% tolerance",
+              all(row["N"] == 32 and row["within_coarse_grid_tolerance"]
+                      for row in cavity))
+        check("README/PAPER quote the measured maximum cavity error",
+              bool(docs_contain(f"{100*max_error:.1f}%")),
+              f"measured {100*max_error:.2f}%")
+
+    physical = load("dimensional_coldplate.json")
+    if physical:
+        layouts = physical["layouts"]
+        mesh = physical["mesh_refinement"]
+        check("dimensional chip discretization preserves exactly one watt",
+              abs(physical["grid"]["represented_heat_load_W"] - 1.0) <= 1e-12)
+        check("dimensional solves expose converged inner and outer nonlinear states",
+              physical["evidence_valid"] is True
+              and all(row["solver"]["ok"]
+                      and row["solver"]["fluid"]["converged"]
+                      for row in layouts.values()))
+        check("dimensional comparison is explicitly unequal-material and illustrative",
+              physical["comparison"]["equal_material_budget"] is False
+              and physical["comparison"]["kind"] == "illustrative_unequal_material"
+              and bool(docs_contain("unequal-material")))
+        check("dimensional mesh refinement covers 16, 24, and 32 with converged solves",
+              mesh["grids"] == [16, 24, 32]
+              and mesh["finest_grid"] == 32
+              and mesh["all_solves_converged"] is True)
+        for name in ("baseline", "finned"):
+            value = layouts[name]["thermal_resistance_K_W"]
+            check(f"README/PAPER quote dimensional {name} Rth",
+                  bool(docs_contain(f"{value:.2f}")), f"measured {value:.4f} K/W")
+
     # ---- randomized generalization study -------------------------------
     gg = load("gamma_generalization.json")
     if gg:
@@ -339,6 +475,35 @@ def main() -> int:
             check(f"docs quote the Pr={r['Pr']:g} gradient change as {quoted}",
                   bool(docs_contain(quoted)), f"measured {quoted}")
 
+    # ---- rendered submission video -------------------------------------
+    video = ROOT / "demo" / "coldplate_submission.mp4"
+    captions = ROOT / "demo" / "coldplate_submission.en.srt"
+    poster = ROOT / "demo" / "poster.png"
+    video_manifest = ROOT / "demo" / "video_manifest.json"
+    media = (video, captions, poster, video_manifest)
+    if any(path.exists() for path in media):
+        check("all four final video deliverables exist and are nonempty",
+              all(path.is_file() and path.stat().st_size > 0 for path in media))
+        if all(path.is_file() and path.stat().st_size > 0 for path in media):
+            from validate_video import validate_release_video
+            report = validate_release_video(video, video_manifest, captions)
+            manifest = json.loads(video_manifest.read_text(encoding="utf-8"))
+            check("rendered video is a verified sub-five-minute 1080p delivery",
+                  180.0 <= report["duration_seconds"] <= 300.0
+                  and report["width"] == 1920 and report["height"] == 1080
+                  and report["video_codec"] == "h264"
+                  and report["audio_codec"] == "aac")
+            check("video is small enough for an ordinary GitHub repository",
+                  report["bytes"] < 100_000_000,
+                  f"{report['bytes'] / 1_000_000:.1f} MB")
+            check("video manifest records all eleven data-backed sections",
+                  manifest["sections"] == 11)
+            check("README links the rendered MP4 and English captions",
+                  bool(docs_contain("demo/coldplate_submission.mp4", files=("README.md",)))
+                  and bool(docs_contain("demo/coldplate_submission.en.srt", files=("README.md",))))
+    else:
+        NOTE.append("final video deliverables not rendered yet")
+
     # ---- claims that must NOT appear ----------------------------------
     print("\n=== retracted claims must not reappear ===")
     for bad, why in [
@@ -361,6 +526,8 @@ def main() -> int:
         ROOT / "prototype" / "gradient_check.py",
         ROOT / "prototype" / "reference_jax.py",
         ROOT / "prototype" / "validate_ra3e4.py",
+        ROOT / "scripts" / "build_demo_video.py",
+        ROOT / "orchestrator" / "make_extended_figures.py",
     ]
     joined = "\n".join(p.read_text(encoding="utf-8") for p in source_files)
     for bad in ("40-150%", "74% wrong sign", "four languages", "four containers"):
@@ -380,6 +547,7 @@ def main() -> int:
         (r"orders\s+of\s+magnitude\s+below\s+the\s+viscous",
          "unmeasured term-norm claim"),
         (r"adjoint\s+exists\s+only\s+as", "false operator-assembly impossibility"),
+        (r"\bpreregistered\b", "false prospective-preregistration claim"),
     ):
         check(f"no {label}", re.search(pattern, joined, re.I) is None)
     check("obsolete N48 trajectory diagnostic removed",

@@ -21,6 +21,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from validate_video import validate_release_video
+
 ROOT = Path(__file__).resolve().parents[1]
 FAIL: list[str] = []
 WARN: list[str] = []
@@ -75,6 +77,40 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
     check("technical writeup present", (ROOT / "PAPER.md").exists())
     check("writeup PDF built", (ROOT / "PAPER.pdf").exists())
     check("demo video script present", (ROOT / "DEMO_SCRIPT.md").exists())
+    video = ROOT / "demo" / "coldplate_submission.mp4"
+    captions = ROOT / "demo" / "coldplate_submission.en.srt"
+    poster = ROOT / "demo" / "poster.png"
+    video_manifest = ROOT / "demo" / "video_manifest.json"
+    media_deliverables = (
+        ("rendered demo video present", video),
+        ("English demo captions present", captions),
+        ("demo poster present", poster),
+        ("video manifest present", video_manifest),
+    )
+    media_present = [path.is_file() and path.stat().st_size > 0
+                     for _, path in media_deliverables]
+    if strict_public or any(media_present):
+        for (label, _), present in zip(media_deliverables, media_present):
+            check(label, present)
+    else:
+        warn(
+            "rendered video deliverables are not generated yet",
+            "allowed only during private development; --strict-public makes them mandatory",
+        )
+    if all(media_present):
+        try:
+            media = validate_release_video(video, video_manifest, captions)
+            check(
+                "video has verified 1080p H.264 + AAC streams and is under five minutes",
+                True,
+                f"{media['duration_seconds']:.3f}s, {media['sha256'][:12]}...",
+            )
+        except Exception as exc:  # noqa: BLE001 - turn tool/format errors into readiness failures
+            check(
+                "video has verified 1080p H.264 + AAC streams and is under five minutes",
+                False,
+                str(exc),
+            )
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     check("README names the track", "Multi-physics" in readme or "multi-physics" in readme)
     check("README justifies why Tesseract is needed",

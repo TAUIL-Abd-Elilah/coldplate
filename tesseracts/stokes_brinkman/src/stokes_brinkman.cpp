@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -70,6 +71,14 @@ struct Solver {
   SpMat J;
   std::unique_ptr<LU> luJ, luJT;
   Vec w_star;                   // converged state, needed to build dN/dw
+  // Diagnostics for the most recent forward call.  In particular, never let
+  // a Jacobian left over from an earlier successful call make derivatives
+  // appear available after a failed nonlinear solve.
+  bool nonlinear_converged = false;
+  int nonlinear_iterations = 0;
+  int last_status = 0;
+  double nonlinear_relative_residual =
+      std::numeric_limits<double>::infinity();
   bool ok = false;
 
   inline int iu(int j, int i) const { return j * (Nx - 1) + (i - 1); }
@@ -335,6 +344,134 @@ void scatter(const Solver& s, const Vec& w, double* u, double* v, double* p) {
       for (int i = 0; i < s.Nx; ++i) p[s.ic(j, i)] = w[s.ip(j, i)];
 }
 
+void begin_forward(Solver& s) {
+  s.nonlinear_converged = false;
+  s.nonlinear_iterations = 0;
+  s.last_status = 0;
+  s.nonlinear_relative_residual =
+      std::numeric_limits<double>::infinity();
+  s.w_star.resize(0);
+  // These factors are state-dependent. Clearing them here makes a failed
+  // apply fail closed even when the handle previously solved another T.
+  s.luJ.reset();
+  s.luJT.reset();
+  s.J.resize(0, 0);
+}
+
+int fail_forward(Solver& s, int status) {
+  s.nonlinear_converged = false;
+  s.last_status = status;
+  s.w_star.resize(0);
+  s.luJ.reset();
+  s.luJT.reset();
+  s.J.resize(0, 0);
+  return status;
+}
+
+// Internal implementation shared by the stable sb_apply ABI and the
+// option-bearing entry point used for diagnostics/tests.
+int apply_impl(Solver& s, const double* T, double* u, double* v, double* p,
+               double relative_tolerance, int max_newton) {
+  if (!(relative_tolerance > 0.0) || !std::isfinite(relative_tolerance) ||
+      max_newton < 0) {
+    s.nonlinear_iterations = 0;
+    s.nonlinear_relative_residual =
+        std::numeric_limits<double>::infinity();
+    return fail_forward(s, 6);  // invalid nonlinear-solver options
+  }
+
+  const Vec b = build_rhs(s, T);
+  if (!b.allFinite()) {
+    s.nonlinear_iterations = 0;
+    s.nonlinear_relative_residual =
+        std::numeric_limits<double>::infinity();
+    return fail_forward(s, 3);
+  }
+
+  // Repeated endpoint calls at one primal state are common: an outer Krylov
+  // solve may request dozens of JVPs/VJPs for the exact same alpha,T. Reuse a
+  // previously converged state (and its Jacobian) when it already satisfies
+  // the current load. This is a checked numerical reuse, not blind caching.
+  const bool have_warm =
+      s.inertia != 0.0 && s.nonlinear_converged && s.w_star.size() == s.n &&
+      s.luJ != nullptr;
+  if (have_warm) {
+    Vec Rwarm = s.A * s.w_star + convect(s, s.w_star) - b;
+    const double bscale = std::max(1.0, b.lpNorm<Eigen::Infinity>());
+    if (Rwarm.allFinite()) {
+      const double relative = Rwarm.lpNorm<Eigen::Infinity>() / bscale;
+      if (relative <= relative_tolerance) {
+        s.nonlinear_converged = true;
+        s.nonlinear_iterations = 0;
+        s.last_status = 0;
+        s.nonlinear_relative_residual = relative;
+        scatter(s, s.w_star, u, v, p);
+        return 0;
+      }
+    }
+  }
+
+  begin_forward(s);
+  Vec w = s.lu.solve(b);
+  if (s.lu.info() != Eigen::Success || !w.allFinite())
+    return fail_forward(s, 1);
+
+  // The original linear path remains one solve followed by the same scatter.
+  if (s.inertia == 0.0) {
+    s.nonlinear_converged = true;
+    s.nonlinear_relative_residual = 0.0;
+    scatter(s, w, u, v, p);
+    return 0;
+  }
+
+  // Scale the convergence test by the load. The buoyancy right-hand side
+  // carries a factor Ra*Pr, so at Ra = 1e6 an absolute tolerance of 1e-12 is
+  // below the rounding of the residual evaluation itself.
+  const double bscale = std::max(1.0, b.lpNorm<Eigen::Infinity>());
+  for (int updates = 0; updates <= max_newton; ++updates) {
+    Vec R = s.A * w + convect(s, w) - b;
+    if (!R.allFinite()) return fail_forward(s, 3);
+    const double rn = R.lpNorm<Eigen::Infinity>();
+    s.nonlinear_relative_residual = rn / bscale;
+    s.nonlinear_iterations = updates;
+
+    if (s.nonlinear_relative_residual <= relative_tolerance) {
+      // Derivatives are valid only after the convergence test passes.
+      if (!build_jacobian(s, w)) return fail_forward(s, 2);
+      s.w_star = w;
+      s.nonlinear_converged = true;
+      s.last_status = 0;
+      scatter(s, w, u, v, p);
+      return 0;
+    }
+    if (updates == max_newton) return fail_forward(s, 5);
+
+    if (!build_jacobian(s, w)) return fail_forward(s, 2);
+    Vec dw = s.luJ->solve(R);
+    if (s.luJ->info() != Eigen::Success || !dw.allFinite())
+      return fail_forward(s, 2);
+
+    // Backtracking line search. Only accept a finite state that strictly
+    // reduces the residual; otherwise report nonconvergence to the caller.
+    double step = 1.0;
+    bool accepted = false;
+    for (int k = 0; k < 10; ++k) {
+      Vec wt = w - step * dw;
+      if (wt.allFinite()) {
+        Vec Rt = s.A * wt + convect(s, wt) - b;
+        if (Rt.allFinite() && Rt.lpNorm<Eigen::Infinity>() < rn) {
+          w = wt;
+          accepted = true;
+          break;
+        }
+      }
+      step *= 0.5;
+    }
+    if (!accepted) return fail_forward(s, 4);
+  }
+  return fail_forward(s, 5);  // unreachable, keeps the contract explicit
+}
+
 }  // namespace
 
 extern "C" {
@@ -390,60 +527,50 @@ SB_API int sb_n_unknowns(void* h) { return static_cast<Solver*>(h)->n; }
 // operator the JVP and VJP must invert.
 SB_API int sb_apply(void* h, const double* T, double* u, double* v, double* p) {
   auto& s = *static_cast<Solver*>(h);
-  const Vec b = build_rhs(s, T);
-  Vec w = s.lu.solve(b);
-  if (s.lu.info() != Eigen::Success) return 1;
-
-  if (s.inertia != 0.0) {
-    // Scale the convergence test by the load. The buoyancy right-hand side
-    // carries a factor Ra*Pr, so at Ra = 1e6 an absolute tolerance of 1e-12 is
-    // below the rounding of the residual evaluation itself and Newton would
-    // simply run until the line search gave up.
-    const double bscale = std::max(1.0, b.lpNorm<Eigen::Infinity>());
-    for (int it = 0; it < 60; ++it) {
-      Vec R = s.A * w + convect(s, w) - b;
-      const double rn = R.lpNorm<Eigen::Infinity>();
-      if (rn < 1e-12 * bscale) break;
-      if (!build_jacobian(s, w)) return 2;
-      Vec dw = s.luJ->solve(R);
-      if (s.luJ->info() != Eigen::Success) return 2;
-
-      // Backtracking line search. Only ever accept a step that reduces the
-      // residual: at high Ra the undamped Newton step can overshoot into a
-      // region where the convective term dominates and never come back.
-      double step = 1.0;
-      bool accepted = false;
-      for (int k = 0; k < 10; ++k) {
-        Vec wt = w - step * dw;
-        Vec Rt = s.A * wt + convect(s, wt) - b;
-        if (Rt.lpNorm<Eigen::Infinity>() < rn) {
-          w = wt;
-          accepted = true;
-          break;
-        }
-        step *= 0.5;
-      }
-      if (!accepted) break;  // at the accuracy floor, or genuinely stuck
-    }
-    // Derivatives are taken about the state we actually converged to.
-    if (!build_jacobian(s, w)) return 2;
-    s.w_star = w;
-  }
-
-  scatter(s, w, u, v, p);
-  return 0;
+  return apply_impl(s, T, u, v, p, 1e-12, 60);
 }
 
-// Residual at the last converged state, RELATIVE to the load, for callers that
-// want to verify the nonlinear solve rather than trust it. Relative because the
-// buoyancy right-hand side scales with Ra*Pr: an absolute number here would say
-// more about the Rayleigh number than about the quality of the solve.
+// The ordinary endpoint intentionally keeps its historical signature.  This
+// option-bearing variant makes iteration-limit failure deterministic to test
+// and is useful to native callers that need a different numerical budget.
+SB_API int sb_apply_with_options(void* h, const double* T, double* u, double* v,
+                                 double* p, double relative_tolerance,
+                                 int max_newton) {
+  auto& s = *static_cast<Solver*>(h);
+  return apply_impl(s, T, u, v, p, relative_tolerance, max_newton);
+}
+
+// Diagnostics for the most recent apply. The residual is relative to the load
+// and remains available after failure; status 0 means success, 4 means rejected
+// line search, and 5 means iteration budget exhausted.
 SB_API double sb_residual(void* h, const double* T) {
   auto& s = *static_cast<Solver*>(h);
-  if (s.inertia == 0.0 || s.w_star.size() != s.n) return 0.0;
-  const Vec b = build_rhs(s, T);
-  Vec R = s.A * s.w_star + convect(s, s.w_star) - b;
-  return R.lpNorm<Eigen::Infinity>() / std::max(1.0, b.lpNorm<Eigen::Infinity>());
+  // Preserve the historical query semantics after a successful inertial
+  // solve: callers may ask how the stored state fares against another load.
+  // On failure w_star is deliberately cleared, so expose the residual from
+  // that failed attempt instead.
+  if (s.inertia != 0.0 && s.nonlinear_converged &&
+      s.w_star.size() == s.n) {
+    const Vec b = build_rhs(s, T);
+    if (!b.allFinite()) return std::numeric_limits<double>::infinity();
+    const Vec R = s.A * s.w_star + convect(s, s.w_star) - b;
+    if (!R.allFinite()) return std::numeric_limits<double>::infinity();
+    return R.lpNorm<Eigen::Infinity>() /
+           std::max(1.0, b.lpNorm<Eigen::Infinity>());
+  }
+  return s.nonlinear_relative_residual;
+}
+
+SB_API int sb_converged(void* h) {
+  return static_cast<Solver*>(h)->nonlinear_converged ? 1 : 0;
+}
+
+SB_API int sb_newton_iterations(void* h) {
+  return static_cast<Solver*>(h)->nonlinear_iterations;
+}
+
+SB_API int sb_last_status(void* h) {
+  return static_cast<Solver*>(h)->last_status;
 }
 
 // Forward-mode: dw = A^{-1} ( db/dT dT - (dA/dalpha dalpha) w ).
@@ -480,7 +607,7 @@ SB_API int sb_jvp(void* h, const double* u, const double* v, const double* dalph
   // assembled above is unchanged -- only what we invert it against differs.
   Vec dw;
   if (s.inertia != 0.0) {
-    if (!s.luJ) return 1;  // sb_apply must have been called first
+    if (!s.nonlinear_converged || !s.luJ) return 1;
     dw = s.luJ->solve(r);
     if (s.luJ->info() != Eigen::Success) return 1;
   } else {
@@ -503,7 +630,7 @@ SB_API int sb_vjp(void* h, const double* u, const double* v, const double* ubar,
   // rebuilt whenever sb_apply converges to a new state.
   LU* adj = nullptr;
   if (s.inertia != 0.0) {
-    if (!s.luJ) return 1;  // sb_apply must have been called first
+    if (!s.nonlinear_converged || !s.luJ) return 1;
     if (!s.luJT) {
       SpMat Jt = SpMat(s.J.transpose());
       Jt.makeCompressed();

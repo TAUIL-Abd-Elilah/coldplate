@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -50,3 +51,57 @@ def test_manifest_rejects_missing_duplicate_mutable_or_unknown_rows(tmp_path, mu
     mutate(rows)
     with pytest.raises(ValueError):
         parse_manifest(write_manifest(tmp_path, rows))
+
+
+def test_release_workflow_pins_actions_and_serializes_manual_phases():
+    workflow = (ROOT / ".github" / "workflows" / "release-submission.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "cancel-in-progress: false" in workflow
+    assert "permissions: {}" in workflow
+    assert workflow.count("name: submission-production") == 2
+    assert "2026-08-29 00:00 UTC" in workflow
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in workflow
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in workflow
+    assert "docker/login-action@dbcb813823bdd20940b903addbd779551569679f" in workflow
+    assert "actions/checkout@v" not in workflow
+    assert "actions/setup-python@v" not in workflow
+    assert "docker/login-action@v" not in workflow
+
+
+def test_release_workflow_never_interpolates_confirmation_into_shell_source():
+    workflow = (ROOT / ".github" / "workflows" / "release-submission.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "test '${{ inputs.confirmation }}'" not in workflow
+    assert workflow.count("CONFIRMATION: ${{ inputs.confirmation }}") == 2
+    assert 'os.environ["CONFIRMATION"] != "PREPARE"' in workflow
+    assert 'os.environ["CONFIRMATION"] != "PUBLISH"' in workflow
+
+
+def test_publish_uses_checksummed_provenance_and_exact_prepared_checkout():
+    workflow = (ROOT / ".github" / "workflows" / "release-submission.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "release-provenance.json" in workflow
+    assert '"prepared_sha": sha' in workflow
+    assert "sha256sum -c SHA256SUMS" in workflow
+    assert "ref: ${{ steps.provenance.outputs.prepared_sha }}" in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$PREPARED_SHA"' in workflow
+    assert 'state.get("isDraft")' in workflow
+    assert "python scripts/validate_video.py" in workflow
+
+
+def test_every_github_action_is_pinned_to_a_full_commit_sha():
+    workflows = ROOT / ".github" / "workflows"
+    uses = []
+    for path in workflows.glob("*.yml"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- uses:"):
+                uses.append((path.name, stripped.split("uses:", 1)[1].strip().split()[0]))
+    assert uses
+    bad = [(name, value) for name, value in uses
+           if "@" not in value
+           or re.fullmatch(r"[0-9a-f]{40}", value.rsplit("@", 1)[1]) is None]
+    assert not bad

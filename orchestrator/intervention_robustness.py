@@ -33,11 +33,48 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import tempfile
 from pathlib import Path
 
 from intervention_test import main as run_intervention
+
+DEFAULT_OUTCOME_ATOL = 1.0e-10
+DEFAULT_OUTCOME_RTOL = 1.0e-8
+
+
+def classify_outcome(delta_exact: float, delta_shortcut: float,
+                     absolute_tolerance: float = DEFAULT_OUTCOME_ATOL,
+                     relative_tolerance: float = DEFAULT_OUTCOME_RTOL,
+                     ) -> tuple[str, float, float]:
+    """Classify a comparable action pair without turning roundoff into a win.
+
+    Returns ``(outcome, exact_advantage, equivalence_tolerance)``.  Positive
+    advantage means the exact-gradient action produced the lower objective.
+    The scale is the observed objective change, rather than one, so the
+    relative term does not swamp small but well-resolved interventions.
+    """
+    values = (delta_exact, delta_shortcut, absolute_tolerance, relative_tolerance)
+    if not all(not isinstance(value, bool) and isinstance(value, (int, float))
+               and math.isfinite(float(value))
+               for value in values):
+        raise ValueError("comparison values and tolerances must be finite numbers")
+    if absolute_tolerance < 0 or relative_tolerance < 0:
+        raise ValueError("comparison tolerances must be non-negative")
+    exact = float(delta_exact)
+    shortcut = float(delta_shortcut)
+    tolerance = float(absolute_tolerance) + float(relative_tolerance) * max(
+        abs(exact), abs(shortcut)
+    )
+    advantage = shortcut - exact
+    if abs(advantage) <= tolerance:
+        outcome = "tie"
+    elif advantage > 0:
+        outcome = "exact_wins"
+    else:
+        outcome = "shortcut_wins"
+    return outcome, advantage, tolerance
 
 
 def summarize(cases: list[dict], N: int, Ra: float, amplitude: float) -> dict:
@@ -51,7 +88,11 @@ def summarize(cases: list[dict], N: int, Ra: float, amplitude: float) -> dict:
     ties = [c for c in comparable if c["outcome"] == "tie"]
     inconclusive = [c for c in cases if c["outcome"] == "inconclusive"]
     base_failures = [c for c in cases if c["outcome"] == "base_not_converged"]
-    extra = sorted(c["extra_cooling_fraction"] for c in wins)
+    runner_failures = [c for c in cases if c["outcome"] == "runner_failure"]
+    extra = sorted(
+        c["extra_cooling_fraction"] for c in wins
+        if c.get("extra_cooling_fraction") is not None
+    )
     return {
         "N": N,
         "Ra": Ra,
@@ -60,6 +101,7 @@ def summarize(cases: list[dict], N: int, Ra: float, amplitude: float) -> dict:
         "seeds_comparable": len(comparable),
         "seeds_inconclusive": len(inconclusive),
         "base_state_failures": len(base_failures),
+        "runner_failures": len(runner_failures),
         "exact_wins": len(wins),
         "shortcut_wins": len(losses),
         "ties": len(ties),
@@ -76,9 +118,11 @@ def summarize(cases: list[dict], N: int, Ra: float, amplitude: float) -> dict:
             for c in comparable
         ),
         "selection_note": (
-            "Fixed contiguous seed range; every seed is reported, including "
-            "losses, failed base solves, and inconclusive action comparisons. "
-            "No seed was selected after seeing its result."
+            "Fixed contiguous seed range: every seed is reported, including "
+            "every within-range loss, failed base solve, inconclusive action "
+            "comparison, and runner failure. Whether the range itself was set "
+            "before any related observation is disclosed by the enclosing "
+            "study protocol rather than inferred from this runner."
         ),
         "cases": cases,
     }
@@ -90,8 +134,18 @@ def main(
     seed_start: int = 0,
     n_seeds: int = 16,
     amplitude: float = 0.025,
+    outcome_atol: float = DEFAULT_OUTCOME_ATOL,
+    outcome_rtol: float = DEFAULT_OUTCOME_RTOL,
     out: str = "results/intervention_robustness.json",
 ) -> int:
+    if N <= 0 or n_seeds <= 0 or amplitude <= 0:
+        raise ValueError("N, n_seeds, and amplitude must be positive")
+    if not all(not isinstance(value, bool) and isinstance(value, (int, float))
+               and math.isfinite(float(value))
+               for value in (Ra, outcome_atol, outcome_rtol)):
+        raise ValueError("Ra and outcome tolerances must be finite numbers")
+    if Ra <= 0 or outcome_atol < 0 or outcome_rtol < 0:
+        raise ValueError("Ra must be positive and outcome tolerances non-negative")
     cases: list[dict] = []
     seeds = list(range(seed_start, seed_start + n_seeds))
     print(f"fixed contiguous seed range: {seeds[0]}..{seeds[-1]} "
@@ -111,6 +165,14 @@ def main(
         partial = summarize(cases, N, Ra, amplitude)
         partial["complete"] = len(cases) == len(seeds)
         partial["seeds_planned"] = len(seeds)
+        partial["outcome_equivalence_tolerance"] = {
+            "absolute_delta_J": outcome_atol,
+            "relative_delta_J": outcome_rtol,
+        }
+        partial["action_budget_definition"] = (
+            "equal zero-sum perturbation of the same number of raw-design "
+            "cells; not an equal realised physical-density or runtime budget"
+        )
         target.write_text(json.dumps(partial, indent=2))
 
     with tempfile.TemporaryDirectory(prefix="coldplate-interventions-") as tmp:
@@ -122,16 +184,20 @@ def main(
                 run_intervention(
                     N=N, Ra=Ra, seed=seed, amplitudes=(amplitude,), out=str(path)
                 )
-            except Exception as exc:  # noqa: BLE001 - base failure is data
+            except Exception as exc:  # noqa: BLE001 - preserve every attempt
                 reason = f"{type(exc).__name__}: {str(exc)[:120]}"
                 outcome = (
                     "base_not_converged"
                     if "base coupled state did not converge" in str(exc)
-                    else "inconclusive"
+                    else "runner_failure"
                 )
                 cases.append({
                     "seed": seed,
                     "outcome": outcome,
+                    "failure_stage": (
+                        "base_forward" if outcome == "base_not_converged"
+                        else "execution_unit_exception"
+                    ),
                     "reason": reason,
                 })
                 print(f"  seed {seed}: {outcome} ({type(exc).__name__})",
@@ -139,8 +205,22 @@ def main(
                 checkpoint()
                 continue
 
-            report = json.loads(path.read_text())
-            row = report["rows"][0]
+            try:
+                report = json.loads(path.read_text())
+                rows = report["rows"]
+                if not isinstance(rows, list) or len(rows) != 1:
+                    raise ValueError("execution-unit report must contain one row")
+                row = rows[0]
+            except Exception as exc:  # noqa: BLE001 - malformed output is runner failure
+                cases.append({
+                    "seed": seed,
+                    "outcome": "runner_failure",
+                    "failure_stage": "execution_unit_report",
+                    "reason": f"{type(exc).__name__}: {str(exc)[:120]}",
+                })
+                print(f"  seed {seed}: runner_failure (invalid report)", flush=True)
+                checkpoint()
+                continue
             if row["outcome"] == "inconclusive":
                 cases.append({
                     "seed": seed,
@@ -148,6 +228,8 @@ def main(
                     "gamma": report["gamma"],
                     "naive_relative_error": report["naive_relative_error"],
                     "naive_cosine": report["naive_cosine"],
+                    "add_set_overlap": report["add_set_overlap"],
+                    "remove_set_overlap": report["remove_set_overlap"],
                     "exact_action_ok": row["exact_action_ok"],
                     "naive_action_ok": row["naive_action_ok"],
                     "exact_action_reason": row["exact_action_reason"],
@@ -159,9 +241,24 @@ def main(
                 checkpoint()
                 continue
             exact, naive = row["delta_J_exact_action"], row["delta_J_naive_action"]
+            try:
+                outcome, advantage, tolerance = classify_outcome(
+                    exact, naive, outcome_atol, outcome_rtol
+                )
+            except Exception as exc:  # noqa: BLE001 - bad evidence is runner failure
+                cases.append({
+                    "seed": seed,
+                    "outcome": "runner_failure",
+                    "failure_stage": "outcome_classification",
+                    "reason": f"{type(exc).__name__}: {str(exc)[:120]}",
+                })
+                print(f"  seed {seed}: runner_failure (invalid comparison)", flush=True)
+                checkpoint()
+                continue
             cases.append({
                 "seed": seed,
-                "outcome": row["outcome"],
+                "outcome": outcome,
+                "execution_unit_reported_outcome": row["outcome"],
                 "gamma": report["gamma"],
                 "naive_relative_error": report["naive_relative_error"],
                 "naive_cosine": report["naive_cosine"],
@@ -169,18 +266,27 @@ def main(
                 "remove_set_overlap": report["remove_set_overlap"],
                 "delta_J_exact_action": exact,
                 "delta_J_naive_action": naive,
-                "exact_advantage": row["exact_advantage"],
+                "exact_advantage": advantage,
+                "outcome_equivalence_tolerance": tolerance,
                 # negative when the shortcut's action cooled more
                 "extra_cooling_fraction": abs(exact) / abs(naive) - 1
-                if naive != 0 else float("inf"),
+                if naive != 0 else None,
             })
-            print(f"  seed {seed}: {row['outcome']} "
+            print(f"  seed {seed}: {outcome} "
                   f"(exact {exact:+.5f} vs shortcut {naive:+.5f})", flush=True)
             checkpoint()
 
     result = summarize(cases, N, Ra, amplitude)
     result["complete"] = len(cases) == len(seeds)
     result["seeds_planned"] = len(seeds)
+    result["outcome_equivalence_tolerance"] = {
+        "absolute_delta_J": outcome_atol,
+        "relative_delta_J": outcome_rtol,
+    }
+    result["action_budget_definition"] = (
+        "equal zero-sum perturbation of the same number of raw-design cells; "
+        "not an equal realised physical-density or runtime budget"
+    )
     target.write_text(json.dumps(result, indent=2))
 
     print(f"\n{'seed':>4} {'outcome':>14} {'gamma':>7} {'naive err':>10} "
@@ -219,5 +325,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed-start", dest="seed_start", type=int, default=0)
     parser.add_argument("--n-seeds", dest="n_seeds", type=int, default=16)
     parser.add_argument("--amplitude", type=float, default=0.025)
+    parser.add_argument("--outcome-atol", dest="outcome_atol", type=float,
+                        default=DEFAULT_OUTCOME_ATOL)
+    parser.add_argument("--outcome-rtol", dest="outcome_rtol", type=float,
+                        default=DEFAULT_OUTCOME_RTOL)
     parser.add_argument("--out", default="results/intervention_robustness.json")
     raise SystemExit(main(**vars(parser.parse_args())))

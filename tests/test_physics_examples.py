@@ -12,13 +12,14 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
-from benchmark_de_vahl_davis import cavity_metrics  # noqa: E402
+from benchmark_de_vahl_davis import cavity_metrics, fluid_solver_status  # noqa: E402
 from dimensional_coldplate import (  # noqa: E402
     PhysicalCase,
     base_layout,
     discretized_chip,
     finned_layout,
     nondimensionalise,
+    summarize_mesh_refinement,
 )
 
 
@@ -70,4 +71,58 @@ def test_discretized_chip_preserves_requested_heat_load():
     assert np.isclose(
         chip["heat_flux_W_m2"] * chip["effective_width_m"] * case.depth_m,
         case.heat_load_W,
+    )
+
+
+def test_fluid_status_requires_finite_exported_diagnostics():
+    good = fluid_solver_status({
+        "nonlinear_converged": np.asarray(1.0),
+        "nonlinear_residual": np.asarray(4.0e-13),
+        "nonlinear_iterations": np.asarray(7.0),
+    })
+    assert good == {
+        "converged": True,
+        "relative_residual": 4.0e-13,
+        "newton_iterations": 7,
+    }
+    bad = fluid_solver_status({
+        "nonlinear_converged": np.asarray(1.0),
+        "nonlinear_residual": np.asarray(np.inf),
+        "nonlinear_iterations": np.asarray(60.0),
+    })
+    assert bad["converged"] is False
+
+
+def _fake_dimensional_result(N: int, baseline_rth: float, finned_rth: float) -> dict:
+    def layout(rth, volume):
+        return {
+            "thermal_resistance_K_W": rth,
+            "solid_volume_fraction": volume,
+            "solver": {"ok": True},
+        }
+
+    return {
+        "grid": {"represented_heat_load_W": 1.0},
+        "evidence_valid": True,
+        "layouts": {
+            "baseline": layout(baseline_rth, 0.10),
+            "finned": layout(finned_rth, 0.22),
+        },
+    }
+
+
+def test_mesh_refinement_summary_uses_finest_grid_and_keeps_solver_evidence():
+    summary = summarize_mesh_refinement({
+        16: _fake_dimensional_result(16, 2.1, 1.7),
+        24: _fake_dimensional_result(24, 2.0, 1.6),
+    })
+    assert summary["grids"] == [16, 24]
+    assert summary["finest_grid"] == 24
+    assert summary["all_solves_converged"] is True
+    coarse = summary["rows"][0]
+    assert np.isclose(
+        coarse["layouts"]["baseline"]["relative_difference_from_finest"], 0.05
+    )
+    assert coarse["layouts"]["finned"]["solid_volume_fraction"] > (
+        coarse["layouts"]["baseline"]["solid_volume_fraction"]
     )

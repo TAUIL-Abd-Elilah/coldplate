@@ -61,8 +61,17 @@ def lib(stokes_lib):
     L.sb_destroy.argtypes = [ctypes.c_void_p]
     L.sb_apply.argtypes = [ctypes.c_void_p, dp, dp, dp, dp]
     L.sb_apply.restype = ctypes.c_int
+    L.sb_apply_with_options.argtypes = [ctypes.c_void_p, dp, dp, dp, dp,
+                                        ctypes.c_double, ctypes.c_int]
+    L.sb_apply_with_options.restype = ctypes.c_int
     L.sb_residual.argtypes = [ctypes.c_void_p, dp]
     L.sb_residual.restype = ctypes.c_double
+    L.sb_converged.argtypes = [ctypes.c_void_p]
+    L.sb_converged.restype = ctypes.c_int
+    L.sb_newton_iterations.argtypes = [ctypes.c_void_p]
+    L.sb_newton_iterations.restype = ctypes.c_int
+    L.sb_last_status.argtypes = [ctypes.c_void_p]
+    L.sb_last_status.restype = ctypes.c_int
     L.sb_jvp.argtypes = [ctypes.c_void_p, dp, dp, dp, dp, dp, dp]
     L.sb_jvp.restype = ctypes.c_int
     L.sb_vjp.argtypes = [ctypes.c_void_p, dp, dp, dp, dp, dp, dp, dp]
@@ -116,6 +125,9 @@ def test_zero_inertia_is_bitwise_the_old_solver(lib, case):
     assert np.array_equal(u0, u1)
     assert np.array_equal(v0, v1)
     assert np.array_equal(p0, p1)
+    assert lib.sb_converged(ctypes.c_void_p(h1)) == 1
+    assert lib.sb_newton_iterations(ctypes.c_void_p(h1)) == 0
+    assert lib.sb_residual(ctypes.c_void_p(h1), P(case["T"])) == 0.0
     lib.sb_destroy(ctypes.c_void_p(h0))
     lib.sb_destroy(ctypes.c_void_p(h1))
 
@@ -146,10 +158,125 @@ def test_inertia_actually_changes_the_flow(lib, case):
 def test_newton_converges_and_residual_is_tiny(lib, case):
     # Relative to the load: the buoyancy term carries Ra*Pr ~ 7e5 here, so an
     # absolute threshold would be a statement about the Rayleigh number.
-    h, _, _, _ = solve_cpp(lib, case, 1.0)
+    h, u, v, p = solve_cpp(lib, case, 1.0)
     r = lib.sb_residual(ctypes.c_void_p(h), P(case["T"]))
     assert r < 1e-12, f"relative nonlinear residual {r:.3e}"
+    assert lib.sb_converged(ctypes.c_void_p(h)) == 1
+    assert lib.sb_newton_iterations(ctypes.c_void_p(h)) > 0
+    assert lib.sb_last_status(ctypes.c_void_p(h)) == 0
+
+    # sb_residual is an established native query whose T argument historically
+    # meant "evaluate the stored solution against this load". Keep that
+    # behaviour even though the no-argument status accessors now retain the
+    # residual of the most recent apply for failure reporting.
+    changed_T = np.ascontiguousarray(0.5 * case["T"])
+    changed_r = lib.sb_residual(ctypes.c_void_p(h), P(changed_T))
+    assert np.isfinite(changed_r) and changed_r > 1e-3
+    assert lib.sb_converged(ctypes.c_void_p(h)) == 1
+
+    # Krylov differentiation requests the same primal repeatedly. The checked
+    # warm-state reuse should return that exact state without another Newton
+    # update while still re-evaluating its residual against the current load.
+    u2 = np.zeros_like(u); v2 = np.zeros_like(v); p2 = np.zeros_like(p)
+    assert lib.sb_apply(
+        ctypes.c_void_p(h), P(case["T"]), P(u2), P(v2), P(p2),
+    ) == 0
+    assert lib.sb_newton_iterations(ctypes.c_void_p(h)) == 0
+    assert np.array_equal(u, u2)
+    assert np.array_equal(v, v2)
+    assert np.array_equal(p, p2)
     lib.sb_destroy(ctypes.c_void_p(h))
+
+
+def test_changed_temperature_rebuilds_cached_state_and_jacobian(lib, case):
+    """A reused native handle must differentiate the newest temperature."""
+    h, _, _, _ = solve_cpp(lib, case, 1.0)
+    changed_T = np.ascontiguousarray(0.5 * case["T"])
+    u = np.zeros((N, N + 1)); v = np.zeros((N + 1, N)); p = np.zeros((N, N))
+    assert lib.sb_apply(
+        ctypes.c_void_p(h), P(changed_T), P(u), P(v), P(p),
+    ) == 0
+    assert lib.sb_residual(ctypes.c_void_p(h), P(changed_T)) < 1e-12
+
+    rng = np.random.default_rng(17)
+    d_T = np.ascontiguousarray(rng.normal(size=(N, N)))
+    du = np.zeros_like(u); dv = np.zeros_like(v)
+    assert lib.sb_jvp(
+        ctypes.c_void_p(h), P(u), P(v), None, P(d_T), P(du), P(dv),
+    ) == 0
+
+    f = lambda t: _ref_flow(case["alpha"], t, 1.0)  # noqa: E731
+    _, (du_ref, dv_ref) = jax.jvp(
+        f, (jnp.asarray(changed_T),), (jnp.asarray(d_T),),
+    )
+    assert relerr(du, du_ref) < 1e-7
+    assert relerr(dv, dv_ref) < 1e-7
+    lib.sb_destroy(ctypes.c_void_p(h))
+
+
+def test_iteration_limit_is_reported_and_invalidates_derivatives(lib, case):
+    """An unconverged inner Newton solve must never look like a valid state."""
+    u = np.zeros((N, N + 1)); v = np.zeros((N + 1, N)); p = np.zeros((N, N))
+    h = lib.sb_create_ns(N, N, PR, RA, ctypes.c_double(1.0), P(case["alpha"]))
+    assert h
+    # Seed the handle with a valid state/Jacobian first, so the assertions below
+    # also prove that failure cannot leak a stale derivative factorisation.
+    assert lib.sb_apply(ctypes.c_void_p(h), P(case["T"]), P(u), P(v), P(p)) == 0
+    assert lib.sb_converged(ctypes.c_void_p(h)) == 1
+    changed_T = np.ascontiguousarray(0.5 * case["T"])
+    # Zero updates deterministically tests the Stokes initial guess, which is
+    # not a root once inertia is active for this changed, strong load.
+    rc = lib.sb_apply_with_options(
+        ctypes.c_void_p(h), P(changed_T), P(u), P(v), P(p), 1e-12, 0,
+    )
+    assert rc == 5
+    assert lib.sb_last_status(ctypes.c_void_p(h)) == 5
+    assert lib.sb_converged(ctypes.c_void_p(h)) == 0
+    assert lib.sb_newton_iterations(ctypes.c_void_p(h)) == 0
+    residual = lib.sb_residual(ctypes.c_void_p(h), P(changed_T))
+    assert np.isfinite(residual) and residual > 1e-12
+
+    # A failed solve clears any state-dependent Jacobian, so a native caller
+    # cannot accidentally differentiate a stale successful state.
+    du = np.zeros_like(u); dv = np.zeros_like(v)
+    assert lib.sb_jvp(
+        ctypes.c_void_p(h), P(u), P(v), None, P(case["T"]), P(du), P(dv),
+    ) != 0
+    lib.sb_destroy(ctypes.c_void_p(h))
+
+
+def test_nonfinite_load_is_a_hard_failure(lib, case):
+    u = np.zeros((N, N + 1)); v = np.zeros((N + 1, N)); p = np.zeros((N, N))
+    bad_T = case["T"].copy()
+    bad_T[0, 0] = np.nan
+    h = lib.sb_create_ns(N, N, PR, RA, ctypes.c_double(1.0), P(case["alpha"]))
+    assert h
+    rc = lib.sb_apply(ctypes.c_void_p(h), P(bad_T), P(u), P(v), P(p))
+    assert rc == 3
+    assert lib.sb_converged(ctypes.c_void_p(h)) == 0
+    assert lib.sb_last_status(ctypes.c_void_p(h)) == 3
+    assert np.isinf(lib.sb_residual(ctypes.c_void_p(h), P(bad_T)))
+    lib.sb_destroy(ctypes.c_void_p(h))
+
+
+def test_tesseract_api_exposes_diagnostics_and_propagates_failure(stokes_lib, case):
+    from conftest import load_tesseract_api
+
+    api = load_tesseract_api("stokes_brinkman")
+    inputs = api.InputSchema(
+        alpha=case["alpha"], T=case["T"], Ra=RA, Pr=PR, inertia=1.0,
+    )
+    output = api.apply(inputs)
+    assert float(output.nonlinear_converged) == 1.0
+    assert float(output.nonlinear_residual) < 1e-12
+    assert float(output.nonlinear_iterations) > 0.0
+
+    bad = case["T"].copy()
+    bad[0, 0] = np.nan
+    with pytest.raises(RuntimeError, match=r"status=3.*relative residual"):
+        api.apply(inputs.model_copy(update={"T": bad}))
+    recovered = api.apply(inputs)
+    assert float(recovered.nonlinear_converged) == 1.0
 
 
 def test_inertial_forward_matches_the_reference(lib, case):

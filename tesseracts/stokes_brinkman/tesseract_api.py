@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import sys
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
@@ -48,9 +49,20 @@ from tesseract_core.runtime import Array, Differentiable, Float64, ShapeDType
 # shared library
 # --------------------------------------------------------------------------
 
-_LIB_PATH = Path(__file__).parent / "lib" / "libstokes_brinkman.so"
-if not _LIB_PATH.exists():  # inside the built container
-    _LIB_PATH = Path("/tesseract/lib/libstokes_brinkman.so")
+if sys.platform == "win32":
+    # A checkout shared with WSL may contain both ignored build artefacts.
+    # Never hand an ELF .so to Windows' loader (or a PE DLL to dlopen).
+    _LIB_CANDIDATES = (
+        Path(__file__).parent / "lib" / "stokes_brinkman.dll",
+    )
+else:
+    _LIB_CANDIDATES = (
+        Path(__file__).parent / "lib" / "libstokes_brinkman.so",
+        Path("/tesseract/lib/libstokes_brinkman.so"),
+    )
+_LIB_PATH = next(
+    (path for path in _LIB_CANDIDATES if path.exists()), _LIB_CANDIDATES[-1]
+)
 _lib = ctypes.CDLL(str(_LIB_PATH))
 
 _dp = ctypes.POINTER(ctypes.c_double)
@@ -60,6 +72,12 @@ _lib.sb_create_ns.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double,
                               ctypes.c_double, ctypes.c_double, _dp]
 _lib.sb_residual.restype = ctypes.c_double
 _lib.sb_residual.argtypes = [ctypes.c_void_p, _dp]
+_lib.sb_converged.restype = ctypes.c_int
+_lib.sb_converged.argtypes = [ctypes.c_void_p]
+_lib.sb_newton_iterations.restype = ctypes.c_int
+_lib.sb_newton_iterations.argtypes = [ctypes.c_void_p]
+_lib.sb_last_status.restype = ctypes.c_int
+_lib.sb_last_status.argtypes = [ctypes.c_void_p]
 _lib.sb_destroy.restype = None
 _lib.sb_destroy.argtypes = [ctypes.c_void_p]
 _lib.sb_apply.restype = ctypes.c_int
@@ -103,9 +121,10 @@ def _solver(alpha: np.ndarray, Pr: float, Ra: float, inertia: float = 0.0) -> _H
 
     With inertia the cached object still owns A, but the operator the tangent
     and adjoint invert is the Jacobian at the converged state, which depends on
-    T as well. That is rebuilt by every `sb_apply`, and both derivative
-    endpoints below call the forward solve first, so the Jacobian is always the
-    one belonging to the state being differentiated.
+    T as well. Every `sb_apply` either validates and reuses that exact state or
+    rebuilds its Jacobian, and both derivative endpoints below call the forward
+    solve first, so the Jacobian always belongs to the state being
+    differentiated.
     """
     Ny, Nx = alpha.shape
     key = hashlib.blake2b(
@@ -166,6 +185,17 @@ class OutputSchema(BaseModel):
     v: Differentiable[Array[(None, None), Float64]] = Field(
         description="y-velocity on horizontal faces, shape (Ny+1, Nx). Zero on walls."
     )
+    nonlinear_converged: Float64 = Field(
+        description="1 when the most recent fluid solve satisfied its relative "
+        "nonlinear residual tolerance; failed solves raise instead of returning output."
+    )
+    nonlinear_residual: Float64 = Field(
+        description="Infinity-norm momentum/continuity residual relative to the "
+        "buoyancy load (0 for the linear inertia=0 path)."
+    )
+    nonlinear_iterations: Float64 = Field(
+        description="Number of accepted Newton updates (0 for inertia=0)."
+    )
 
 
 # --------------------------------------------------------------------------
@@ -173,22 +203,51 @@ class OutputSchema(BaseModel):
 # --------------------------------------------------------------------------
 
 
-def _forward(alpha: np.ndarray, T: np.ndarray, Pr: float, Ra: float, inertia: float = 0.0):
+def _forward(
+    alpha: np.ndarray,
+    T: np.ndarray,
+    Pr: float,
+    Ra: float,
+    inertia: float = 0.0,
+):
     Ny, Nx = alpha.shape
     h = _solver(alpha, Pr, Ra, inertia)
     u = np.zeros((Ny, Nx + 1), dtype=np.float64)
     v = np.zeros((Ny + 1, Nx), dtype=np.float64)
     p = np.zeros((Ny, Nx), dtype=np.float64)
-    if _lib.sb_apply(ctypes.c_void_p(h.ptr), _p(T), _p(u), _p(v), _p(p)):
-        raise RuntimeError("Stokes-Brinkman forward solve failed.")
-    return u, v
+    rc = int(_lib.sb_apply(ctypes.c_void_p(h.ptr), _p(T), _p(u), _p(v), _p(p)))
+    residual = float(_lib.sb_residual(ctypes.c_void_p(h.ptr), _p(T)))
+    converged = int(_lib.sb_converged(ctypes.c_void_p(h.ptr)))
+    iterations = int(_lib.sb_newton_iterations(ctypes.c_void_p(h.ptr)))
+    status = int(_lib.sb_last_status(ctypes.c_void_p(h.ptr)))
+    if rc or not converged:
+        reasons = {
+            1: "linear solve failed or produced non-finite values",
+            2: "nonlinear Jacobian factorisation/solve failed",
+            3: "non-finite nonlinear residual",
+            4: "Newton line search could not reduce the residual",
+            5: "Newton iteration budget exhausted",
+            6: "invalid nonlinear solver options",
+        }
+        reason = reasons.get(status or rc, "unknown solver failure")
+        raise RuntimeError(
+            "Stokes-Brinkman forward solve did not converge: "
+            f"{reason}; status={status or rc}, accepted Newton updates={iterations}, "
+            f"relative residual={residual:.6e}."
+        )
+    diagnostics = {
+        "nonlinear_converged": np.float64(converged),
+        "nonlinear_residual": np.float64(residual),
+        "nonlinear_iterations": np.float64(iterations),
+    }
+    return u, v, diagnostics
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
     alpha, T = _c(inputs.alpha), _c(inputs.T)
-    u, v = _forward(alpha, T, float(inputs.Pr), float(inputs.Ra),
-                    float(inputs.inertia))
-    return OutputSchema(u=u, v=v)
+    u, v, diagnostics = _forward(alpha, T, float(inputs.Pr), float(inputs.Ra),
+                                 float(inputs.inertia))
+    return OutputSchema(u=u, v=v, **diagnostics)
 
 
 def abstract_eval(abstract_inputs):
@@ -197,6 +256,9 @@ def abstract_eval(abstract_inputs):
     return {
         "u": ShapeDType(shape=(Ny, Nx + 1), dtype="float64"),
         "v": ShapeDType(shape=(Ny + 1, Nx), dtype="float64"),
+        "nonlinear_converged": ShapeDType(shape=(), dtype="float64"),
+        "nonlinear_residual": ShapeDType(shape=(), dtype="float64"),
+        "nonlinear_iterations": ShapeDType(shape=(), dtype="float64"),
     }
 
 
@@ -211,7 +273,7 @@ def jacobian_vector_product(
     inertia = float(inputs.inertia)
     Ny, Nx = alpha.shape
 
-    u, v = _forward(alpha, T, Pr, Ra, inertia)
+    u, v, _ = _forward(alpha, T, Pr, Ra, inertia)
     h = _solver(alpha, Pr, Ra, inertia)
 
     d_alpha = _c(tangent_vector["alpha"]) if "alpha" in jvp_inputs else None
@@ -244,7 +306,7 @@ def vector_jacobian_product(
     inertia = float(inputs.inertia)
     Ny, Nx = alpha.shape
 
-    u, v = _forward(alpha, T, Pr, Ra, inertia)
+    u, v, _ = _forward(alpha, T, Pr, Ra, inertia)
     h = _solver(alpha, Pr, Ra, inertia)
 
     ubar = _c(cotangent_vector["u"]) if "u" in vjp_outputs else np.zeros((Ny, Nx + 1))

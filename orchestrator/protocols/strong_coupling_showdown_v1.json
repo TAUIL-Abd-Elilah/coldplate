@@ -1,8 +1,25 @@
 {
   "protocol": "strong-coupling-optimisation-showdown",
   "version": 1,
-  "locked_utc": "2026-08-14T00:00:00Z",
+  "status": "retrospectively_frozen_design",
+  "frozen_design_provenance": {
+    "commit": "bcf2aa8be4cb8cda6269326e24922bbe1b62dc4e",
+    "commit_time_utc": "2026-08-14T14:54:29Z",
+    "scope": "The eight-step design, methods, update rule, endpoints, and failure policy were first committed here before the extended showdown result was stored.",
+    "qualification": "This is a retrospective frozen design, not a prospective preregistration. The present file contains later integrity metadata and validation clarifications and is not claimed to be byte-for-byte untouched since first execution."
+  },
+  "prior_observation_disclosure": {
+    "commit": "3aba876edb996a4eb77f17ddda1cb62fd17ecf94",
+    "observed_before_freeze": "The same N=20, Ra=30000, seed=0 initial state had already been used for a one-step composed-versus-loop-cut intervention at amplitudes 0.01, 0.025, and 0.05. At amplitude 0.025 the composed action had already won; the observed add/remove selected-cell overlaps were 0.40/0.10.",
+    "not_previously_observed_as_a_stored_result": "The three repeated eight-step trajectories and the frozen-flow branch endpoint were not stored before the frozen-design commit.",
+    "interpretation": "The showdown is confirmatory follow-up evidence under a frozen repeated-decision procedure, but its operating point was informed by prior favourable single-step evidence."
+  },
+  "integrity_amendments_after_freeze": [
+    "Corrected the original 'preregistered' wording and replaced the placeholder lock time with the actual Git commit provenance.",
+    "Added an explicit numerical-equivalence tolerance and stricter completeness/failure recording. These are conservative integrity rules added after the original freeze and must not be described as preregistered."
+  ],
   "purpose": "Test whether accounting for the two-way fixed-point feedback changes repeated design decisions, not only a single derivative check.",
+  "outer_steps": 8,
   "parameters": {
     "N": 20,
     "Ra": 30000.0,
@@ -19,16 +36,18 @@
     "amplitude": 0.025,
     "beta": 1.0,
     "volume_constraint": "Preserve the initial mean projected density by a deterministic uniform-shift bisection after every balanced action.",
-    "candidate_policy": "At every iteration add amplitude to the 5% most beneficial cells and remove it from the 5% least beneficial cells according to that method's gradient, then solve the true coupled forward problem once.",
+    "candidate_policy": "At every iteration perturb the raw design variable by +amplitude on the 5% most beneficial cells and -amplitude on the 5% least beneficial cells, clip raw values to [0,1], then apply a deterministic uniform-shift bisection to recover the initial mean projected density before one true coupled forward solve.",
+    "budget_label": "equal raw-design proposal rule and equal projected-volume target; not an equal wall-time, VJP-count, or realised per-cell physical-density L1 budget",
     "nonconvergence_policy": "Record the failed candidate and stop only that branch. Do not replace the seed, Rayleigh number, step size, or method."
   },
   "fairness": {
     "same_initial_design": true,
     "same_outer_gradient_budget": true,
     "same_true_candidate_forward_budget": true,
-    "same_update_rule": true,
+    "same_raw_design_proposal_rule": true,
+    "same_projected_volume_target": true,
     "same_hyperparameters": true,
-    "note": "The composed adjoint intentionally costs more inner VJPs. Runtime and VJP counts are reported rather than hidden."
+    "note": "The composed adjoint intentionally costs more inner VJPs. Runtime and VJP counts are reported rather than hidden. Projection and clipping can change realised per-cell physical-density movement, so the controlled budget is described as a common raw-design proposal rule plus a common projected-volume target."
   },
   "endpoints": {
     "primary": "True coupled objective after eight fixed-budget decisions, provided the branch completes.",
@@ -38,7 +57,12 @@
       "Number of objectively improving candidate steps",
       "Wall time and cross-component adjoint VJP count"
     ],
-    "success_condition": "The composed-gradient branch finishes with a lower true objective than both shortcut branches; all failures and contrary outcomes remain reportable."
+    "success_condition": "All three branches complete all eight steps and the composed-gradient final true objective is lower than each shortcut by more than the numerical-equivalence tolerance; all failures, numerical ties, and contrary outcomes remain reportable.",
+    "numerical_equivalence": {
+      "absolute_J": 1e-10,
+      "relative_J": 1e-8,
+      "rule": "Two final objectives are numerically equivalent when their absolute difference is at most absolute_J + relative_J * max(abs(J_a), abs(J_b))."
+    }
   },
   "result_path": "orchestrator/results/strong_coupling_showdown.json"
 }
