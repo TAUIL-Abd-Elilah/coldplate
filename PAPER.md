@@ -389,41 +389,23 @@ The gradients agree on only 40% of the add set and 10% of the remove set. The
 composed choice wins all three fresh forward solves, delivering **58% more
 realised cooling** at the largest step for exactly the same material budget.
 
-![**Equal-budget actions checked by fresh coupled solves:** the composed choice
-wins 3/3.](orchestrator/results/fig10_intervention.png)
+At fixed Ra = 2 × 10⁴ and step 0.025, a fixed contiguous 12-seed sweep produced
+**10 wins, 0 observed losses and 2 inconclusive attempts**: one failed base
+solve and one incomplete action pair. Among comparable designs, median extra
+cooling was 36% (range 6–276%). The revised driver evaluates both actions
+independently; solver failure is not presented as proof of non-existence.
 
-At fixed Ra = 2 × 10⁴ and step 0.025 we then swept the fixed contiguous seed
-range 0 to 11, with losses and incomplete comparisons recordable rather than
-dropped. The result is **10 wins, 0 observed losses and 2 inconclusive
-attempts**: one failed base solve and one earlier run in which the exact-action
-solve failed before the shortcut action was evaluated. Among the ten comparable
-designs, median extra cooling was 36%, range 6% to 276%. The revised driver
-evaluates both actions independently; solver failure is not presented as proof
-that no equilibrium exists.
+In attribution (`sensitivity_ranking.py`, 32², Ra = 3 × 10⁴), the shortcut keeps
+the sign of the true top fifty—enough for descent—but ranks their magnitudes at
+chance level (Spearman −0.011), misses 44%, and promotes cell #1016 of 1024.
 
-The same distinction appears in attribution (`sensitivity_ranking.py`, 32²,
-Ra = 3 × 10⁴). The shortcut keeps the sign of all fifty truly most influential
-cells—enough for descent—but its ranking is chance-level (Spearman −0.011), it
-misses 44% of the true top fifty, and promotes a cell truly ranked 1016th of
-1024. A serviceable search direction can still be a useless sensitivity.
-
-Limitations are important. The intervention evidence spans one state over three
-amplitudes plus a fixed twelve-seed sweep at a second state — not a
-population study, and both states are strongly coupled by construction. The
-physics is two-dimensional; the fluid block carries the convective term when
-asked (Section 2), but the headline results are computed in the Stokes limit,
-which Section 2 justifies by measurement rather than assertion. The topology
-optimisation
-runs at Ra = 10³ because its steady solver did not converge from the
-near-uniform intermediate-density start at the strong setting. Finally, γ is measured on one
-*physical* system plus 2,377 synthetic ones; the synthetic study establishes
-that the relationship is not an artefact of this problem, but random operators
-are not a substitute for a second real multiphysics application, and the
-repelling regime remains a stated exclusion rather than a solved case.
+Limitations: this is a strongly coupled sweep, not a population study; the
+physics is 2D; and the headline results use the measured Stokes limit. The
+strong-setting steady solve failed from the optimiser's near-uniform start.
+Finally, γ is measured on one physical system plus 2,377 synthetic ones—not a
+substitute for a second real application—and the repelling regime is excluded.
 
 ## 8. Reproducibility
 
-Four pinned implementations, three served per run; 73 component tests; and a
-scheduled job that exercises the real container boundary. The safe reviewer
-path is `scripts/judge_demo.sh`; every experiment has a driver, and
-`scripts/audit_claims.py` re-derives the headline numbers.
+Four pinned implementations, three served per run; 73 tests; scheduled
+container integration; `scripts/judge_demo.sh`; and a data-backed claim audit.
