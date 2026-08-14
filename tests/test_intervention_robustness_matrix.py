@@ -14,6 +14,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
+import intervention_robustness_matrix as matrix_module  # noqa: E402
+
 from intervention_robustness_matrix import (  # noqa: E402
     aggregate,
     ingest_report,
@@ -29,6 +31,45 @@ from intervention_robustness import (  # noqa: E402
 
 
 PROTOCOL = ROOT / "orchestrator" / "protocols" / "intervention_robustness_matrix_48.json"
+
+
+def test_cli_maps_protocol_option_to_run_matrix_parameter(
+    tmp_path, monkeypatch, capsys
+):
+    captured = {}
+
+    def fake_run_matrix(**kwargs):
+        captured.update(kwargs)
+        return {"summary": {"study_complete": True}}
+
+    protocol = tmp_path / "protocol.json"
+    out = tmp_path / "out.json"
+    attempt_dir = tmp_path / "attempts"
+    monkeypatch.setattr(matrix_module, "run_matrix", fake_run_matrix)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "intervention_robustness_matrix.py",
+            "--protocol",
+            str(protocol),
+            "--out",
+            str(out),
+            "--attempt-dir",
+            str(attempt_dir),
+            "--aggregate-only",
+        ],
+    )
+
+    assert matrix_module.main() == 0
+    assert captured == {
+        "protocol_path": protocol,
+        "out": out,
+        "attempt_dir": attempt_dir,
+        "aggregate_only": True,
+        "ingest_reports": [],
+    }
+    assert "wrote" in capsys.readouterr().out
 
 
 def test_protocol_expands_to_frozen_48_attempts_and_discloses_overlap():

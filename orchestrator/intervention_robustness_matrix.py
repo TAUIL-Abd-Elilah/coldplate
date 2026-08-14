@@ -862,7 +862,9 @@ def run_matrix(protocol_path: Path = DEFAULT_PROTOCOL, out: Path = DEFAULT_OUT,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
+    parser.add_argument(
+        "--protocol", dest="protocol_path", type=Path, default=DEFAULT_PROTOCOL
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--attempt-dir", type=Path, default=DEFAULT_ATTEMPT_DIR)
     parser.add_argument("--aggregate-only", action="store_true")
