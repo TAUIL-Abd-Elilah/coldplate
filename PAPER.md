@@ -396,8 +396,6 @@ In attribution (`sensitivity_ranking.py`, 32², Ra = 3 × 10⁴), the shortcut k
 the sign of the true top fifty—enough for descent—but ranks their magnitudes at
 chance level (Spearman −0.011), misses 44%, and promotes cell #1016 of 1024.
 
-Limitations: this is a strongly coupled sweep, not a population study; the
-physics is 2D; and the headline results use the measured Stokes limit. The
-strong-setting steady solve failed from the optimiser's near-uniform start.
-Finally, γ is measured on one physical system plus 2,377 synthetic ones—not a
-substitute for a second real application—and the repelling regime is excluded.
+Limitations: this is a 2D, one-application study, not a population study. The
+strong-coupling steady solve failed from the optimiser's near-uniform start,
+and repelling cases are excluded from γ's threshold calibration.
