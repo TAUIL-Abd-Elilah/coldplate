@@ -188,8 +188,8 @@ separately written monolithic reference to 1.5 × 10⁻¹² on the converged cou
 state, reached by a different nonlinear solver (5 Newton iterations against 21
 Picard). Conduction-only energy balance closes to 5.3 × 10⁻¹⁵.
 
-**The composed gradient is exact.** A directional derivative agrees with central
-differences to 8.3 × 10⁻⁶, holding at ~10⁻⁵ across step sizes from 10⁻³ to
+**The coupling-complete discrete gradient is validated.** A directional
+derivative agrees with central differences to 8.3 × 10⁻⁶, holding at ~10⁻⁵ across step sizes from 10⁻³ to
 10⁻⁴ — that plateau is the differencing noise floor, since the fixed point is
 converged only to ~10⁻¹⁰.
 
@@ -207,8 +207,8 @@ cosine above 0.98. Same code and physics, but strong regime dependence: over the
 full coupling sweep the error grows from 3 × 10⁻⁶ to 0.86 while J moves by only
 13%. **The forward solution gives no warning.**
 
-Spatially, the error is not noise. At high coupling the exact gradient develops a
-coherent region of *positive* sensitivity — adding material there makes the chip
+Spatially, the error is not noise. At high coupling the coupling-complete
+gradient develops a coherent region of *positive* sensitivity — adding material there makes the chip
 hotter, because it obstructs the convection cell removing the heat — and the
 shortcut has no such region anywhere. The disagreement is one contiguous blob:
 an entire physical term, missing.
