@@ -41,4 +41,4 @@ jobs:
         run: python scripts/audit_claims.py
 
       - name: Check submission completeness
-        run: python scripts/check_submission.py
+        run: python scripts/check_submission.py --strict-public
