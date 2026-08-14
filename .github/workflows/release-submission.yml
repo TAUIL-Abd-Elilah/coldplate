@@ -1,0 +1,174 @@
+name: submission release
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Prepare a draft, or verify anonymously and publish it
+        required: true
+        default: prepare
+        type: choice
+        options:
+          - prepare
+          - publish
+      release_tag:
+        description: GitHub release and OCI convenience tag
+        required: true
+        default: submission-2026
+        type: string
+      confirmation:
+        description: Enter PREPARE or PUBLISH to match the selected phase
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  prepare:
+    if: inputs.phase == 'prepare'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Confirm intentional preparation
+        run: test '${{ inputs.confirmation }}' = PREPARE
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Require public repository before creating submission artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)" = public
+
+      - name: Install test, paper, and native-build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libeigen3-dev pandoc weasyprint fonts-dejavu poppler-utils
+          python -m pip install --upgrade pip
+          pip install -r requirements-orchestrator.txt
+          pip install torch==2.13.0+cpu --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Verify source, measurements, eligibility, and paper
+        run: |
+          python -m pytest tests -q
+          python scripts/audit_claims.py
+          python scripts/check_submission.py --strict-public
+          bash scripts/build_paper.sh
+          test "$(pdfinfo PAPER.pdf | awk '/^Pages:/ {print $2}')" -eq 4
+          test -s demo/coldplate_submission.mp4
+          test -s demo/coldplate_submission.en.srt
+
+      - name: Build compiler toolchain and all Tesseracts
+        run: |
+          bash scripts/build_toolchain.sh
+          for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
+            tesseract build "tesseracts/$component"
+          done
+          bash scripts/judge_demo.sh --no-build --grid 8
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push commit-pinned images and record OCI digests
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          mkdir -p release-dist
+          : > release-dist/image-digests.txt
+          for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
+            target="ghcr.io/$owner/coldplate-$component"
+            docker tag "$component:latest" "$target:$GITHUB_SHA"
+            docker tag "$component:latest" "$target:$RELEASE_TAG"
+            push_output="$(docker push "$target:$GITHUB_SHA")"
+            docker push "$target:$RELEASE_TAG"
+            digest="$(printf '%s\n' "$push_output" | awk '/digest:/ {print $2}' | tail -1)"
+            test -n "$digest"
+            printf '%s=%s@%s\n' "$component" "$target" "$digest" \
+              | tee -a release-dist/image-digests.txt
+          done
+
+      - name: Assemble deterministic release assets and checksums
+        run: |
+          set -euo pipefail
+          prefix="coldplate-$GITHUB_SHA/"
+          git archive --format=tar --prefix="$prefix" HEAD | gzip -n > "release-dist/coldplate-$GITHUB_SHA.tar.gz"
+          cp PAPER.pdf release-dist/
+          cp demo/coldplate_submission.mp4 release-dist/
+          cp demo/coldplate_submission.en.srt release-dist/
+          (cd release-dist && sha256sum PAPER.pdf coldplate_submission.mp4 \
+            coldplate_submission.en.srt image-digests.txt "coldplate-$GITHUB_SHA.tar.gz" \
+            > SHA256SUMS)
+
+      - name: Create or refresh the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-dist/* --clobber
+            gh release edit "$TAG" --draft --title "Coldplate — Tesseract Hackathon 2026" \
+              --notes-file release/RELEASE_NOTES.md
+          else
+            gh release create "$TAG" release-dist/* --draft --target "$GITHUB_SHA" \
+              --title "Coldplate — Tesseract Hackathon 2026" \
+              --notes-file release/RELEASE_NOTES.md
+          fi
+
+      - name: Next required manual action
+        run: |
+          echo '### Draft ready — do not publish yet' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Set all four GHCR packages to Public, then rerun this workflow with phase `publish`.' >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: inputs.phase == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Confirm intentional publication
+        run: test '${{ inputs.confirmation }}' = PUBLISH
+
+      - uses: actions/checkout@v7
+
+      - name: Download every draft-release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir release-verify
+          gh release download "$TAG" --dir release-verify
+          (cd release-verify && sha256sum -c SHA256SUMS)
+
+      - name: Prove digest pulls work without registry credentials
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/anonymous-docker
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          bash scripts/pull_release_images.sh release-verify/image-digests.txt
+
+      - name: Publish the verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: gh release edit "$TAG" --draft=false --latest
+
+      - name: Check anonymous release and repository endpoints
+        env:
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          curl --fail --silent --show-error "https://api.github.com/repos/$GITHUB_REPOSITORY" >/dev/null
+          curl --fail --location --silent --show-error \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/SHA256SUMS" >/dev/null

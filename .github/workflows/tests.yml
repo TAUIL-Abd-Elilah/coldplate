@@ -44,4 +44,6 @@ jobs:
         run: python scripts/audit_claims.py
 
       - name: Check submission completeness
-        run: python scripts/check_submission.py --strict-public
+        # Visibility is enforced by the release workflow. Keeping this check
+        # private-safe lets development CI remain meaningful before 29 August.
+        run: python scripts/check_submission.py

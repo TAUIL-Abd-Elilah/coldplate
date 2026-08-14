@@ -2,6 +2,17 @@ name: publish review images
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable human-readable tag (for example submission-2026)
+        required: true
+        default: submission-2026
+        type: string
+      publish_latest:
+        description: Also move the convenience-only latest tag
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -32,12 +43,34 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
           SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
+          set -euo pipefail
           owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          : > image-digests.txt
           for component in stokes_brinkman thermal_advdiff thermal_fortran material_map; do
             target="ghcr.io/$owner/coldplate-$component"
             docker tag "$component:latest" "$target:$SHA"
-            docker tag "$component:latest" "$target:latest"
-            docker push "$target:$SHA"
-            docker push "$target:latest"
+            docker tag "$component:latest" "$target:$RELEASE_TAG"
+            push_output="$(docker push "$target:$SHA")"
+            docker push "$target:$RELEASE_TAG"
+            if [ "$PUBLISH_LATEST" = "true" ]; then
+              docker tag "$component:latest" "$target:latest"
+              docker push "$target:latest"
+            fi
+            digest="$(printf '%s\n' "$push_output" | awk '/digest:/ {print $2}' | tail -1)"
+            test -n "$digest"
+            printf '%s=%s@%s\n' "$component" "$target" "$digest" | tee -a image-digests.txt
           done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-digests-${{ github.sha }}
+          path: image-digests.txt
+          if-no-files-found: error
+
+      - name: Record exact pull references
+        run: |
+          echo '### OCI image digests' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/- `/' image-digests.txt | sed 's/$/`/' >> "$GITHUB_STEP_SUMMARY"

@@ -10,9 +10,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 N=8
 BUILD=1
+PULL=0
 
 usage() {
-    echo "usage: scripts/judge_demo.sh [--grid N] [--no-build]"
+    echo "usage: scripts/judge_demo.sh [--grid N] [--no-build] [--pull]"
+    echo "  --pull downloads digest-pinned images from the submission release"
     echo "  first source build: roughly 10-30 min, 8-10 GB free disk recommended"
     echo "  warm run with images present: roughly 1-3 min"
 }
@@ -21,6 +23,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --grid) N="$2"; shift 2 ;;
         --no-build) BUILD=0; shift ;;
+        --pull) PULL=1; BUILD=0; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -50,6 +53,10 @@ fi
     exit 2
 }
 command -v tesseract >/dev/null || { echo "the tesseract CLI is not installed" >&2; exit 2; }
+
+if [ "$PULL" -eq 1 ]; then
+    bash "$ROOT/scripts/pull_release_images.sh"
+fi
 
 cleanup_project_containers() {
     for image in material_map stokes_brinkman thermal_advdiff thermal_fortran; do
