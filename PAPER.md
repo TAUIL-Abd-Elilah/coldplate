@@ -405,7 +405,6 @@ strong-setting steady solve failed from the optimiser's near-uniform start.
 Finally, γ is measured on one physical system plus 2,377 synthetic ones—not a
 substitute for a second real application—and the repelling regime is excluded.
 
-## 8. Reproducibility
-
-Four pinned implementations, three served per run; 73 tests; scheduled
-container integration; `scripts/judge_demo.sh`; and a data-backed claim audit.
+**Reproducibility.** Four pinned implementations, three served per run; 73
+tests; scheduled container integration; `scripts/judge_demo.sh`; and a
+data-backed claim audit.
