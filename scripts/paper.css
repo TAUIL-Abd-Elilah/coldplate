@@ -8,7 +8,7 @@
 
 @page {
   size: A4;
-  margin: 10.5mm 11mm 10mm 11mm;
+  margin: 8mm 9mm 8mm 9mm;
   @bottom-center {
     content: counter(page) " / " counter(pages);
     font-family: "DejaVu Sans", sans-serif;
@@ -34,8 +34,8 @@
 
 html {
   font-family: "DejaVu Serif", Georgia, serif;
-  font-size: 7.8pt;
-  line-height: 1.24;
+  font-size: 7.5pt;
+  line-height: 1.19;
   color: var(--ink);
   hyphens: auto;
 }
@@ -98,7 +98,7 @@ h3 {
   break-after: avoid;
 }
 
-p { margin: 0 0 1.15mm 0; text-align: justify; }
+p { margin: 0 0 0.9mm 0; text-align: justify; }
 
 /* ---------- figures ---------- */
 
@@ -145,7 +145,7 @@ table {
   border-collapse: collapse;
   margin: 1.2mm 0 1.5mm 0;
   font-family: "DejaVu Sans", sans-serif;
-  font-size: 6.9pt;
+  font-size: 6.7pt;
   break-inside: avoid;
 }
 
@@ -161,7 +161,7 @@ thead th {
 
 tbody td {
   border-bottom: 0.4pt solid var(--rule);
-  padding: 0.65mm 1.2mm;
+  padding: 0.55mm 1.1mm;
   vertical-align: top;
 }
 
