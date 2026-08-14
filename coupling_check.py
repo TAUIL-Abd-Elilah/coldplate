@@ -85,6 +85,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from fixed_point_adjoint import ResidualThresholds, fixed_point_adjoint_residual
+
 # Benchmark-calibrated defaults, not theory or universal guarantees. Callers
 # with their own validation data should pass thresholds appropriate to it.
 DEFAULT_SAFE = 0.01
@@ -145,21 +147,15 @@ def coupling_gamma(
     -------
     CouplingReport
     """
-    if not 0 <= safe_threshold < risky_threshold:
-        raise ValueError("thresholds must satisfy 0 <= safe < risky")
-
-    _, vjp_fn = jax.vjp(phi, x_star)
-    g = jnp.asarray(g)
-    g_norm = float(jnp.linalg.norm(g))
-    if g_norm == 0.0:
-        raise ValueError("dJ/dx is identically zero; gamma is undefined")
-
-    terms, w = [], g
-    for _ in range(max(1, n_terms)):
-        (w,) = vjp_fn(w)
-        terms.append(float(jnp.linalg.norm(w)) / g_norm)
-
-    gamma = terms[0]
+    generic = fixed_point_adjoint_residual(
+        phi,
+        fixed_point=x_star,
+        objective_cotangent=jnp.asarray(g),
+        num_repeats=n_terms,
+        thresholds=ResidualThresholds(safe_threshold, risky_threshold),
+    )
+    terms = list(generic.repeated_relative_norms)
+    gamma = generic.relative_residual
     if gamma < safe_threshold:
         verdict = "SAFE"
         detail = (f"normalized adjoint residual is {100*gamma:.2g}% -- below the "

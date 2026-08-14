@@ -34,7 +34,7 @@ DEMO = ROOT / "demo"
 BUILD = DEMO / "build"
 WIDTH, HEIGHT = 1920, 1080
 VOICE = "en-US-AndrewMultilingualNeural"
-RATE = "-5%"
+RATE = "+8%"
 
 
 @dataclass(frozen=True)
@@ -150,8 +150,7 @@ def make_story() -> list[Section]:
                 "The pipeline serves a PyTorch material map, a C plus plus Eigen flow solver, and a thermal solver.",
                 "Temperature drives buoyancy; velocity advects heat, so the converged state is a two-way fixed point.",
                 "Newton Krylov crosses the component boundary with J V P's; the implicit adjoint crosses it again with V J P's.",
-                "The thermal slot can be JAX autodiff or independent Fortran differentiated by Enzyme at LLVM I R.",
-                "Swapping those backends leaves the complete coupled gradient unchanged to roughly eleven decimal places.",
+                "The thermal slot swaps JAX autodiff for independent Fortran differentiated by Enzyme at LLVM I R, while the complete gradient agrees to roughly eleven decimal places.",
             ),
         ),
         Section(
@@ -162,8 +161,7 @@ def make_story() -> list[Section]:
             (
                 "Finite differences confirm the composed gradient to about eight parts per million.",
                 "The strongest shortcut still differentiates every component, but freezes temperature inside buoyancy.",
-                f"At Rayleigh thirty thousand, it has {100*shortcut['rel_err']:.0f} percent relative error and wrong signs in one third of the design field.",
-                "The converged forward temperature gives no warning that its sensitivity is wrong.",
+                f"At Rayleigh thirty thousand it has {100*shortcut['rel_err']:.0f} percent relative error and wrong signs in one third of the design field, while the forward temperature gives no warning.",
             ),
         ),
         Section(
@@ -172,8 +170,7 @@ def make_story() -> list[Section]:
             f"3 / 3 EXACT WINS · {realised_more:.0f}% MORE COOLING AT THE LARGEST STEP",
             RESULTS / "fig10_intervention.png",
             (
-                "A norm comparison is not an engineering outcome, so each gradient receives exactly the same action budget.",
-                "It adds material to twenty selected cells, removes the same amount from twenty others, and then we re-solve the true coupled physics.",
+                "A norm is not an outcome, so each gradient adds material to twenty cells, removes the same amount from twenty others, and is judged by a fresh coupled solve.",
                 "The composed choice wins all three tested action sizes.",
                 f"At the largest step it delivers {realised_more:.0f} percent more realized cooling for zero extra material.",
             ),
@@ -184,8 +181,7 @@ def make_story() -> list[Section]:
             showdown_claim,
             RESULTS / "fig12_showdown.png",
             (
-                "We then locked a repeated optimization showdown in git before generating any result.",
-                "All three branches share the start, volume constraint, eight updates, and one true candidate solve after each update.",
+                "Before generating a result, we locked a repeated showdown where all three branches share the start, volume constraint, eight updates, and true candidate-solve budget.",
                 showdown_outcome,
                 "The extra inner adjoint work is counted rather than hidden; the outer decision budget is identical.",
             ),
@@ -196,11 +192,9 @@ def make_story() -> list[Section]:
             f"{wins} EXACT WINS · {losses} LOSSES · {ties} TIES · {noncomparable} NONCOMPARABLE",
             RESULTS / "fig13_robustness_matrix.png",
             (
-                "One favorable seed is not robustness, so a second locked protocol spans forty-eight attempted designs.",
-                "It uses sixteen contiguous seeds at each of three coupling levels and keeps every base or action failure in the record.",
+                "One seed is not robustness, so a second locked protocol uses sixteen contiguous seeds at each of three coupling levels and retains every failure.",
                 f"Among {comparable} comparable cases, the exact action wins {wins}, loses {losses}, and ties {ties}.",
-                f"The Wilson ninety-five percent lower bound on its comparable-case win rate is {lower:.1f} percent.",
-                f"The other {noncomparable} attempts remain visible as noncomparable, not silently deleted.",
+                f"Its Wilson ninety-five percent lower bound is {lower:.1f} percent; the other {noncomparable} attempts remain visible as noncomparable, not deleted.",
             ),
         ),
         Section(
@@ -209,12 +203,10 @@ def make_story() -> list[Section]:
             f"MAX CAVITY ERROR {max_cavity_error:.1f}% · FINNED Rth CHANGE {physical_change:.1f}%",
             RESULTS / "fig14_physics_validation.png",
             (
-                "A coupled algorithm also needs a recognized physics reference.",
-                "The de Vahl Davis cavity activates full nonlinear Navier Stokes inertia, hot and cold side walls, and insulated horizontal walls.",
+                "The de Vahl Davis reference activates full nonlinear Navier Stokes inertia, hot and cold side walls, and insulated horizontal walls.",
                 cavity_sentence,
                 "A separate five by five by two millimeter sealed-water example maps every nondimensional group back to S I units and preserves exactly one watt on the discretized chip.",
-                f"Its base-only thermal resistance is {baseline['thermal_resistance_K_W']:.2f} kelvin per watt; four aluminum fins give {finned['thermal_resistance_K_W']:.2f}.",
-                "It is still a steady two-dimensional Boussinesq model, and those limits stay explicit.",
+                f"Base-only resistance is {baseline['thermal_resistance_K_W']:.2f} kelvin per watt and four aluminum fins give {finned['thermal_resistance_K_W']:.2f}; the steady two-dimensional limits stay explicit.",
             ),
         ),
         Section(
@@ -223,8 +215,7 @@ def make_story() -> list[Section]:
             f"PHYSICAL CORRELATION {predictor['log_gamma_correlation']:.3f} · 2,377-SYSTEM CORRELATION {general['overall']['log_gamma_correlation']:.3f}",
             RESULTS / "fig8_predictor.png",
             (
-                "If the loop-cut adjoint starts at g, its exact equation residual is Phi transpose g.",
-                "Normalizing that residual costs one V J P and keeps the objective direction that spectral radius discards.",
+                "The loop-cut adjoint's exact equation residual is Phi transpose g; normalizing it costs one V J P and retains the objective direction spectral radius discards.",
                 f"Across fourteen converged physical configurations, its log correlation with measured error is {predictor['log_gamma_correlation']:.3f}.",
                 f"Across two thousand three hundred seventy-seven synthetic fixed points, it is {general['overall']['log_gamma_correlation']:.3f}, versus {general['overall']['rho_correlation']:.3f} for spectral radius.",
             ),
@@ -235,8 +226,7 @@ def make_story() -> list[Section]:
             f"REPELLING-SUBSET CORRELATION FALLS TO {general['repelling']['log_gamma_correlation']:.2f}",
             RESULTS / "fig11_generalization.png",
             (
-                f"The same study exposes the limit: correlation falls to {general['repelling']['log_gamma_correlation']:.2f} in the repelling subset.",
-                "So the reusable PyTree utility ships no universal safe threshold and never labels a known repelling loop safe.",
+                f"The limit is explicit: correlation falls to {general['repelling']['log_gamma_correlation']:.2f} when the loop repels, so the reusable PyTree utility provides no universal threshold and never calls that regime safe.",
                 "An upstream-ready Tesseract JAX issue and test plan are prepared, but nothing will be submitted before publication review.",
             ),
         ),
@@ -246,8 +236,7 @@ def make_story() -> list[Section]:
             f"96² · 120 ITERATIONS · {long_reduction:.1f}% LOWER CHIP OBJECTIVE",
             RESULTS / "fig1_final.png",
             (
-                "At the weaker-coupling topology-optimization start, both gradients can still be useful descent directions.",
-                "That limitation is why the strong-setting decision studies matter.",
+                "At the weaker-coupling topology-optimization start both gradients can descend, which is precisely why the strong-setting decision studies matter.",
                 f"The full composed run at ninety-six squared and one hundred twenty iterations lowers the chip objective by {long_reduction:.1f} percent.",
                 "It forms a branching conductor toward the cold sink while preserving channels for buoyant coolant flow.",
             ),
@@ -258,8 +247,7 @@ def make_story() -> list[Section]:
             "TESTS · CLAIM AUDIT · FOUR CONTAINERS · PAPER · CHECKSUMS",
             RESULTS / "fig5_architecture.png",
             (
-                "The Linux C I suite runs unit tests and re-derives every stored headline claim.",
-                "A separate job rebuilds all four containers and exercises the real served derivative boundary.",
+                "Linux C I runs the tests and claim audit, while a separate job rebuilds all four containers and exercises the real served derivative boundary.",
                 "The August twenty-ninth release records exact O C I digests, checksums the paper and video, and proves anonymous pulls before publication.",
                 "Coldplate is a two-way equilibrium whose composition changes a measured engineering decision, with the evidence and the failure modes attached.",
             ),

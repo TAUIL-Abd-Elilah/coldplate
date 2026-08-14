@@ -35,3 +35,8 @@ def test_coupling_thresholds_are_configurable_and_checked():
     with pytest.raises(ValueError):
         coupling_gamma(phi, jnp.ones(2), jnp.ones(2), safe_threshold=0.5,
                        risky_threshold=0.1)
+
+
+def test_legacy_wrapper_uses_strict_repeat_validation():
+    with pytest.raises(ValueError, match="at least 1"):
+        coupling_gamma(lambda x: x, jnp.ones(2), jnp.ones(2), n_terms=0)

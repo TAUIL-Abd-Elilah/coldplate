@@ -44,6 +44,13 @@ jobs:
         run: python scripts/audit_claims.py
 
       - name: Check submission completeness
-        # Visibility is enforced by the release workflow. Keeping this check
-        # private-safe lets development CI remain meaningful before 29 August.
-        run: python scripts/check_submission.py
+        # Private-safe during development; automatically strict after the
+        # repository is made public on 29 August.
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$REPOSITORY_PRIVATE" = "false" ]; then
+            python scripts/check_submission.py --strict-public
+          else
+            python scripts/check_submission.py
+          fi
