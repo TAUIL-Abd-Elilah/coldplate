@@ -20,6 +20,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$ROOT/PAPER.pdf}"
+# FontTools otherwise writes the current time into subset-font ``head`` tables,
+# making byte-identical paper builds differ by one compressed byte or more.
+# A fixed hackathon timestamp plus deterministic hash iteration makes the
+# tracked PDF reproducible across clean CI runs.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1785715200}"
+export PYTHONHASHSEED="${PYTHONHASHSEED:-0}"
 FRAG="$(mktemp -t coldplate-frag-XXXXXX.html)"
 HTML="$(mktemp -t coldplate-paper-XXXXXX.html)"
 trap 'rm -f "$FRAG" "$HTML"' EXIT

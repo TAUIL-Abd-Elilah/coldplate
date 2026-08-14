@@ -144,3 +144,9 @@ def test_evidence_workflow_stages_only_fresh_outputs_and_fails_invalid_physics()
     assert "all_solves_converged\") is True" in workflow
     assert "path: |\n            orchestrator/results/" not in workflow
     assert "- all" not in workflow
+
+
+def test_paper_build_fixes_font_timestamp_for_reproducible_pdf_bytes():
+    script = (ROOT / "scripts" / "build_paper.sh").read_text(encoding="utf-8")
+    assert 'SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1785715200}"' in script
+    assert 'PYTHONHASHSEED="${PYTHONHASHSEED:-0}"' in script
