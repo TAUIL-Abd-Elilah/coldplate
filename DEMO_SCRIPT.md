@@ -50,8 +50,9 @@ coupled forward solves.
 >
 > Newton–Krylov finds that state with JVPs through both components. The implicit
 > adjoint is a second Krylov solve using their VJPs in reverse. At our strong
-> operating point the loop gain exceeds one, so Picard iteration cannot
-> converge; the cross-component derivatives are what make the solve possible.
+> operating point the loop gain exceeds one, so the fixed point is locally
+> unstable under Picard; our Picard and Anderson runs failed. Cross-component
+> JVPs make the Newton–Krylov solve robust in this regime.
 
 ## 1:40–2:15 — What it costs to cut the loop
 
@@ -95,10 +96,10 @@ coupled forward solves.
 > four percent error, and everything it called unsafe genuinely exceeded five.
 >
 > The same study found the limit, and we would rather report it than have a
-> reviewer find it. That agreement is carried by attracting fixed points. When
-> the fixed point repels, gamma's verdict is still right but its magnitude is
-> not — and that is exactly when you should stop screening and pay for the
-> adjoint.
+> reviewer find it. That agreement is carried by attracting fixed points. In
+> our repelling samples, non-decaying VJP terms warned that the magnitude was
+> unreliable. Our conservative policy there is to stop screening and pay for
+> the adjoint.
 
 ## 3:10–3:35 — Right signs, worthless ranking
 
@@ -163,9 +164,10 @@ coupled forward solves.
 - The strongest live command is `bash scripts/judge_demo.sh --no-build --grid 16`.
   It performs integrity checks and the JAX-versus-Enzyme backend swap while
   cleaning up only Coldplate images.
-- If showing a terminal, `nm -D --defined-only libthermal_ad.so | grep cosh`
-  is a useful beat: `cosh` appears in no source file. It is Enzyme's generated
-  derivative of `tanh`, visible in the linked symbols.
+- If showing a terminal,
+  `nm -D --undefined-only /tesseract/lib/libthermal_ad.so | grep cosh` is a
+  useful beat: `cosh` appears in no source file. It is called by Enzyme's
+  generated derivative of `tanh` and is visible as a linked import.
 - Keep the admission that both long optimisations worked. It motivates the
   equal-budget intervention, which is the stronger outcome test.
 - Do not call the calibrated γ bands universal thresholds, do not call the

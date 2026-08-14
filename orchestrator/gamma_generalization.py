@@ -26,7 +26,7 @@ where the fixed point is found by Newton and Phi_x is taken there.
 Four structural families are drawn, because the spectral radius and the
 directional residual come apart most sharply for non-normal operators:
 
-    normal        symmetric A -- rho is a faithful summary here
+    normal        symmetric A -- modal and norm behaviour are better aligned
     nonnormal     upper triangular with a heavy off-diagonal, so rho says
                   little about the transient gain in any given direction
     sparse        random 5% sparsity
@@ -35,8 +35,8 @@ directional residual come apart most sharply for non-normal operators:
 and the spectral radius is swept over 0.05 to 1.9 -- deliberately including
 rho > 1, where the fixed point is repelling, the Neumann expansion of
 (I - A^T)^-1 diverges, and the residual identity r_0 = Phi_x^T g still holds
-exactly. That regime is where our own headline state lives (rho = 1.19), so it
-is the regime a predictor has to survive.
+exactly. That regime is where our own headline state lives (rho = 1.19), so the
+study must expose rather than hide the predictor's limitation there.
 
 gamma is computed by calling the shipped `coupling_check.coupling_gamma`, not a
 reimplementation, so this exercises the module a user would actually import.

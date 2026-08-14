@@ -214,10 +214,10 @@ def fig3_coupling(rows, out_png):
     fig, ax = plt.subplots(figsize=(7.9, 5.0))
     ax.set_ylim(err.min() * 0.35, err.max() * 6.0)
 
-    # Picard is only guaranteed to converge left of this line.
+    # The fixed point is locally stable under ordinary Picard left of this line.
     ax.axvspan(1.0, max(1.35, gain.max() * 1.12), color="#fee2e2", alpha=0.6, zorder=0)
     ax.axvline(1.0, color="#b91c1c", lw=1.2, ls="--", zorder=1)
-    ax.text(1.03, err.min() * 0.5, "  fixed point repelling:\n  Picard cannot converge",
+    ax.text(1.03, err.min() * 0.5, "  fixed point repelling:\n  ordinary Picard unstable",
             color="#b91c1c", fontsize=8.8, va="bottom")
 
     ax.semilogy(gain, err, "o-", color=NAIVE, lw=2.0, ms=7, zorder=3,
@@ -251,10 +251,10 @@ def fig4_opt_comparison(composed_hist, naive_hist, out_png):
     """Optimisation driven by each gradient.
 
     Reported as measured: at this operating point both reach essentially the
-    same design, and the naive one ends a hair lower. That is a real result, not
-    a disappointing one -- it says the failure of component-wise
-    differentiation shows up in the gradient as a *quantity*, not necessarily in
-    whether a normalised optimiser can still descend with it.
+    same final objective, and the naive one ends a hair lower. No layout
+    equivalence is inferred. The result says the failure of component-wise
+    differentiation shows up in the gradient as a *quantity*, not necessarily
+    in whether a normalised optimiser can still descend with it.
     """
     fig, ax = plt.subplots(figsize=(7.4, 4.5))
     finals = {}
@@ -345,8 +345,8 @@ def fig8_predictor(json_path, out_png):
 
     Left: the coupling loop gain rho(Phi_T), the obvious candidate. Right: the
     directional gain gamma = ||Phi_T^T g|| / ||g||, which is what the implicit
-    function theorem actually puts in the leading error term. rho is a worst
-    case over all directions; gamma asks about the one direction the objective
+    function theorem actually puts in the leading error term. rho is an
+    objective-blind spectral property; gamma probes the direction the objective
     cares about, and costs a single VJP.
     """
     rows = json.loads(Path(json_path).read_text())
@@ -553,9 +553,9 @@ def fig5_architecture(out_png):
             "Three implementation languages · four derivative stacks · three served components per run.",
             fontsize=9.8, color=INK, fontweight="bold", va="top")
     ax.text(0.30, 0.44,
-            "The coupled adjoint exists only as a conversation between the active solvers — it cannot be\n"
-            "assembled component by component. The thermal slot accepts either backend with no caller\n"
-            "change, and the end-to-end gradient is unchanged to 5.3×10⁻¹².",
+            "Matrix-free coupled adjoint: every Krylov matvec is a conversation between the active solvers.\n"
+            "The thermal slot accepts either backend with no caller change; in the tested swap, the\n"
+            "end-to-end gradients agree to 5.3×10⁻¹².",
             fontsize=8.8, color=MUTED, va="top", linespacing=1.5)
 
     fig.tight_layout()

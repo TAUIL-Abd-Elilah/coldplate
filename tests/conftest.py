@@ -66,8 +66,9 @@ def _paths():
 
 @pytest.fixture(scope="session")
 def stokes_lib(_paths):
-    """Compile the C++ solver if the shared library is not already built."""
+    """Compile the C++ solver when no current shared library is available."""
     libdir = ROOT / "tesseracts" / "stokes_brinkman" / "lib"
+    source = ROOT / "tesseracts" / "stokes_brinkman" / "src" / "stokes_brinkman.cpp"
     # A repository opened through WSL can see ignored DLL build artefacts from
     # native Windows. Never hand an incompatible PE binary to Linux's dlopen
     # (or an ELF binary to Windows); select only the platform-native format.
@@ -75,8 +76,9 @@ def stokes_lib(_paths):
         "libstokes_brinkman.so",
     )
     for name in candidates:
-        if (libdir / name).exists():
-            return libdir / name
+        built = libdir / name
+        if built.exists() and built.stat().st_mtime >= source.stat().st_mtime:
+            return built
 
     eigen = next((p for p in EIGEN_CANDIDATES if (p / "Eigen" / "Sparse").exists()), None)
     if eigen is None:
@@ -85,12 +87,10 @@ def stokes_lib(_paths):
         pytest.skip("g++ not available; cannot build the C++ solver")
 
     libdir.mkdir(parents=True, exist_ok=True)
-    out = libdir / "libstokes_brinkman.so"
-    subprocess.run(
-        ["g++", "-O2", "-DNDEBUG", "-fPIC", "-shared", "-fvisibility=hidden",
-         f"-I{eigen}",
-         str(ROOT / "tesseracts" / "stokes_brinkman" / "src" / "stokes_brinkman.cpp"),
-         "-o", str(out)],
-        check=True,
-    )
+    out = libdir / candidates[0]
+    command = ["g++", "-O2", "-DNDEBUG", "-shared", "-fvisibility=hidden"]
+    if sys.platform != "win32":
+        command.append("-fPIC")
+    command.extend([f"-I{eigen}", str(source), "-o", str(out)])
+    subprocess.run(command, check=True)
     return out

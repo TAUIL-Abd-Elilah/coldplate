@@ -2,10 +2,9 @@
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Reproduce the headline gradient validation through BOTH thermal backends, so
-# every number in the README is shown to be independent of which derivative
-# technology produced it: JAX autodiff in one case, an Enzyme compiler pass
-# over Fortran in the other.
+# Reproduce the headline gradient-validation table through BOTH thermal
+# backends: JAX autodiff in one case, an Enzyme compiler pass over Fortran in
+# the other.
 #
 # Expects all four Tesseracts to be built already (see the README).
 #

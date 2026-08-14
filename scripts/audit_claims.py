@@ -199,8 +199,9 @@ def main() -> int:
         print(f"gamma gate: cheap on {cheap}/{len(gated)} iterations, "
               f"{spent}+{len(gated)} VJPs vs {exact_cost} always-exact, "
               f"final J {Jg:.4f} vs {Jb:.4f} ({100*gap:.2f}%)")
-        check("the gate reproduces the exact-gradient design",
-              gap < 0.02, f"final J differs by {100*gap:.2f}%")
+        check("the gated final objective stays within 2% of the exact run",
+              gap < 0.02 and bool(docs_contain("0.51%")),
+              f"final J differs by {100*gap:.2f}%")
         if exact_cost:
             saved = 1 - (spent + len(gated)) / exact_cost
             check("the gate costs less than always paying for the adjoint",
@@ -327,7 +328,7 @@ def main() -> int:
     if rows:
         design = [r for r in rows if abs(r["Ra"] - 3.0e4) < 1 and r["rho_mean"] == 0.5]
         print(f"inertia study: {len(rows)} configurations solved twice")
-        check("dropping inertia is negligible at the operating point used",
+        check("dropping inertia is negligible at the tested headline point",
               all(r["grad_rel_change"] < 1e-3 for r in design) and bool(design),
               "; ".join(f"Pr={r['Pr']}: {100*r['grad_rel_change']:.3f}%"
                         for r in design))
@@ -353,11 +354,34 @@ def main() -> int:
     print("\n=== stale artefacts and unsafe helpers must not return ===")
     source_files = [
         ROOT / "README.md", ROOT / "PAPER.md", ROOT / "DEMO_SCRIPT.md",
-        ROOT / "orchestrator" / "make_figures.py",
+        ROOT / "coupling_check.py", ROOT / "orchestrator" / "make_figures.py",
+        ROOT / "orchestrator" / "pipeline.py",
+        ROOT / "orchestrator" / "predict_error.py",
+        ROOT / "prototype" / "coupling_strength.py",
+        ROOT / "prototype" / "gradient_check.py",
+        ROOT / "prototype" / "reference_jax.py",
+        ROOT / "prototype" / "validate_ra3e4.py",
     ]
     joined = "\n".join(p.read_text(encoding="utf-8") for p in source_files)
     for bad in ("40-150%", "74% wrong sign", "four languages", "four containers"):
         check(f"no stale '{bad}' wording", bad.lower() not in joined.lower())
+    for pattern, label in (
+        (r"Picard\s+(?:iteration\s+)?cannot\s+converge", "absolute Picard impossibility"),
+        (r"worst[-\s]+case\s+over\s+all\s+directions", "spectral-radius/norm confusion"),
+        (r"provably\s+interchangeable", "unproved universal interchangeability"),
+        (r"all\s+the\s+nonlinearity\s+lives\s+in\s+the\s+composition",
+         "missing nonlinear maps"),
+        (r"(?:reaching\s+the\s+same\s+design|design\s+(?:is|was)\s+unchanged|"
+         r"design\s+came\s+out\s+indistinguishable)", "unmeasured layout equivalence"),
+        (r"only\s+needs\s+(?:the\s+)?linearisation(?:\s+\w+){0,8}\s+invertible",
+         "incomplete Newton condition"),
+        (r"what\s+you\s+are\s+forced\s+to", "false derivative-method dichotomy"),
+        (r"from\s+0\.01%\s+to\s+86%", "incorrect coupling-sweep minimum"),
+        (r"orders\s+of\s+magnitude\s+below\s+the\s+viscous",
+         "unmeasured term-norm claim"),
+        (r"adjoint\s+exists\s+only\s+as", "false operator-assembly impossibility"),
+    ):
+        check(f"no {label}", re.search(pattern, joined, re.I) is None)
     check("obsolete N48 trajectory diagnostic removed",
           not (ROOT / "orchestrator" / "results" / "history_diag_N48.json").exists())
     composed = load("history_composed_N96.json")

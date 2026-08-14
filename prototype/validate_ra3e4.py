@@ -30,8 +30,8 @@ def adjoint_grad_gmres(T_star, rho, cfg, tol=1e-12, restart=40, maxiter=200):
     Each GMRES matvec applies (I - Phi_T)^T, and every application of Phi_T^T
     is a VJP back through the thermal block followed by a VJP back through the
     fluid block. The Krylov iteration therefore bounces across the component
-    boundary once per matvec -- there is no way to factor this into
-    per-component work.
+    boundary once per matvec. One could assemble the component Jacobians; this
+    implementation instead composes their matrix-free actions.
     """
     phi = lambda T, r: coupled_step(T, cfg, r)  # noqa: E731
     _, vjp_fn = jax.vjp(phi, T_star, rho)

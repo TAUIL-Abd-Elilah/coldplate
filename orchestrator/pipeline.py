@@ -13,8 +13,8 @@
                                      buoyancy / advection feedback
 
 The inner loop is a genuine fixed point: buoyancy makes temperature drive the
-flow, advection makes the flow drive temperature. So the steady state is not a
-feed-forward chain and its sensitivity cannot be assembled block by block.
+flow, advection makes the flow drive temperature. Its sensitivity therefore
+requires a coupled solve rather than one feed-forward chain-rule sweep.
 
 The gradient uses the implicit function theorem at T* = Phi(T*, theta):
 
@@ -23,8 +23,9 @@ The gradient uses the implicit function theorem at T* = Phi(T*, theta):
 The adjoint system is solved with GMRES. Every matvec applies (I - Phi_T)^T,
 which runs a VJP back through the JAX thermal Tesseract and then a VJP back
 through the C++ fluid Tesseract -- i.e. the Krylov iteration bounces across the
-component boundary on every single step. There is no factoring of that work
-into per-component pieces, which is precisely the claim this project makes.
+component boundary on every single step. One could assemble the component
+Jacobians explicitly; this implementation instead composes their matrix-free
+actions across the boundary.
 """
 
 from __future__ import annotations
@@ -170,8 +171,9 @@ class ColdPlate:
         Picard and Anderson both stall once the coupling loop gain approaches 1,
         and the filtered designs this optimiser actually visits sit right there:
         a near-uniform permeable domain lets convection cells span the cavity,
-        which is exactly when the feedback is strongest. Newton does not care --
-        it only needs the linearisation to be invertible, not contractive.
+        which is exactly when the feedback is strongest. Newton does not require
+        the fixed-point map to be contractive; here the Jacobian is nonsingular
+        and damped Newton converges from the stated initialisation.
 
         Each GMRES matvec applies (Phi_T - I) through jax.jvp, running forward
         through the C++ fluid block and then the JAX thermal block. So the
@@ -468,9 +470,9 @@ class ColdPlate:
     def frozen_flow_grad(self, rho_raw, _state=None):
         """The weakest naive gradient: differentiate with the flow held constant.
 
-        This is what you are forced to compute when the fluid component cannot
-        hand you derivatives at all. Compare with one_way_grad, which does use
-        the C++ solver's derivatives and only cuts the feedback loop.
+        This represents the shortcut used when no fluid derivative is supplied
+        or estimated externally. Compare with one_way_grad, which does use the
+        C++ solver's derivatives and only cuts the feedback loop.
         """
         rho_raw = jnp.asarray(rho_raw)
         if _state is None:

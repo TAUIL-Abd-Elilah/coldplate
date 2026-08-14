@@ -17,10 +17,10 @@ isolation and multiplying the pieces together — is good enough.
 We build a natural-convection cold plate with three active Tesseracts and a
 drop-in thermal backend: three implementation languages and four derivative
 stacks across the repository. Three findings. **First**, the backends are genuinely
-interchangeable: replacing a JAX-autodiffed solver with a Fortran one
+interchangeable at the tested state: replacing a JAX-autodiffed solver with a Fortran one
 differentiated by an Enzyme compiler pass leaves the end-to-end gradient
 unchanged to 5.3 × 10⁻¹². **Second**, the cost of skipping composition is wildly
-regime-dependent — from 0.01% to 86% relative error on the same code — and
+regime-dependent — from about 0.0003% to 86% relative error on the same code — and
 nothing in the forward solution indicates which regime you are in. **Third**,
 spectral radius of the fixed-point Jacobian, ρ(Φ_T), is insufficient by itself
 (we exhibit a fixed-state case where it is constant while the error varies
@@ -38,9 +38,9 @@ it keeps the sign of every one of the fifty most influential design variables,
 which is why an optimiser driven by it still succeeds, while ranking those
 variables no better than chance (Spearman −0.011) — serviceable as a search
 direction, worthless as a sensitivity. And γ, being cheap, is usable as a
-budget: gating the optimiser on it removes 92% of the cross-boundary adjoint
-work while reaching the same design, and refuses correctly at the operating
-point where the shortcut carries 115% error.
+budget: gating the optimiser on it removes 92% of cross-boundary VJP calls while
+reaching a final objective within 0.51%, and flags as unsafe the tested state
+where the shortcut carries 115% error.
 
 Most importantly, the gradients change an action: under the same zero-net-
 material budget at strong coupling, cells selected by the composed sensitivity
@@ -132,8 +132,9 @@ boundary: Newton–Krylov forward, applying (Φ_T − I) via JVPs, and GMRES for
 adjoint of (1), applying (I − Φ_T)ᵀ via VJPs. At our operating point the loop
 gain exceeds one, so the fixed point is locally unstable under Picard iteration
 and our Picard runs fail; ρ > 1 alone does not rule out every specially chosen
-trajectory. Newton needs the linearisation invertible, not contractive. The JVP
-endpoints are therefore not a convenience; they make the forward solve robust.
+trajectory. Newton does not require Φ to be contractive; here the linearisation
+is nonsingular and damped Newton converges from the stated start. The JVP
+endpoints make that matrix-free forward solve robust.
 
 **A nonlinear component, and what the hand derivation costs.** Modelling the
 flow as Stokes is itself an approximation, so the fluid block carries the
@@ -155,14 +156,12 @@ matches a coupled finite difference to 8.5 × 10⁻⁸ with the nonlinear block 
 place.
 
 Having built it, we ask of this shortcut what the rest of the paper asks of
-loop-cutting. At the operating point used throughout — Ra = 3 × 10⁴, mean
+loop-cutting. At the headline strong-coupling point — Ra = 3 × 10⁴, mean
 density 0.5 — dropping inertia changes the design gradient by **0.002% in water
-and 0.017% in air**, cosine 1 to eight decimals (`inertia_study.py`). Brinkman
-drag is a linear sink on exactly the velocities the convective term feeds on,
-and at an rms speed of 0.4 that term sits orders of magnitude below the viscous
-one. So the Stokes limit used for every headline number is justified by
-measurement rather than by appeal to Pr → ∞ — and the general point stands
-again: a shortcut's safety is a property of the regime, not of the model.
+and 0.017% in air**, cosine 1 to eight decimals (`inertia_study.py`). This
+supports the Stokes approximation for that measured comparison, not for every
+regime, and reinforces the general point: a shortcut's safety is a property of
+the regime, not of the model.
 
 **Chain versus loop.** The distinction matters and is often blurred. A *chain* —
 A feeds B feeds an objective — is differentiable by one sweep of the chain rule;
@@ -170,18 +169,15 @@ a single `jax.grad` over wrapped components suffices and nothing is solved. This
 is a *loop*: the fluid solver's output is the thermal solver's input and vice
 versa, so no ordering makes one sweep sufficient. The steady state must be
 solved for, and its sensitivity requires a second, transposed solve whose
-operator exists only as an action realised by calling both components.
+operator this implementation applies matrix-free by calling both components.
 
-**Why not `jax.custom_vjp`?** The fair objection to any containerised
-differentiable pipeline is that one could attach a hand-written backward pass to
-a component and keep everything in one process. That is correct when the
-components are Python. Here the components are C++/Eigen and flang/Enzyme-built
-Fortran, whose build toolchains (LLVM 19, flang) do not belong inside a JAX
-process; the boundary is crossed thousands of times per solve in both
-directions, which is a conversation rather than a wrapped call; and because the
-contract is a schema, the two thermal implementations are substitutable with no
-change to the caller, which a `custom_vjp` written against one implementation is
-not.
+**Why not `jax.custom_vjp`?** A custom backward rule could wrap this algorithm,
+including GMRES and repeated calls to external VJPs. It is an AD hook, not a
+packaging, schema, serving, lifecycle or isolation system. Here the kernels are
+C++/Eigen and flang/Enzyme-built Fortran; Tesseract keeps their toolchains and
+runtimes isolated, supplies uniform matrix-free JVP/VJP endpoints, and lets the
+thermal implementations swap under one schema. Recreating the RPC, lifecycle
+and dispatch inside a custom rule is possible, but bespoke.
 
 Two claims are enforced by the build rather than asserted: neither the C++ nor
 the Fortran image can import `jax`, `torch`, `tensorflow`, `autograd` or
@@ -195,8 +191,8 @@ implement the same equation behind the same schema. Swapping them
 (`compare_thermal_backends.py`) changes the component field by 7.1 × 10⁻¹⁶, the
 JVP by 1.4 × 10⁻¹⁵, the VJP by 4.3 × 10⁻¹⁵, the converged coupled state by
 4.8 × 10⁻¹², and **the end-to-end gradient by 5.3 × 10⁻¹²**, cosine
-1.000000000000. The gradient does not depend on which derivative technology
-produced it.
+1.000000000000. At these tested states, the backend swap leaves the gradient
+unchanged to numerical precision.
 
 ## 3. Validation
 
@@ -242,9 +238,9 @@ only by ignoring the loop.
 At a strongly coupled state (Ra = 3 × 10⁴) it carries **86% relative error**,
 cosine 0.53 against the true gradient, and the **wrong sign on 33% of design
 variables**. At the states our optimiser actually visits it is 4–20% off with
-cosine above 0.98. Same code, same physics, two orders of magnitude difference —
-and J moves by only 13% across the range over which the gradient error grows
-from 3 × 10⁻⁶ to 0.86. **The forward solution gives no warning.**
+cosine above 0.98. Same code and physics, but strong regime dependence: over the
+full coupling sweep the error grows from 3 × 10⁻⁶ to 0.86 while J moves by only
+13%. **The forward solution gives no warning.**
 
 Spatially, the error is not noise. At high coupling the exact gradient develops a
 coherent region of *positive* sensitivity — adding material there makes the chip
@@ -256,8 +252,8 @@ an entire physical term, missing.
 
 **The obvious statistic fails.** ρ(Φ_T) is the natural candidate and correlates
 respectably (0.825 with log error) when designs and Rayleigh numbers are varied
-together. But it is a worst case over all directions, and gain along directions
-the objective never excites costs nothing. Two states at the same Ra have
+together. But it is an objective-blind asymptotic modal rate: it does not encode
+how g aligns with the operator's modes. Two states at the same Ra have
 ρ = 0.682 with 40% error and ρ = 0.377 with 79% error: it orders them backwards.
 
 **A constant cannot explain a variable.** The decisive experiment holds the
@@ -319,10 +315,10 @@ by spectral radius, γ correlates 0.993 for attracting fixed points and only
 error it induces is (I − Φ_Tᵀ)⁻¹ applied to it. For normal operators its norm is
 bounded by 1/(1−ρ) while ρ < 1; non-normal conditioning can amplify more.
 Correcting γ by the observed decay of ‖(Φ_Tᵀ)ᵏg‖
-does not repair it (0.25). But the terms stop decaying in 136 of 178 repelling
-draws, which is the actionable signal: for a repelling loop, trust γ's *verdict*
-and not its *magnitude*, and compute the adjoint. Our own headline state is
-repelling at ρ = 1.19, and there we do.
+does not repair it (0.25). In 136 of 178 sampled repelling draws the terms stop
+decaying, which is a warning rather than a theorem. Our conservative policy is
+to compute the adjoint whenever the loop repels, regardless of γ's magnitude.
+Our headline state is repelling at ρ = 1.19, and there we do.
 
 ![**One VJP, no physics.** Left: measured relative error of the component-wise
 gradient against γ on 2,377 randomly generated coupled fixed points, spanning
@@ -338,16 +334,17 @@ it called UNSAFE genuinely exceeded 5%.
 needs, it can be measured *before* deciding whether to pay. Gating the optimiser
 on it (`--mode gamma_gated`, 48², 80 iterations, gate 0.10) gives γ ∈ [0.020,
 0.074] throughout: the exact adjoint is never purchased, cross-boundary VJPs
-fall from 1015 to 80, and the design is unchanged (final J 1.3113 against
-1.3180, 0.5% apart). At the Ra = 3 × 10⁴ state of Section 7 the same gate
-returns γ = 0.404 and refuses, against a measured error of 115%; the repeated
+fall from 1015 to 80, and the final objective is within 0.51% (J = 1.3113 against
+1.3180); no layout-equivalence claim is made. At the Ra = 3 × 10⁴ state of
+Section 7 the same gate returns γ = 0.404 and refuses, against a measured error
+of 115%; the repeated
 VJP norms are (0.404, 0.211, 0.145, 0.153). They are diagnostics, not a
 convergent Neumann series at this repelling fixed point.
 
-The reading that matters is not the speed-up. It is that the two regimes are
-indistinguishable in J, in the residual, and in the convergence history, and
-that one VJP screens them — a VJP obtainable only by differentiating *through*
-the loop, which is to say by the same composition the gate may decline to use.
+The reading that matters is not the speed-up. J, the residual and convergence
+history look similar across the safe and damaged cases, while one VJP separates
+them in this benchmark. That VJP differentiates *through* the loop, using the
+same composition the gate may decline to use for the full adjoint.
 
 ## 6. The design problem
 

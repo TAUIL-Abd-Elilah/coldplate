@@ -44,9 +44,11 @@ steady state is therefore a fixed point, not a feed-forward chain:
 T* = Phi(T*, theta),    Phi = thermal( fluid(T) )
 ```
 
-If the fluid component cannot hand you derivatives — the normal situation for a
-legacy or closed-source solver — the best you can do is freeze the velocity
-field and differentiate the thermal block alone. We measured what that costs.
+If the fluid component cannot hand you derivatives — common for a legacy or
+closed-source solver — a cheap shortcut is to freeze the velocity field and
+differentiate the thermal block alone. External finite differences, complex
+steps or surrogates could estimate the missing derivative at additional cost;
+here we measure the consequence of omitting it.
 
 We compare three gradients against central finite differences on the fully
 converged coupled solve. Two are naive, and the second is the one a competent
@@ -56,8 +58,8 @@ engineer would actually write:
 - **one-way** — uses the C++ solver's derivatives in full and differentiates the
   entire chain `rho → alpha → (u,v) → T`, but treats the temperature entering
   buoyancy as constant. Everything is exact *except* that it ignores the loop;
-- **frozen-flow** — the velocity field held constant, i.e. what you are forced
-  to do when the fluid component exposes no derivatives at all.
+- **frozen-flow** — the velocity field held constant, representing the case
+  where no fluid derivative is supplied or estimated externally.
 
 Measured through the real Tesseracts at Ra = 3×10⁴ (see `validate_pipeline.py`;
 numbers reproduced by the script, not quoted from a notebook):
@@ -276,17 +278,17 @@ healthy and be handing you a gradient that is 86% wrong.
 
 ### What actually predicts it: one VJP
 
-The implicit function theorem gives an exact cheap diagnostic. The adjoint
-solves `(I − Φ_T)ᵀ λ = g`. Cutting the loop uses the approximation `λ₀ = g`,
-whose residual in that equation is exactly
+The implicit function theorem gives an exactly computable residual diagnostic.
+The adjoint solves `(I − Φ_T)ᵀ λ = g`. Cutting the loop uses the approximation
+`λ₀ = g`, whose residual in that equation is exactly
 
 ```
 r0 = g - (I - Phi_T)^T lambda0 = Phi_T^T g
 ```
 
 This residual depends on the *direction* `g`, the objective's own sensitivity
-to the coupled state. ρ(Φ_T) is a worst case over all directions and cannot see
-this: a large gain along directions the objective never excites costs nothing.
+to the coupled state. ρ(Φ_T) is an objective-blind asymptotic modal rate: it
+does not encode how `g` aligns with the operator's modes.
 Whenever the adjoint system is invertible, the actual error is
 `λ − λ₀ = (I − Φ_Tᵀ)⁻¹r₀`, so conditioning and the parameter map still matter.
 
@@ -414,13 +416,13 @@ residual of a given size can mean almost anything.
 Two extra VJPs do not rescue it — correcting γ by the observed decay ratio of
 `‖(Φ_Tᵀ)ᵏg‖` gives +0.25, no better. But the diagnostic is not silent there: in
 **136 of the 178** repelling cases the successive terms fail to decay at all,
-which is itself the correct signal. **If your fixed point is repelling, do not
-screen — compute the adjoint.**
+which is a useful warning in this sample. Our conservative policy for a
+repelling fixed point is therefore: **do not screen — compute the adjoint.**
 
 This is worth stating plainly because our own headline state is repelling
-(ρ = 1.19), and it is exactly where we do compute the exact adjoint. γ still
-returns UNSAFE there and the advice is right; what this study says is that in
-that regime you should trust γ's *verdict* and not its *magnitude*.
+(ρ = 1.19), and it is exactly where we compute the exact adjoint. γ returns
+UNSAFE there, but the policy is triggered by repulsion and non-decay rather
+than treating γ's threshold or magnitude as a theorem in that regime.
 
 ### What the error looks like in space
 
@@ -465,26 +467,26 @@ adjoint throughout, same seed and schedule:
 | **total cross-boundary VJPs** | **1,015** | **80** |
 
 γ stayed between 0.020 and 0.074 for all 80 iterations — never approaching the
-gate — so the exact adjoint was never purchased, and the design came out
-indistinguishable (0.51% apart in final J, the gated run again marginally
-lower). **92% less adjoint work, same answer.**
+gate — so the exact adjoint was never purchased. The final objective is 0.51%
+apart, with the gated run marginally lower; no claim of identical layouts is
+made. **92% fewer cross-boundary VJP calls in these runs, with final J within
+0.51%.**
 
 Wall clock was 2.05 s/iteration gated against 4.4–5.0 s/iteration exact, i.e.
-roughly 2.4×; we quote the VJP counts as the headline because those are exact
-and machine-independent, while the two timings come from separate runs on a
-machine that was not otherwise idle.
+roughly 2.4×. We headline the recorded VJP counts because they are a more
+portable algorithmic cost than wall time; Krylov iteration counts can still
+vary with platform, libraries and tolerances.
 
-Read that carefully, because it cuts both ways. On this problem the machinery
-this repository is built around turned out to be unnecessary — and the honest
+Read that carefully, because it cuts both ways. On this weakly coupled
+trajectory the full adjoint turned out to be unnecessary — and the honest
 version of that sentence is the interesting one:
 
-- **γ was right to say so.** The optimisation trajectory is weakly coupled, and
-  the separate always-naive run reaching the same design (above) independently
-  confirms it.
-- **You could not have known without it.** J, the residual, and the convergence
-  history look identical in the regime where the shortcut is fine and the regime
-  where it is 86% wrong. γ is the only thing here that distinguishes them, and
-  it is cheap.
+- **γ was right to say so here.** The optimisation trajectory is weakly
+  coupled, and the separate always-naive run reaching a similar final objective
+  (above) independently confirms that the shortcut can suffice on this path.
+- **The forward traces did not reveal it.** J, the residual and convergence
+  history look similar in the sampled safe and damaged regimes. γ distinguishes
+  them in this benchmark, and it is cheap.
 - **Computing γ requires the composition anyway.** `Φ_Tᵀg` is a VJP *through the
   loop*, across the C++/JAX boundary. The infrastructure that lets you skip the
   adjoint is the same infrastructure that would have computed it.
@@ -509,10 +511,11 @@ chosen initial condition could lie on a stable manifold, so ρ > 1 alone does
 not prove that every Picard trajectory fails. The steady state is nonetheless
 well defined and differentiable, and Newton reaches it.
 
-Newton–Krylov does not care, because it only needs `(Φ_T − I)` to be
-invertible, not contractive. This is the practical reason the composition needs
-JVPs as well as VJPs: the forward solve and the adjoint solve are *both* Krylov
-iterations across the component boundary.
+Newton–Krylov does not require Φ itself to be contractive. Here the
+linearisation is nonsingular and damped Newton converges from the stated start.
+This is the practical reason the composition needs JVPs as well as VJPs: the
+forward solve and the adjoint solve are *both* Krylov iterations across the
+component boundary.
 
 ---
 
@@ -602,36 +605,38 @@ boundary**:
 - **Adjoint** — GMRES on `(I - Phi_T)^T`. Each matvec runs a VJP *backward*
   through the JAX block then the C++ block.
 
-There is no way to factor that work into per-component pieces and reassemble
-it afterwards. The adjoint of the coupled system only exists as a conversation
-between the two solvers, in both directions. That conversation is exactly what
-Tesseract's `jacobian_vector_product` / `vector_jacobian_product` endpoints
-make possible across a container and language boundary.
+One could materialise each component Jacobian and assemble the coupled operator
+explicitly. This implementation avoids storing and transporting those matrices:
+its matrix-free adjoint is a conversation between the two solvers in both
+directions. Tesseract's `jacobian_vector_product` /
+`vector_jacobian_product` endpoints provide those operator actions across a
+container and language boundary.
 
 ### The honest objection: why not `jax.custom_vjp`?
 
-Any two-container differentiable pipeline invites the same challenge — attach a
-hand-written backward pass to a function JAX cannot differentiate, keep
-everything in one process, delete the containers. **That objection is correct
-whenever the components are Python.** Three things make it not apply here.
+Any two-container differentiable pipeline invites the same challenge: attach a
+hand-written JAX rule and remove the containers. That is technically possible;
+a `custom_vjp` backward function may run arbitrary code, including GMRES with
+repeated external VJP calls. It is an AD hook, however, not a component
+packaging, serving, schema, lifecycle or isolation system. It can be enough
+when components safely coexist in one Python environment. Here Tesseract earns
+its keep in three concrete ways.
 
-*The components are not Python.* Collapsing this means embedding an Eigen C++
-solver and a flang/Enzyme-compiled Fortran library into the JAX process and
-keeping their build toolchains alive in the same environment. The Enzyme
-component needs LLVM 19 and flang at build time; the JAX component needs a
-completely different Python stack. They are containerised because that is the
-honest way to ship them, not to manufacture a boundary.
+*Heterogeneous build and runtime isolation.* The numerical kernels are Eigen
+C++ and flang/Enzyme-compiled Fortran. Collapsing them into the JAX process
+would also collapse LLVM 19, flang and a different Python stack into one shipped
+environment.
 
-*The boundary is crossed thousands of times per solve, in both directions.*
-`custom_vjp` gives you one backward pass through a component. What this needs is
-a Krylov iteration whose every matvec re-enters the other component — forward
-for the Newton solve, backward for the adjoint. That is not a wrapped function
-call, it is a conversation.
+*A uniform matrix-free contract.* Newton and adjoint GMRES repeatedly call JVP
+and VJP actions in both directions. Tesseract supplies those endpoints,
+transport and component lifecycle across the process boundary. Recreating that
+inside a custom rule is possible, but it is a bespoke implementation of the
+same integration work.
 
-*Interchangeability is the payoff.* Because the contract is a schema rather than
-a Python signature, the JAX thermal block and the Fortran/Enzyme one are
-substitutable with no change to the caller and no change to the gradient
-(5.3 × 10⁻¹²). A `custom_vjp` wrapper is written against one implementation.
+*Measured interchangeability.* The shared schema lets the JAX thermal block and
+the Fortran/Enzyme block swap without caller changes; the tested end-to-end
+gradients agree to 5.3 × 10⁻¹². A custom rule could dispatch too, but the caller
+would then own that dispatch and transport layer.
 
 Two claims are enforced by the build rather than asserted here: neither the C++
 nor the Fortran image can import `jax`, `torch`, `tensorflow`, `autograd` or
@@ -657,12 +662,14 @@ rather than convenient.
 
 ### Why Newton, not Picard
 
-A practical consequence worth noting: Newton–Krylov matters here. Picard cannot
-converge at all once ρ(Φ_T) exceeds 1, which the gradient-study operating point
-does (1.19), and Anderson acceleration did not rescue it. Newton only needs the
-linearisation to be invertible, not contractive — so the JVP endpoints are not
-a nicety, they are what makes the forward problem solvable at all in this
-regime.
+A practical consequence worth noting: Newton–Krylov matters here. At the
+gradient-study operating point, ρ(Φ_T) = 1.19 makes the fixed point locally
+unstable to ordinary Picard iteration; our Picard runs fail, and Anderson
+acceleration did not rescue them. A radius above one rules out local
+contraction and generic Picard convergence, not every exceptional initial
+state. Newton does not require Φ to be contractive; here the linearisation is
+nonsingular and damped Newton converges from the stated start. The JVP endpoints
+let this implementation solve the forward problem robustly in this regime.
 
 ---
 
@@ -684,9 +691,8 @@ for the gradient study. That is a measured constraint, not a preference
 optimisation is obliged to start — is the worst case for coupling: low Brinkman
 drag means nothing damps the flow and low conductivity means a high Péclet
 number, simultaneously. Our steady solver did not converge from those starts
-above Ra ≈ 10³, consistent with open-cavity natural convection becoming
-unsteady; this numerical failure is not proof that no steady branch exists.
-The heterogeneous
+above Ra ≈ 10³; this numerical failure is not proof that no steady branch
+exists or that the physical system is unsteady. The heterogeneous
 design used for the gradient study stays solvable to Ra = 3×10⁵. Even at
 Ra = 10³ the starting design has a loop gain of 0.76.
 
@@ -723,8 +729,9 @@ So what is left?
    frameworks above deliberately avoid — TOFLUX is one framework in one process,
    because that is the sane way to build a framework. Here a hand-adjointed C++
    solver, a compiler-differentiated Fortran solver, a JAX solver and a PyTorch
-   model compose into one differentiable function, and two of them are provably
-   interchangeable. That is a statement about *interfaces*, not about physics.
+   model compose into one differentiable function, and two thermal backends are
+   independently validated as interchangeable at the tested states. That is a
+   statement about *interfaces*, not about physics.
 2. **Showing that spectral radius alone is insufficient**, which we have not
    seen stated for this decision:
    ρ(Φ_T) is the natural diagnostic for "is my coupling strong enough to matter"
@@ -754,10 +761,11 @@ flow-blocking — to minimise the mean chip temperature. Solid conducts heat
 away; open channels let buoyancy carry it away. The optimum has to trade the
 two off, which is why the coupled gradient matters.
 
-With `inertia = 0` both blocks are *linear in their own unknown* and all the
-nonlinearity lives in the composition. That is what makes the per-block adjoints
-exact and cheap, and it isolates the hard part — the coupling — as the only
-place a gradient can go wrong.
+With `inertia = 0` the fluid and thermal residuals are *linear in their own
+state variables*. The material map and parameter-to-solution maps remain
+nonlinear. The difficult state nonlinearity is the feedback loop, while each
+block's derivatives are validated separately before the coupled gradient is
+tested.
 
 ### Inertia: the fluid block can be nonlinear too
 
@@ -816,16 +824,12 @@ measurement (`inertia_study.py`, 16×16, each configuration solved twice):
 | 3×10⁴ | 7.0 (water) | 0.50 | 0.40 | 0.001% | **0.002%** | 1.00000000 |
 | 3×10⁴ | 0.71 (air) | 0.50 | 0.40 | 0.011% | **0.017%** | 1.00000000 |
 
-**At the operating point this repository actually uses, inertia is worth
-nothing** — it moves the design gradient by two hundredths of a percent, with a
-cosine of 1 to eight decimals. Two effects conspire: the Brinkman drag is a
-linear sink that damps exactly the velocities the convective term feeds on, and
-the resulting rms speed of 0.4 leaves the convective term orders of magnitude
-below the viscous one.
+**At the tested headline strong-coupling point, inertia is negligible for this
+design gradient** — it moves the gradient by at most two hundredths of a
+percent, with a cosine of 1 to eight decimals.
 
-That is a result, not a disappointment. It means every earlier number in this
-README stands, and it says so on the basis of a measurement rather than an
-appeal to the infinite-Prandtl limit. The tests establish the converse — at
+That supports the Stokes approximation for the measured headline comparison,
+rather than for every possible regime. The tests establish the converse — at
 Pr = 0.71, Ra = 10⁶ and a nearly open domain, inertia moves the flow and the
 tangents by orders of magnitude more, which is why those are the conditions the
 test suite uses.
@@ -912,8 +916,9 @@ produced a meaningless "order of accuracy".
 
 ### Component and composition checks
 
-Every component is checked against an independent implementation, and the
-composition is checked against a monolithic reference.
+Every component has an independent derivative or consistency check. The C++
+and Fortran paths, and the full composition, are also compared with separately
+written references.
 
 | check | result |
 | --- | --- |
@@ -935,7 +940,7 @@ residual — so that agreement is evidence rather than a shared bug.
 ## Reproduce
 
 Supported review path: **Linux `amd64`**, or Windows through **WSL2**, with a
-running Docker daemon and Python 3.10+. Native Windows is not the supported
+running Docker daemon and Python 3.12+. Native Windows is not the supported
 container path.
 
 ```bash
@@ -1011,18 +1016,30 @@ Measure where component-wise differentiation breaks down:
 cd orchestrator && python sweep_coupling.py
 ```
 
-Run a reference optimisation:
+Run the quicker 48×48 reference optimisation:
 
 ```bash
 cd orchestrator && python optimize.py --N 48 --iters 120
 ```
 
-Regenerate all figures from the committed evidence (including the corrected
-96² trajectory diagnostics and the intervention):
+Reproduce the paired 96×96, 120-iteration headline optimisation (long run):
+
+```bash
+bash scripts/run_optimisations.sh 96 120
+```
+
+Regenerate every figure whose raw input is present:
 
 ```bash
 cd orchestrator && python make_figures.py --N 96
 ```
+
+A fresh clone includes the rendered figures and committed JSON histories, but
+intentionally omits large ignored `*.npz` intermediates used by figures 1, 7,
+9 and 11. Recreate those inputs with the corresponding optimisation,
+`gradient_map_sweep.py`, `sensitivity_ranking.py` and
+`gamma_generalization.py` commands in this section before rerunning the figure
+generator.
 
 Drive the same optimisation with the naive gradient, for comparison:
 
@@ -1115,12 +1132,14 @@ Verify the composed pipeline against the independent monolithic reference:
 cd orchestrator && python compare_to_reference.py 16
 ```
 
-Component-level tests, which need no containers:
+Run the same container-free test suite as CI. On Ubuntu this additionally needs
+Eigen headers and the CPU PyTorch wheel; pytest then compiles the local C++ test
+library before exercising it:
 
 ```bash
-python tesseracts/stokes_brinkman/test_against_reference.py
-python tesseracts/thermal_advdiff/test_thermal.py
-python tesseracts/material_map/test_material.py
+sudo apt-get update -qq && sudo apt-get install -y -qq libeigen3-dev
+python -m pip install torch==2.13.0+cpu --index-url https://download.pytorch.org/whl/cpu
+python -m pytest tests -q
 ```
 
 ---

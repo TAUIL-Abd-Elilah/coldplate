@@ -35,12 +35,12 @@ If rho(Phi_x) < 1, the inverse may additionally be written as a convergent
 Neumann series. That expansion is *not* valid when rho(Phi_x) >= 1, even if
 Newton's method still reaches a perfectly valid fixed point.
 
-Why not the spectral radius. rho(Phi_x) is the obvious candidate and it is the
-wrong one: it is a worst case over all directions, and a large gain along
-directions your objective never excites costs you nothing. Measured on 14
-converged configurations drawn from four design families and five attempted
-Rayleigh levels, log(gamma) correlates with log(relative error) at 0.995 while
-rho(Phi_x) manages 0.825 -- and rho orders some pairs backwards.
+Why not the spectral radius. rho(Phi_x) is the obvious candidate but it is an
+objective-blind asymptotic modal rate; it does not encode how g aligns with the
+operator's modes. Measured on 14 converged configurations drawn from four
+design families and five attempted Rayleigh levels, log(gamma) correlates with
+log(relative error) at 0.995 while rho(Phi_x) manages 0.825 -- and rho orders
+some pairs backwards.
 
 On the benchmark shipped here, relative error is approximately gamma while
 gamma is small. The thresholds below are benchmark-calibrated guidance, not
@@ -62,10 +62,10 @@ the identity above: gamma is a residual, and for a repelling fixed point the
 amplification (I - Phi_x^T)^-1 is not controlled by 1/(1 - rho). Correcting
 gamma by the observed decay of the reported terms does not repair it.
 
-So: for a repelling loop, treat the VERDICT as meaningful and the MAGNITUDE as
-not. In practice the terms below stop decaying in that regime, which is the
-signal to stop screening and compute the adjoint. `spectral_radius` is provided
-for exactly this check.
+For a repelling loop neither the calibrated threshold verdict nor the magnitude
+is guaranteed. In these samples the terms below often stop decaying, which is a
+warning; the conservative policy is to stop screening and compute the adjoint.
+`spectral_radius` is provided to identify that regime.
 
 Usage with any JAX-traceable loop::
 

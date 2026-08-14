@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Three-way validation of the end-to-end gradient.
 
-The whole submission rests on one claim: that differentiating the *coupled*
-fixed point gives the right sensitivity, and that you cannot get it by
-differentiating either block alone. This script establishes that by computing
-dJ/drho three independent ways and requiring them to agree:
+The whole submission rests on one claim: differentiating the *coupled* fixed
+point gives the right sensitivity, while differentiating the blocks with the
+feedback cut does not. This script tests that by computing dJ/drho three
+independent ways and requiring them to agree:
 
   1. implicit differentiation of the fixed point (what we will ship)
   2. reverse-mode AD through the unrolled Picard loop (brute force)
@@ -70,9 +70,9 @@ def frozen_flow_grad(rho, cfg, relax=0.5):
 
     This is what you get if you treat the pipeline as feed-forward and forget
     that temperature drives buoyancy which drives the flow which advects
-    temperature. It is the natural thing to do if the two solvers cannot
-    exchange derivatives -- and it is what composing across the boundary buys
-    you over not doing so.
+    temperature. It is a common shortcut when the two solvers do not exchange
+    derivatives; external derivative estimates would be another, costlier
+    option.
     """
     T_star, _ = solve_coupled(rho, cfg, max_iter=600, relax=relax)
     _, alpha = material_maps(rho, cfg)

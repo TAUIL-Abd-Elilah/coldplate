@@ -11,10 +11,9 @@ theorem says why.
 The exact adjoint solves (I - Phi_T)^T lambda = g. Cutting the feedback loop
 uses lambda_0 = g, whose residual in that equation is exactly Phi_T^T g. This
 depends on the *direction* g, the objective's own sensitivity to the coupled
-state. rho(Phi_T) is a worst case over all directions and cannot see this: a
-large gain along directions g never excites costs nothing. The residual is
-well-defined even when rho(Phi_T) >= 1, where a Neumann expansion would not
-converge.
+state. rho(Phi_T) is an objective-blind asymptotic modal rate and does not
+encode how g aligns with the operator's modes. The residual is well-defined
+even when rho(Phi_T) >= 1, where a Neumann expansion would not converge.
 
 That suggests a directional gain,
 

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Dense-JAX reference implementation of the coupled Boussinesq cold-plate model.
 
-This file is *ground truth*, not the submission. It exists to (a) pin down the
+This file is a separately written validation reference, not the submission. It exists to (a) pin down the
 discretisation before any of it is split across Tesseracts, and (b) give the
-sparse C++ solver something exact to be checked against.
+sparse C++ solver an independent target to be checked against.
 
 Physics (steady, non-dimensional, Boussinesq, Stokes flow with Brinkman
 penalisation of solid regions):
@@ -16,9 +16,11 @@ penalisation of solid regions):
 Coupling is genuinely two-way: buoyancy makes T drive u, advection makes u
 drive T. So the steady state is a fixed point, not a feed-forward chain.
 
-Both blocks are *linear* in their own unknown, which is what makes the exact
-adjoint cheap: the derivative of a linear solve is a transpose solve reusing
-the same factorisation. All the nonlinearity lives in the composition.
+Both residuals are *linear* in their own state unknown, which makes their
+state-adjoint solves cheap: the derivative of a linear solve is a transpose
+solve reusing the same factorisation. The material map and parameter-to-solution
+maps remain nonlinear; the feedback loop supplies the difficult state
+nonlinearity.
 
 Trick used throughout: each block is written as a residual R(x, params) that is
 linear in x, so the system matrix is exactly jacfwd(R, argnums=0) evaluated at

@@ -10,7 +10,7 @@ jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install renderer
         run: |
@@ -21,8 +21,10 @@ jobs:
         run: |
           bash scripts/build_paper.sh
           pdfinfo PAPER.pdf | grep -E '^(Pages|Title|Author):'
+          pages="$(pdfinfo PAPER.pdf | awk '/^Pages:/ {print $2}')"
+          test "$pages" -eq 4
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coldplate-paper
           path: PAPER.pdf

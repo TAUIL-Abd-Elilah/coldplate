@@ -42,9 +42,9 @@ PY="${PYTHON:-}"
 if [ -z "$PY" ]; then
     if command -v python3 >/dev/null 2>&1; then PY=python3
     elif command -v python >/dev/null 2>&1; then PY=python
-    else echo "Python 3.10+ is required" >&2; exit 2; fi
+    else echo "Python 3.12+ is required" >&2; exit 2; fi
 fi
-"$PY" -c 'import sys; assert sys.version_info >= (3, 10), sys.version'
+"$PY" -c 'import sys; assert sys.version_info >= (3, 12), sys.version'
 "$PY" -c 'import tesseract_core, tesseract_jax' 2>/dev/null || {
     echo "Install the driver first: $PY -m pip install -r requirements-orchestrator.txt" >&2
     exit 2
@@ -85,4 +85,4 @@ cd "$ROOT/orchestrator"
 "$PY" -u compare_thermal_backends.py "$N"
 
 echo
-echo "PASS: three active components, one drop-in thermal backend, and one unchanged gradient"
+echo "PASS: three active components, one drop-in thermal backend, and numerically matching gradients"

@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """How strong is the two-way coupling, and where does naive composition break?
 
-The submission claims the end-to-end gradient cannot be assembled from the
-blocks in isolation. That claim is only interesting in a regime where the
-feedback T -> buoyancy -> u -> advection -> T actually bites. This script
-measures, as a function of Rayleigh number:
+The end-to-end gradient requires the feedback between the blocks. That matters
+only in a regime where T -> buoyancy -> u -> advection -> T actually bites.
+This script measures, as a function of Rayleigh number:
 
   * rho(Phi_T), the spectral radius of the fixed-point Jacobian -- i.e. the
     gain of one trip around the coupling loop;
-  * the error of the "frozen-flow" gradient, which is what you are forced to
-    use when the fluid solver cannot hand you derivatives.
+  * the error of the "frozen-flow" shortcut, representing a pipeline in which
+    no fluid derivative is supplied or estimated externally.
 
 Plain Picard stalls once rho(Phi_T) approaches 1, so we use Anderson
 acceleration to reach the strongly coupled regime.
