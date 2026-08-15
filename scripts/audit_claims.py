@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -639,8 +640,26 @@ def main() -> int:
               all(path.is_file() and path.stat().st_size > 0 for path in media))
         if all(path.is_file() and path.stat().st_size > 0 for path in media):
             from validate_video import validate_release_video
-            report = validate_release_video(video, video_manifest, captions, poster)
-            manifest = json.loads(video_manifest.read_text(encoding="utf-8"))
+
+            # The stream checks shell out to ffprobe, which a reviewer running
+            # this script is not obliged to have installed. Missing ffprobe
+            # means "cannot verify here", not "the claims are wrong": say so
+            # and carry on, rather than ending a claim audit in a traceback on
+            # someone else's laptop. CI installs ffmpeg, so the checks below do
+            # run where the result is recorded.
+            if shutil.which("ffprobe") is None:
+                NOTE.append(
+                    "ffprobe not on PATH: skipped video stream verification "
+                    "(install ffmpeg to run it locally; CI always does)"
+                )
+                report = manifest = None
+            else:
+                report = validate_release_video(video, video_manifest, captions,
+                                                poster)
+                manifest = json.loads(video_manifest.read_text(encoding="utf-8"))
+        else:
+            report = manifest = None
+        if report is not None:
             check("rendered video is a verified sub-five-minute 1080p delivery",
                   180.0 <= report["duration_seconds"] <= 300.0
                   and report["width"] == 1920 and report["height"] == 1080
@@ -651,9 +670,11 @@ def main() -> int:
                   f"{report['bytes'] / 1_000_000:.1f} MB")
             check("video manifest records all eleven data-backed sections",
                   manifest["sections"] == 11)
-            check("README links the rendered MP4 and English captions",
-                  bool(docs_contain("demo/coldplate_submission.mp4", files=("README.md",)))
-                  and bool(docs_contain("demo/coldplate_submission.en.srt", files=("README.md",))))
+        # Independent of ffprobe: this one is about the documents, so it must
+        # keep running when the stream checks are skipped.
+        check("README links the rendered MP4 and English captions",
+              bool(docs_contain("demo/coldplate_submission.mp4", files=("README.md",)))
+              and bool(docs_contain("demo/coldplate_submission.en.srt", files=("README.md",))))
     else:
         NOTE.append("final video deliverables not rendered yet")
 

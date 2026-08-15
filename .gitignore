@@ -30,3 +30,7 @@ demo/build/
 
 # paper PDF is a build artefact of PAPER.md; regenerate with scripts/build_paper.sh
 # (kept tracked anyway so judges do not need a LaTeX install)
+
+# Local caption-safety preview render: a 12.7 MB duplicate of the release
+# video, referenced by nothing. Regenerated on demand by the video tooling.
+demo/caption-safe-preview.mp4

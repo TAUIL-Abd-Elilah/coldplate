@@ -1249,6 +1249,11 @@ Let γ decide, per iteration, whether the exact adjoint is worth paying for:
 
 ```bash
 cd orchestrator && python optimize.py --N 48 --iters 80 --mode gamma_gated --gamma-gate 0.10 --outdir results_gate
+```
+
+and the always-exact run it is compared against:
+
+```bash
 cd orchestrator && python optimize.py --N 48 --iters 80 --mode composed --outdir results_gate
 ```
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -113,7 +114,16 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
             "rendered video deliverables are not generated yet",
             "allowed only during private development; --strict-public makes them mandatory",
         )
-    if all(media_present):
+    if all(media_present) and shutil.which("ffprobe") is None and not strict_public:
+        # Reviewers are not obliged to have ffmpeg installed. Missing ffprobe
+        # means the stream checks cannot run here, not that the deliverables
+        # are wrong -- warn instead of failing. --strict-public still demands
+        # a real verification before anything is published.
+        warn(
+            "ffprobe not on PATH, so video stream verification was skipped",
+            "install ffmpeg to verify locally; CI and --strict-public require it",
+        )
+    elif all(media_present):
         try:
             media = validate_release_video(video, video_manifest, captions, poster)
             check(
@@ -209,6 +219,36 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
         if m and not (ROOT / m.group(1)).exists():
             check(f"script exists: {m.group(1)}", False)
     check(f"{len(flat)} README commands reference existing targets", True)
+
+    # A block is copied and pasted as a unit, so every line after the first
+    # starts in the directory the previous line left. Two relative `cd`s into
+    # the same directory therefore cannot both succeed -- the second fails with
+    # "No such file or directory". Checking only that the *targets* exist misses
+    # this entirely, which is exactly how it shipped: both commands named real
+    # scripts and the check reported them runnable.
+    # Counting `cd`s is not enough: `cd coldplate` then `cd orchestrator` is
+    # perfectly valid. Track a virtual working directory instead and flag only
+    # a cd whose target does not exist from where the previous line left us.
+    broken = []
+    for block in cmds:
+        cwd = ROOT
+        for line in block.strip().splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            cd = re.match(r"cd ([\w./-]+)", s)
+            if not cd:
+                continue
+            target = cd.group(1)
+            if target.startswith("/"):
+                break  # absolute path; nothing repo-relative left to verify
+            nxt = (cwd / target).resolve()
+            if not nxt.is_dir():
+                broken.append(f"`{s[:58]}` after cwd={cwd.relative_to(ROOT) or '.'}")
+                break
+            cwd = nxt
+    check("every bash block's directory changes work when pasted as a unit",
+          not broken, str(broken))
 
     print("\n=== hygiene ===")
     leftovers = []
