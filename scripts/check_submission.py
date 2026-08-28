@@ -69,13 +69,21 @@ def github_visibility() -> str | None:
             return None
 
 
+# Inline markdown that GitHub unwraps before slugging a heading: a link keeps
+# its text, backticked code keeps its contents.
+LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+CODE_RE = re.compile(r"`([^`]*)`")
+
+
 def github_slug(heading: str) -> str:
     """GitHub's anchor rule: drop inline markup, lowercase, punctuation out,
     spaces to hyphens. Unicode letters survive, which is why the gamma heading
     anchors as itself."""
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"", heading)
-    text = re.sub(r"`([^`]*)`", r"", text)
-    text = re.sub(r"[*_]+", "", text)
+    text = LINK_RE.sub(lambda m: m.group(1), heading)
+    text = CODE_RE.sub(lambda m: m.group(1), text)
+    # Only asterisks are emphasis here. Underscores survive, because GitHub
+    # slugs the rendered text and `coupling_check.py` keeps its underscore.
+    text = text.replace("*", "")
     text = text.lower().replace(" ", "-")
     return "".join(c for c in text if c.isalnum() or c in "-_")
 

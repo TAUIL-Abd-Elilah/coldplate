@@ -69,6 +69,41 @@ def test_page_links_resolve_from_the_docs_directory(builder):
     assert not missing, f"broken relative links on the results page: {missing}"
 
 
+def test_points_file_agrees_with_the_summary(builder):
+    """The explorer recomputes from per-trial data; the summary was written by a
+    different code path in the same run. If they disagree, one of them is wrong."""
+    summary = builder.load("gamma_generalization.json")
+    points = builder.load("gamma_generalization_points.json")
+    assert points["n"] == summary["trials_usable"] == len(points["rows"])
+
+    gate, danger = builder.SHIPPED_GATE, builder.DANGER
+    screened = [err for gamma, err, *_ in points["rows"] if gamma < gate]
+    assert len(screened) == summary["safe_bucket"]["n"]
+    assert max(screened) == pytest.approx(summary["safe_bucket"]["worst_rel_err"], rel=1e-4)
+    under = sum(1 for err in screened if err < 0.05) / len(screened)
+    assert under == pytest.approx(summary["safe_bucket"]["frac_under_5pct"])
+    # The shipped gate is the one that must not wave through a damaging case.
+    assert not [err for err in screened if err > danger]
+
+
+def test_explorer_shows_a_gate_that_fails(builder):
+    """A control that only ever reports good news teaches nothing."""
+    points = builder.load("gamma_generalization_points.json")
+    worst_gate = max(builder.GATES)
+    false_safe = [err for gamma, err, *_ in points["rows"]
+                  if gamma < worst_gate and err > builder.DANGER]
+    assert false_safe, "expected the loosest offered gate to admit real failures"
+    assert "false SAFE" in builder.render()
+
+
+def test_page_runs_no_script(builder):
+    """The explorer is radio buttons and sibling selectors, deliberately."""
+    page = builder.render()
+    assert "<script" not in page.lower()
+    assert "onclick" not in page.lower()
+    assert 'type="radio"' in page
+
+
 def test_page_keeps_the_negative_results(builder):
     """The section a reader would most want removed is the one that must stay."""
     page = builder.render()

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -335,9 +336,132 @@ def section_predictor() -> str:
   therefore to refuse to screen and compute the adjoint &mdash; which is exactly what this
   project does at its own headline state, where &rho; &asymp; 1.19.</p>
   {source("results/gamma_generalization.json")}
+  {threshold_explorer()}
   {figure("fig11_generalization.png",
           "The directional gain against the truth on random coupled systems, and where it stops working.")}
 </section>"""
+
+
+#: Candidate SAFE gates. 0.01 is the value `coupling_check.py` actually ships;
+#: the others exist so a reader can see what choosing differently would cost.
+GATES = (0.003, 0.01, 0.03, 0.1, 0.3)
+SHIPPED_GATE = 0.01
+
+# Plot geometry, in the SVG's own user units.
+PLOT = {"w": 660, "h": 400, "l": 62, "r": 14, "t": 14, "b": 46}
+XLIM = (-4.0, 1.0)   # log10 gamma
+YLIM = (-4.0, 0.5)   # log10 relative error
+DANGER = 0.05        # "wrong enough to matter", the threshold the gate must catch
+
+
+def _scale(value: float, lo: float, hi: float, a: float, b: float) -> float:
+    return a + (value - lo) / (hi - lo) * (b - a)
+
+
+def threshold_explorer() -> str:
+    """A gate the reader can move, with every count precomputed from the data.
+
+    No script: five radio buttons and sibling selectors swap between five
+    pre-rendered readouts. That keeps the page inert and offline-safe while
+    still letting someone check the claim rather than take it.
+    """
+    points = load("gamma_generalization_points.json")
+    gamma_error = [(row[0], row[1]) for row in points["rows"]]
+
+    x0, x1 = PLOT["l"], PLOT["w"] - PLOT["r"]
+    y0, y1 = PLOT["h"] - PLOT["b"], PLOT["t"]
+
+    def px(gamma: float) -> float:
+        return _scale(math.log10(gamma), *XLIM, x0, x1)
+
+    def py(err: float) -> float:
+        return _scale(math.log10(err), *YLIM, y0, y1)
+
+    dots = []
+    for gamma, err in gamma_error:
+        cls = "hot" if err > DANGER else "cool"
+        dots.append(f'<circle class="{cls}" cx="{px(gamma):.1f}" cy="{py(err):.1f}" r="1.7"/>')
+
+    # Axis ticks at decade boundaries.
+    ticks = []
+    for decade in range(int(XLIM[0]), int(XLIM[1]) + 1):
+        x = px(10.0 ** decade)
+        ticks.append(f'<line class="grid" x1="{x:.1f}" y1="{y1}" x2="{x:.1f}" y2="{y0}"/>')
+        ticks.append(f'<text class="tick" x="{x:.1f}" y="{y0 + 18}" '
+                     f'text-anchor="middle">10<tspan dy="-5" font-size="8">{decade}</tspan></text>')
+    for decade in range(int(YLIM[0]), 1):
+        y = py(10.0 ** decade)
+        ticks.append(f'<line class="grid" x1="{x0}" y1="{y:.1f}" x2="{x1}" y2="{y:.1f}"/>')
+        ticks.append(f'<text class="tick" x="{x0 - 8}" y="{y + 3:.1f}" '
+                     f'text-anchor="end">10<tspan dy="-5" font-size="8">{decade}</tspan></text>')
+    danger_y = py(DANGER)
+    ticks.append(f'<line class="danger" x1="{x0}" y1="{danger_y:.1f}" '
+                 f'x2="{x1}" y2="{danger_y:.1f}"/>')
+    ticks.append(f'<text class="tick danger-label" x="{x1 - 4}" y="{danger_y - 6:.1f}" '
+                 f'text-anchor="end">5% error</text>')
+
+    inputs, labels, lines, readouts = [], [], [], []
+    for index, gate in enumerate(GATES):
+        checked = " checked" if gate == SHIPPED_GATE else ""
+        inputs.append(f'<input type="radio" name="gate" id="gate{index}"{checked}>')
+        shipped = " &starf;" if gate == SHIPPED_GATE else ""
+        labels.append(f'<label for="gate{index}">&gamma; &lt; {gate:g}{shipped}</label>')
+
+        gx = px(gate)
+        lines.append(
+            f'<g class="gate g{index}">'
+            f'<rect x="{x0:.1f}" y="{y1}" width="{gx - x0:.1f}" height="{y0 - y1}"/>'
+            f'<line x1="{gx:.1f}" y1="{y1}" x2="{gx:.1f}" y2="{y0}"/>'
+            f'<text x="{gx + 6:.1f}" y="{y1 + 14}">screened SAFE</text>'
+            f"</g>"
+        )
+
+        screened = [err for gamma, err in gamma_error if gamma < gate]
+        false_safe = sum(1 for err in screened if err > DANGER)
+        worst = max(screened) if screened else 0.0
+        verdict = (
+            f'<span class="ok">no false SAFE</span>'
+            if false_safe == 0
+            else f'<span class="bad">{false_safe} false SAFE</span>'
+        )
+        readouts.append(
+            f'<div class="readout r{index}">'
+            f"<p>Gating at <b>&gamma; &lt; {gate:g}</b> screens "
+            f"<b>{len(screened):,}</b> of the {len(gamma_error):,} systems as safe to "
+            f"differentiate component-wise. Worst true error among them: "
+            f"<b>{pct(worst, 1)}</b>. Above the 5% line: {verdict}."
+            f"</p></div>"
+        )
+
+    return f"""
+  <h3>Move the gate yourself</h3>
+  <p>Every dot is one random coupled system: its directional gain across, the true error
+  of the loop-cut gradient up, both on log axes. Orange dots are the ones where cutting
+  the loop costs more than 5%. A gate is a vertical line, and everything to its left is a
+  system the screen would wave through without an adjoint &mdash; so an orange dot inside
+  the shaded band is somebody being told to skip a computation they needed.</p>
+  <div class="explorer">
+    {''.join(inputs)}
+    <div class="gates">{''.join(labels)}</div>
+    <figure class="plot">
+      <svg viewBox="0 0 {PLOT['w']} {PLOT['h']}" role="img"
+           aria-label="Loop-cut gradient error against the directional gain for
+           {len(gamma_error)} random coupled systems, with movable screening gates.">
+        {''.join(ticks)}
+        {''.join(lines)}
+        <g class="dots">{''.join(dots)}</g>
+        <text class="axis" x="{(x0 + x1) / 2:.0f}" y="{PLOT['h'] - 8}"
+              text-anchor="middle">directional gain &gamma;</text>
+        <text class="axis" transform="translate(14,{(y0 + y1) / 2:.0f}) rotate(-90)"
+              text-anchor="middle">true relative error of the loop-cut gradient</text>
+      </svg>
+    </figure>
+    <div class="readouts">{''.join(readouts)}</div>
+  </div>
+  <p class="src">counts recomputed at build time from
+  <code>results/gamma_generalization_points.json</code>, written by the same run that
+  produced the summary above. &starf; marks the gate <code>coupling_check.py</code>
+  actually ships.</p>"""
 
 
 def section_validation() -> str:
@@ -508,9 +632,9 @@ python intervention_test.py --N 20 --Ra 3e4    # act on each gradient, re-solve 
 
 CSS = """
 :root{--bg:#fbfaf8;--fg:#1a1a1a;--muted:#5d5a55;--rule:#e0dcd5;--accent:#7a3b12;
---card:#fff;--code:#f2efe9;--ok:#1f6b3a}
+--card:#fff;--code:#f2efe9;--ok:#1f6b3a;--warn:#b4521a}
 @media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#eeece7;--muted:#a5a099;
---rule:#302e2b;--accent:#e2a06a;--card:#1c1b19;--code:#222120;--ok:#63c58a}}
+--rule:#302e2b;--accent:#e2a06a;--card:#1c1b19;--code:#222120;--ok:#63c58a;--warn:#e2914f}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
 font:16px/1.62 ui-serif,Georgia,"Times New Roman",serif;-webkit-text-size-adjust:100%}
@@ -551,6 +675,43 @@ margin-top:.5rem}
 .src code{background:none;padding:0}
 .caveat{border-left:3px solid var(--accent);padding-left:.95rem}
 .ok{color:var(--ok);font-weight:600}
+.bad{color:var(--warn);font-weight:600}
+/* The gate explorer. Five radios and sibling selectors: no script runs here. */
+.explorer{margin:1.4rem 0}
+.explorer input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.gates{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem}
+.gates label{font:600 .82rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+cursor:pointer;border:1px solid var(--rule);background:var(--card);color:var(--muted);
+padding:.5rem .7rem;border-radius:.35rem}
+.gates label:hover{border-color:var(--accent);color:var(--fg)}
+.explorer input:focus-visible+.gates label,
+.gates label:focus-within{outline:2px solid var(--accent)}
+.plot{margin:0}
+.plot svg{width:100%;height:auto;border:1px solid var(--rule);border-radius:.35rem;
+background:var(--card)}
+.dots circle.cool{fill:var(--muted);opacity:.42}
+.dots circle.hot{fill:var(--warn);opacity:.62}
+line.grid{stroke:var(--rule);stroke-width:1}
+line.danger{stroke:var(--fg);stroke-width:1;stroke-dasharray:4 3;opacity:.55}
+text.tick{fill:var(--muted);font:10px ui-sans-serif,system-ui,sans-serif}
+text.danger-label{font-weight:600}
+text.axis{fill:var(--muted);font:11px ui-sans-serif,system-ui,sans-serif}
+g.gate{display:none}
+g.gate rect{fill:var(--accent);opacity:.09}
+g.gate line{stroke:var(--accent);stroke-width:2}
+g.gate text{fill:var(--accent);font:600 10px ui-sans-serif,system-ui,sans-serif}
+.readout{display:none;margin-top:.7rem;border-left:3px solid var(--accent);
+padding-left:.95rem}
+.readout p{margin:0;font:.92rem/1.55 ui-sans-serif,system-ui,sans-serif}
+#gate0:checked~.plot .g0,#gate1:checked~.plot .g1,#gate2:checked~.plot .g2,
+#gate3:checked~.plot .g3,#gate4:checked~.plot .g4{display:block}
+#gate0:checked~.readouts .r0,#gate1:checked~.readouts .r1,
+#gate2:checked~.readouts .r2,#gate3:checked~.readouts .r3,
+#gate4:checked~.readouts .r4{display:block}
+#gate0:checked~.gates label[for=gate0],#gate1:checked~.gates label[for=gate1],
+#gate2:checked~.gates label[for=gate2],#gate3:checked~.gates label[for=gate3],
+#gate4:checked~.gates label[for=gate4]{background:var(--accent);color:var(--bg);
+border-color:var(--accent)}
 footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--rule);
 font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
 """

@@ -521,6 +521,13 @@ than the correlation because a false SAFE verdict is the one that hurts someone
 | `γ < 0.01` → SAFE | 656 | worst error **1.4%**; 100% under 5% — **no false SAFE** |
 | `γ ≥ 0.10` → UNSAFE | 965 | 100% genuinely above 5% error — no false alarm |
 
+Choosing a looser gate costs exactly what you would expect, and the
+[results page](docs/index.html) lets you move it: at `γ < 0.03` the screen still
+admits no case above 5% error, at `γ < 0.1` it admits **229**, and at `γ < 0.3`
+it admits **570**. The counts are recomputed at build time from the per-trial
+values in `orchestrator/results/gamma_generalization_points.json`, which is a
+different code path from the summary above — they agree, and a test asserts it.
+
 **And the boundary, which we would rather have not found.** Split by spectral
 radius, γ correlates **+0.9925 for attracting fixed points (ρ < 1)** but only
 **+0.36 for repelling ones (ρ ≥ 1)**. The reason is structural: γ is the
@@ -1267,9 +1274,9 @@ python scripts/build_results_page.py          # writes docs/index.html
 python scripts/build_results_page.py --check  # fails if it is stale
 ```
 
-A fresh clone includes the rendered figures and committed JSON histories, but
-intentionally omits large ignored `*.npz` intermediates used by figures 1, 7,
-9 and 11. Recreate those inputs with the corresponding optimisation,
+A fresh clone includes the rendered figures, the committed JSON histories and
+the per-trial generalization points the results page plots, but intentionally
+omits large ignored `*.npz` intermediates used by figures 1, 7, 9 and 11. Recreate those inputs with the corresponding optimisation,
 `gradient_map_sweep.py`, `sensitivity_ranking.py` and
 `gamma_generalization.py` commands in this section before rerunning the figure
 generator.
