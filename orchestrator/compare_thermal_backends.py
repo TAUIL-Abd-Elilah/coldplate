@@ -40,6 +40,11 @@ from pipeline import ColdPlate, Params
 jax.config.update("jax_enable_x64", True)
 
 
+#: The grid the README's interchangeability table quotes and audit_claims.py
+#: checks. Only a run at this size records the artefact.
+AUDITED_N = 16
+
+
 def relerr(a, b):
     a, b = np.asarray(a), np.asarray(b)
     return float(np.max(np.abs(a - b)) / max(np.max(np.abs(b)), 1e-300))
@@ -227,15 +232,22 @@ def main(N: int = 16) -> int:
     ok = worst < 1e-8
     record["interchangeable"] = bool(ok)
 
-    # Store it. These are the README's strongest numbers, and a claim nobody
-    # can re-derive from a committed file is a claim on trust.
-    target = Path(__file__).resolve().parent / "results" / "thermal_backend_parity.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", newline="\n")
-
     print(f"\nworst rel err across all three levels: {worst:.3e}")
     print("PASS: the two backends are interchangeable" if ok else "FAIL: backends disagree")
-    print(f"wrote {target}")
+
+    # Store it -- but only for the grid the README quotes and audit_claims.py
+    # checks. judge_demo.sh runs this at 8x8 by default, and overwriting the
+    # audited artefact with a smoke-grid measurement would leave a reviewer
+    # with a dirty clone and a failing claim audit, from the first command
+    # they ran. A smoke run reports; it does not rewrite the evidence.
+    target = Path(__file__).resolve().parent / "results" / "thermal_backend_parity.json"
+    if N == AUDITED_N:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", newline="\n")
+        print(f"wrote {target}")
+    else:
+        print(f"grid {N} is not the audited {AUDITED_N}; "
+              f"{target.name} left untouched")
     return 0 if ok else 1
 
 

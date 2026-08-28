@@ -1235,7 +1235,12 @@ push both commit-addressed and `latest` GHCR images. Source builds remain the
 canonical path; the weekly/manual **container integration** workflow exercises
 the real served boundary rather than only importing API modules.
 
-Show that the JAX and Fortran/Enzyme thermal blocks are interchangeable:
+Show that the JAX and Fortran/Enzyme thermal blocks are interchangeable. At the
+audited grid this rewrites
+`orchestrator/results/thermal_backend_parity.json`, so expect one modified file
+— that is the measurement being remade, and the claim audit checks the README
+against whatever it says. Any other grid reports without touching it, which is
+why `judge_demo.sh` cannot disturb the evidence:
 
 ```bash
 cd orchestrator && python compare_thermal_backends.py 16
