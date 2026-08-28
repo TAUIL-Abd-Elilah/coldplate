@@ -69,6 +69,17 @@ def github_visibility() -> str | None:
             return None
 
 
+def github_slug(heading: str) -> str:
+    """GitHub's anchor rule: drop inline markup, lowercase, punctuation out,
+    spaces to hyphens. Unicode letters survive, which is why the gamma heading
+    anchors as itself."""
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"", heading)
+    text = re.sub(r"`([^`]*)`", r"", text)
+    text = re.sub(r"[*_]+", "", text)
+    text = text.lower().replace(" ", "-")
+    return "".join(c for c in text if c.isalnum() or c in "-_")
+
+
 def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # noqa: C901
     print("=== hackathon deliverables ===")
     check("public licence file present", (ROOT / "LICENSE").exists())
@@ -215,6 +226,15 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
         if not any(h.exists() for h in hits):
             missing.append(n)
     check(f"{len(named)} referenced files all exist", not missing, str(missing))
+
+    # The README opens with a map of its own argument. A dead anchor there is
+    # the first thing a reviewer would click, so resolve every one of them
+    # against GitHub's heading-slug rules rather than trusting them.
+    headings = re.findall(r"^#{1,6}\s+(.*?)\s*$", readme, re.M)
+    slugs = {github_slug(h) for h in headings}
+    anchors = set(re.findall(r"\]\(#([^)]+)\)", readme))
+    dead = sorted(anchors - slugs)
+    check(f"{len(anchors)} README section links resolve", not dead, str(dead))
 
     print("\n=== README shell commands are runnable ===")
     cmds = re.findall(r"```bash\n(.*?)```", readme, re.S)
