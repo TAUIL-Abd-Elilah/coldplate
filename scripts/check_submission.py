@@ -75,6 +75,26 @@ LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 CODE_RE = re.compile(r"`([^`]*)`")
 
 
+def tracked_python_files() -> list[Path]:
+    """Every .py file git tracks, and nothing else.
+
+    Walking the working tree instead was a trap: a reviewer who creates a
+    virtualenv *inside* the clone -- the obvious thing to do, and nothing in
+    the README tells them not to -- made this script read twelve thousand
+    site-packages files and report Pillow's own TODO comments as unfinished
+    work in this repository. Only the "`.venv`" spelling was excluded, so
+    `.venv-verify` or `env/` walked straight in. Ask git what belongs here.
+    """
+    listing = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+    return sorted(
+        ROOT / name for name in listing.split("\0")
+        if name and (ROOT / name).is_file()
+    )
+
+
 def github_slug(heading: str) -> str:
     """GitHub's anchor rule: drop inline markup, lowercase, punctuation out,
     spaces to hyphens. Unicode letters survive, which is why the gamma heading
@@ -242,16 +262,14 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
                 warn(f"{name}: unpinned dependency", str(unpinned))
 
     print("\n=== every python file parses ===")
+    sources = tracked_python_files()
     bad = []
-    for f in sorted(ROOT.rglob("*.py")):
-        if ".venv" in f.parts or "__pycache__" in f.parts:
-            continue
+    for f in sources:
         try:
             ast.parse(f.read_text(encoding="utf-8"))
         except SyntaxError as e:
             bad.append(f"{f.relative_to(ROOT)}: {e}")
-    check(f"all {len(list(ROOT.rglob('*.py')))} python files parse", not bad,
-          "; ".join(bad[:3]))
+    check(f"all {len(sources)} python files parse", not bad, "; ".join(bad[:3]))
 
     print("\n=== files and scripts the README references exist ===")
     # bare filenames in backticks, and markdown links to local paths
@@ -322,10 +340,10 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
     print("\n=== hygiene ===")
     leftovers = []
     marker = re.compile(r"\b(?:TO" + r"DO|FIX" + r"ME|XX" + r"X)\b")
-    for f in sorted(ROOT.rglob("*.py")):
+    for f in sources:
         # skip this file: it necessarily contains the very markers it searches
         # for, and matching itself made the check fail on a clean repository
-        if ".venv" in f.parts or "__pycache__" in f.parts or f == Path(__file__).resolve():
+        if f == Path(__file__).resolve():
             continue
         for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             if marker.search(line):

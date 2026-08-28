@@ -14,11 +14,16 @@ results_smoke/
 results_diag/
 orchestrator/evidence_download_*/
 
-# python
+# python. The glob is deliberately wide: a reviewer who makes a virtualenv
+# inside the clone is doing the obvious thing, and it should not turn the
+# submission check's clean-tree gate into a confusing failure.
 __pycache__/
 *.pyc
-.venv/
-venv/
+.venv*/
+venv*/
+env/
+.env/
+*.egg-info/
 
 # editors / os
 .DS_Store
