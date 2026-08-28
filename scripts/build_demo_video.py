@@ -43,6 +43,45 @@ BUILD = DEMO / "build"
 WIDTH, HEIGHT = 1920, 1080
 VOICE = "en-US-AndrewMultilingualNeural"
 RATE = "+18%"
+
+# Two narration engines. The difference between them is a licence position
+# rather than a preference about voices.
+#
+#   edge   - the Microsoft Edge read-aloud service. Good voice, but the audio
+#            is produced by a remote service whose terms are about reading
+#            pages aloud in a browser, and we hold no written confirmation that
+#            its output may be redistributed in a prize submission. The client
+#            package's LGPL is not the issue; the service's terms are.
+#   piper  - synthesis on this machine. Nothing is sent anywhere, so no
+#            service terms govern the result. The voice is
+#            en_US-ljspeech-high, trained from scratch on LJ Speech, which is
+#            public domain; onnxruntime, which executes it, is MIT.
+#
+# Be precise about the rest: piper-tts 1.7.0 is itself GPL-3.0-or-later,
+# because it links espeak-ng for phonemization. That governs redistributing
+# *the program*, which this repository does not do -- it is an optional build
+# dependency in requirements-video.txt, exactly like ffmpeg. A GPL program's
+# output is not a derivative work of it, the same reason a binary built by GCC
+# is not GPL. What we redistribute is the rendered MP4.
+#
+# `piper` is therefore the engine behind the rights-clean deliverable. Both are
+# kept, because the honest comparison is part of the point.
+ENGINES = ("edge", "piper")
+PIPER_VOICE = "en_US-ljspeech-high"
+# Below 1.0 speaks faster. Calibrated, not guessed: at 0.86 this script's own
+# sentences run 303.8 s, past the guardrail, and speech time scales with the
+# knob while the lead, section gaps and tail do not. 0.82 lands near 290 s,
+# alongside the Edge render and comfortably inside the five-minute rule.
+PIPER_LENGTH_SCALE = 0.82
+PIPER_MODEL_ENV = "COLDPLATE_PIPER_MODEL"
+# Pinned so a swapped or truncated download fails loudly instead of quietly
+# changing the voice in a published artefact.
+PIPER_MODEL_SHA256 = "5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a"
+PIPER_MODEL_BYTES = 114199011
+PIPER_MODEL_URL = (
+    "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+    "en/en_US/ljspeech/high/en_US-ljspeech-high.onnx"
+)
 LEAD_SECONDS = 0.5
 SECTION_GAP_SECONDS = 0.25
 TAIL_SECONDS = 1.0
@@ -501,6 +540,58 @@ def render_slide(section: Section, number: int, total: int, path: Path) -> None:
     image.save(path, quality=95)
 
 
+def _resolve_piper_model(explicit: Path | None) -> Path:
+    """Locate the ONNX voice and refuse to use one we did not pin."""
+    import os
+
+    candidates = [explicit] if explicit else []
+    env = os.environ.get(PIPER_MODEL_ENV)
+    if env:
+        candidates.append(Path(env))
+    candidates.extend([
+        DEMO / "voices" / f"{PIPER_VOICE}.onnx",
+        BUILD / "voices" / f"{PIPER_VOICE}.onnx",
+    ])
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            digest = sha256_file(candidate)
+            if digest != PIPER_MODEL_SHA256:
+                raise ValueError(
+                    f"{candidate} has sha256 {digest}, not the pinned "
+                    f"{PIPER_MODEL_SHA256}; refusing to narrate with an unverified voice"
+                )
+            return candidate
+    raise FileNotFoundError(
+        f"the {PIPER_VOICE} voice was not found. Download it once:\n"
+        f"  curl -L -o demo/voices/{PIPER_VOICE}.onnx {PIPER_MODEL_URL}\n"
+        f"  curl -L -o demo/voices/{PIPER_VOICE}.onnx.json {PIPER_MODEL_URL}.json\n"
+        f"or set {PIPER_MODEL_ENV} to its path. Expected sha256 {PIPER_MODEL_SHA256}."
+    )
+
+
+@lru_cache(maxsize=2)
+def _piper_voice(model: Path):
+    from piper import PiperVoice
+
+    return PiperVoice.load(str(model))
+
+
+def _synthesize_piper(text: str, path: Path, model: Path, length_scale: float) -> None:
+    """Synthesize one sentence locally. No network, no service terms."""
+    import wave
+
+    from piper import SynthesisConfig
+
+    voice = _piper_voice(model)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as handle:
+        voice.synthesize_wav(
+            text, handle, syn_config=SynthesisConfig(length_scale=length_scale)
+        )
+    if path.stat().st_size < 1000:
+        raise RuntimeError(f"synthesized audio for {text!r} is unexpectedly small")
+
+
 async def _synthesize_one(text: str, path: Path, voice: str, rate: str) -> None:
     import edge_tts
 
@@ -668,16 +759,58 @@ def _write_script(sections: list[Section], timings: list[tuple[float, float, str
     _write_utf8_lf(ROOT / "DEMO_SCRIPT.md", "\n".join(lines))
 
 
-def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> dict[str, Any]:
+def variant_paths(variant: str | None) -> dict[str, Path]:
+    """Where one narration variant's deliverables live.
+
+    The canonical (Edge-narrated) render keeps the names the release manifest,
+    the README and the validator already refer to. Any other variant gets a
+    parallel set, so a second narration can ship beside the first without
+    either one silently overwriting the other.
+    """
+    if variant is None:
+        stem = "coldplate_submission"
+        manifest = "video_manifest.json"
+    else:
+        if not variant.replace("_", "").isalnum():
+            raise ValueError("a variant name must be alphanumeric with underscores")
+        stem = f"coldplate_submission_{variant}"
+        manifest = f"video_manifest_{variant}.json"
+    return {
+        "video": DEMO / f"{stem}.mp4",
+        "captions": DEMO / f"{stem}.en.srt",
+        "manifest": DEMO / manifest,
+        # The slides do not depend on the voice, so every variant shares one
+        # poster -- and the build asserts that rather than assuming it.
+        "poster": DEMO / "poster.png",
+    }
+
+
+def build(
+    voice: str = VOICE,
+    rate: str = RATE,
+    output: Path | None = None,
+    *,
+    engine: str = "edge",
+    variant: str | None = None,
+    piper_model: Path | None = None,
+    length_scale: float = PIPER_LENGTH_SCALE,
+) -> dict[str, Any]:
     for command in ("ffmpeg", "ffprobe"):
         if shutil.which(command) is None:
             raise FileNotFoundError(f"{command} is required")
-    canonical_output = (DEMO / "coldplate_submission.mp4").resolve()
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, not {engine!r}")
+    paths = variant_paths(variant)
+    canonical_output = paths["video"].resolve()
     if output is not None and output.resolve() != canonical_output:
         raise ValueError(
-            "--output must be demo/coldplate_submission.mp4 because the release "
-            "manifest and validator intentionally require the canonical deliverable"
+            f"--output must be {paths['video'].relative_to(ROOT).as_posix()} for this "
+            "variant, because the release manifest and validator require a named "
+            "deliverable rather than an arbitrary path"
         )
+    if engine == "piper":
+        piper_model = _resolve_piper_model(piper_model)
+        voice, rate = PIPER_VOICE, f"length_scale={length_scale:g}"
     sections = make_story()
     DEMO.mkdir(exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -687,8 +820,17 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         slide = BUILD / f"slide-{index:02d}.png"
         render_slide(section, index, len(sections), slide)
         slides.append(slide)
-    poster = DEMO / "poster.png"
-    shutil.copyfile(slides[0], poster)
+    poster = paths["poster"]
+    if variant is not None and poster.exists():
+        # The visual track is voice-independent. Prove it instead of trusting it:
+        # a variant that would change the shared poster is a bug, not a build.
+        if sha256_file(slides[0]) != sha256_file(poster):
+            raise ValueError(
+                "this variant renders a different first slide from the canonical "
+                "build; the poster is shared, so the slides must be identical"
+            )
+    else:
+        shutil.copyfile(slides[0], poster)
 
     flattened: list[tuple[int, str]] = [
         (section_index, sentence)
@@ -696,13 +838,19 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         for sentence in section.sentences
     ]
     pcm_paths: list[Path] = []
+    suffix = "mp3" if engine == "edge" else "wav"
     for index, (_, sentence) in enumerate(flattened):
-        digest = hashlib.sha256(f"{voice}\0{rate}\0{sentence}".encode()).hexdigest()[:12]
-        path = BUILD / f"voice-{index:03d}-{digest}.mp3"
+        digest = hashlib.sha256(
+            f"{engine}\0{voice}\0{rate}\0{sentence}".encode()
+        ).hexdigest()[:12]
+        path = BUILD / f"voice-{index:03d}-{digest}.{suffix}"
         if not path.exists():
-            print(f"synthesizing {index + 1}/{len(flattened)}", flush=True)
-            asyncio.run(_synthesize_one(sentence, path, voice, rate))
-        pcm = BUILD / f"voice-{index:03d}-{digest}.wav"
+            print(f"synthesizing {index + 1}/{len(flattened)} [{engine}]", flush=True)
+            if engine == "edge":
+                asyncio.run(_synthesize_one(sentence, path, voice, rate))
+            else:
+                _synthesize_piper(sentence, path, piper_model, length_scale)
+        pcm = BUILD / f"pcm-{index:03d}-{digest}.wav"
         _decode_narration_clip(path, pcm)
         pcm_paths.append(pcm)
 
@@ -746,7 +894,7 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         srt_lines.extend([
             str(index), f"{_timestamp(start)} --> {_timestamp(end)}", caption, "",
         ])
-    captions = DEMO / "coldplate_submission.en.srt"
+    captions = paths["captions"]
     _write_utf8_lf(captions, "\n".join(srt_lines))
 
     audio_concat = BUILD / "audio.ffconcat"
@@ -791,7 +939,10 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
     ])
     media = validate_probe(probe_video(final))
     rendered_duration = media["duration_seconds"]
-    _write_script(sections, timings, rendered_duration)
+    if variant is None:
+        # DEMO_SCRIPT.md documents the canonical render's timings; a variant
+        # must not silently rewrite them with its own.
+        _write_script(sections, timings, rendered_duration)
     report = {
         "output": final.relative_to(ROOT).as_posix(),
         "duration_seconds": rendered_duration,
@@ -802,6 +953,8 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         "audio_codec": media["audio_codec"],
         "audio_sample_rate_hz": media["audio_sample_rate_hz"],
         "audio_channels": media["audio_channels"],
+        "engine": engine,
+        "variant": variant,
         "voice": voice,
         "rate": rate,
         "sections": len(sections),
@@ -821,7 +974,7 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
         "sha256": sha256_file(final),
         "bytes": final.stat().st_size,
     }
-    manifest = DEMO / "video_manifest.json"
+    manifest = paths["manifest"]
     _write_utf8_lf(manifest, json.dumps(report, indent=2) + "\n")
     # Re-read the committed-deliverable shape through the same validator used
     # on release day.  This catches muxing surprises and stale manifests.
@@ -832,7 +985,17 @@ def build(voice: str = VOICE, rate: str = RATE, output: Path | None = None) -> d
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--voice", default=VOICE)
-    parser.add_argument("--rate", default=RATE)
+    parser.add_argument("--voice", default=VOICE,
+                        help="Edge voice name; ignored when --engine piper")
+    parser.add_argument("--rate", default=RATE,
+                        help="Edge speaking rate; ignored when --engine piper")
+    parser.add_argument("--engine", default="edge", choices=ENGINES,
+                        help="narration engine (default: edge)")
+    parser.add_argument("--variant", default=None,
+                        help="name a parallel deliverable set, e.g. --variant local_voice")
+    parser.add_argument("--piper-model", type=Path, default=None,
+                        help=f"path to the pinned {PIPER_VOICE}.onnx voice")
+    parser.add_argument("--length-scale", type=float, default=PIPER_LENGTH_SCALE,
+                        help="Piper pace; below 1.0 speaks faster")
     parser.add_argument("--output", type=Path)
     build(**vars(parser.parse_args()))

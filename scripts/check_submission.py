@@ -156,6 +156,35 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
                 False,
                 str(exc),
             )
+    # The second narration. It exists so the submission does not depend on
+    # audio whose redistribution rights we could not confirm, so if it is
+    # present it must validate exactly like the canonical one.
+    variant_video = ROOT / "demo" / "coldplate_submission_local_voice.mp4"
+    variant_manifest = ROOT / "demo" / "video_manifest_local_voice.json"
+    variant_captions = ROOT / "demo" / "coldplate_submission_local_voice.en.srt"
+    variant_parts = (variant_video, variant_manifest, variant_captions)
+    if any(path.is_file() for path in variant_parts):
+        check("locally narrated variant is complete",
+              all(path.is_file() and path.stat().st_size > 0 for path in variant_parts))
+        if shutil.which("ffprobe") is None and not strict_public:
+            warn("ffprobe not on PATH, so the variant video was not stream-verified")
+        elif all(path.is_file() for path in variant_parts):
+            try:
+                media = validate_release_video(
+                    variant_video, variant_manifest, variant_captions, poster
+                )
+                check(
+                    "locally narrated variant has verified streams and is under five minutes",
+                    True,
+                    f"{media['duration_seconds']:.3f}s, {media['sha256'][:12]}...",
+                )
+            except Exception as exc:  # noqa: BLE001 - readiness check reports all failures
+                check("locally narrated variant has verified streams and is under five minutes",
+                      False, str(exc))
+    elif strict_public:
+        warn("no locally narrated variant is present",
+             "the canonical render's narration rights are documented but unconfirmed")
+
     # The browsable results page. Its numbers are generated from the stored
     # measurements, so a stale page is a defect rather than a cosmetic drift.
     page = ROOT / "docs" / "index.html"

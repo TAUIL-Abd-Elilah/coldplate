@@ -2,4 +2,17 @@
 # Keep the validator's image decoder explicit: publication runs in a fresh
 # Python environment and must not rely on Matplotlib pulling Pillow transitively.
 Pillow==12.3.0
+
+# Narration engine 1: the Microsoft Edge read-aloud service, used for the
+# canonical render. LGPL client; see THIRD_PARTY_NOTICES.md for why the audio's
+# redistribution rights could not be closed from inside this repository.
 edge-tts==7.2.8
+
+# Narration engine 2: local synthesis, used for the rights-clean variant
+# (`--engine piper --variant local_voice`). Nothing is sent to a service.
+# piper-tts is GPL-3.0-or-later and is NOT redistributed by this repository --
+# it is a build tool here, like ffmpeg, and a GPL program's output is not a
+# derivative work of the program. onnxruntime, which executes the voice, is MIT.
+# The voice model itself is downloaded separately and pinned by SHA-256 in
+# scripts/build_demo_video.py.
+piper-tts==1.7.0

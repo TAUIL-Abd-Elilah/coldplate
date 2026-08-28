@@ -15,9 +15,18 @@ and its [terms](https://pasteurlabs.ai/tesseract-hackathon-2026/terms_and_condit
 
 On August 29:
 
-1. Revalidate the committed MP4, SRT, poster, video manifest, paper PDF,
-   provenance manifest, and result JSON, then push the exact clean commit.
-   Preparation refuses untracked or modified release bytes.
+1. Revalidate both committed MP4s and their SRTs and manifests, the shared
+   poster, the paper PDF, the provenance manifest, and the result JSON, then
+   push the exact clean commit. Preparation refuses untracked or modified
+   release bytes.
+
+   Two narrations ship. `demo/coldplate_submission.mp4` is the canonical Edge
+   render; `demo/coldplate_submission_local_voice.mp4` is the same film
+   narrated locally, and it exists because the canonical audio's
+   redistribution rights could not be confirmed. If a rights question is ever
+   raised about the narration, the answer is to point at the local render, not
+   to argue about the other one. `THIRD_PARTY_NOTICES.md` states the position
+   for both; do not soften it.
 2. Make the GitHub repository public and confirm its API is anonymously
    readable.
 3. Run the `submission release` workflow with phase `prepare` and confirmation

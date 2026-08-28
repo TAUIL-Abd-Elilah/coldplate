@@ -98,8 +98,44 @@ def test_video_builder_rejects_noncanonical_output_before_loading_evidence(
         "make_story",
         lambda: pytest.fail("evidence should not load before output validation"),
     )
-    with pytest.raises(ValueError, match="canonical deliverable"):
+    with pytest.raises(ValueError, match="named deliverable"):
         build_demo_video.build(output=tmp_path / "preview.mp4")
+
+
+def test_variant_paths_never_collide_with_the_canonical_render():
+    """A second narration must not be able to overwrite the released one."""
+    canonical = build_demo_video.variant_paths(None)
+    variant = build_demo_video.variant_paths("local_voice")
+    assert canonical["video"].name == "coldplate_submission.mp4"
+    assert canonical["manifest"].name == "video_manifest.json"
+    for key in ("video", "captions", "manifest"):
+        assert variant[key] != canonical[key]
+    # The slides do not depend on the voice, so the poster is deliberately shared.
+    assert variant["poster"] == canonical["poster"]
+
+
+@pytest.mark.parametrize("name", ["../escape", "with space", "semi;colon", ""])
+def test_variant_names_are_restricted(name):
+    with pytest.raises(ValueError, match="alphanumeric"):
+        build_demo_video.variant_paths(name)
+
+
+def test_unknown_engine_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_demo_video.shutil, "which", lambda command: command)
+    monkeypatch.setattr(
+        build_demo_video,
+        "make_story",
+        lambda: pytest.fail("evidence should not load before engine validation"),
+    )
+    with pytest.raises(ValueError, match="engine must be one of"):
+        build_demo_video.build(engine="whatever-i-like")
+
+
+def test_piper_refuses_an_unpinned_voice(tmp_path):
+    impostor = tmp_path / "en_US-ljspeech-high.onnx"
+    impostor.write_bytes(b"not the pinned voice")
+    with pytest.raises(ValueError, match="refusing to narrate"):
+        build_demo_video._resolve_piper_model(impostor)
 
 
 def test_slide_renderer_produces_release_resolution(tmp_path):

@@ -268,12 +268,29 @@ def validate_release_video(
     max_duration: float = MAX_DURATION_SECONDS,
 ) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("output") != "demo/coldplate_submission.mp4":
-        raise ValueError("video manifest output must name the canonical demo MP4")
-    if manifest.get("captions") != "demo/coldplate_submission.en.srt":
-        raise ValueError("video manifest captions must name the canonical English SRT")
+    # A manifest must name the deliverables it is actually about. The canonical
+    # release keeps its exact names, because release day checks those bytes; a
+    # named narration variant is held to the same rule against its own names,
+    # so a manifest can never describe a file other than the one validated.
+    variant = manifest.get("variant")
+    if variant is None:
+        stem = "coldplate_submission"
+    else:
+        if not isinstance(variant, str) or not variant.replace("_", "").isalnum():
+            raise ValueError("video manifest variant must be an alphanumeric name")
+        stem = f"coldplate_submission_{variant}"
+    if manifest.get("output") != f"demo/{stem}.mp4":
+        raise ValueError(f"video manifest output must name demo/{stem}.mp4")
+    if manifest.get("captions") != f"demo/{stem}.en.srt":
+        raise ValueError(f"video manifest captions must name demo/{stem}.en.srt")
     if manifest.get("poster") != "demo/poster.png":
         raise ValueError("video manifest poster must name the canonical PNG")
+    for path, expected in (
+        (video, f"demo/{stem}.mp4"),
+        (captions, f"demo/{stem}.en.srt"),
+    ):
+        if path.name != Path(expected).name:
+            raise ValueError(f"validated {path.name} does not match manifest {expected}")
     actual = validate_probe(
         probe_video(video), min_duration=min_duration, max_duration=max_duration
     )

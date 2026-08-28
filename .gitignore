@@ -34,3 +34,8 @@ demo/build/
 # Local caption-safety preview render: a 12.7 MB duplicate of the release
 # video, referenced by nothing. Regenerated on demand by the video tooling.
 demo/caption-safe-preview.mp4
+
+# The Piper voice model for the locally narrated video variant: 109 MB of ONNX
+# weights, downloaded once and pinned by SHA-256 in scripts/build_demo_video.py.
+# The rendered MP4 is the deliverable; the model is a build input.
+demo/voices/

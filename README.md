@@ -25,6 +25,13 @@ whose every matvec crosses the container boundary.
 | --- | --- | --- | --- |
 | [4:51 narrated demo](demo/coldplate_submission.mp4) ([captions](demo/coldplate_submission.en.srt)) | [4-page technical paper](PAPER.pdf) | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) — 1–3 min warm | [results page](docs/index.html) · [figures](#figures) |
 
+The same film also ships with
+[locally synthesised narration](demo/coldplate_submission_local_voice.mp4)
+([captions](demo/coldplate_submission_local_voice.en.srt)). Identical frames and
+script; the difference is that its voice never touched a remote service, so no
+service terms govern the audio. Both, and why there are two, are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ![The optimized material, temperature, coolant flow and objective history.](orchestrator/results/fig1_optimisation.gif)
 
 ## Thirty-second result
@@ -1373,7 +1380,10 @@ The committed deliverables are the
 [MP4](demo/coldplate_submission.mp4),
 [English captions](demo/coldplate_submission.en.srt),
 [poster](demo/poster.png), [timed script](DEMO_SCRIPT.md), and
-[stream/hash manifest](demo/video_manifest.json).
+[stream/hash manifest](demo/video_manifest.json) — plus the locally narrated
+[variant](demo/coldplate_submission_local_voice.mp4) with its own
+[captions](demo/coldplate_submission_local_voice.en.srt) and
+[manifest](demo/video_manifest_local_voice.json).
 
 ```bash
 cd orchestrator
@@ -1382,6 +1392,18 @@ cd ..
 pip install -r requirements-video.txt
 python scripts/build_demo_video.py
 python scripts/validate_video.py --video demo/coldplate_submission.mp4 --manifest demo/video_manifest.json --captions demo/coldplate_submission.en.srt --poster demo/poster.png
+```
+
+Render the locally narrated variant instead. It needs the pinned voice once —
+about 109 MB, downloaded to an ignored directory, and refused if its SHA-256
+does not match:
+
+```bash
+mkdir -p demo/voices
+curl -L -o demo/voices/en_US-ljspeech-high.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx
+curl -L -o demo/voices/en_US-ljspeech-high.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json
+python scripts/build_demo_video.py --engine piper --variant local_voice
+python scripts/validate_video.py --video demo/coldplate_submission_local_voice.mp4 --manifest demo/video_manifest_local_voice.json --captions demo/coldplate_submission_local_voice.en.srt --poster demo/poster.png
 ```
 
 Run the attribution task — rank design cells by influence with each gradient and
