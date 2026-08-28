@@ -121,6 +121,35 @@ def test_every_gate_lands_inside_the_plot(builder):
     assert builder.SHIPPED_GATE in builder.GATES
 
 
+def test_the_explorer_is_actually_wired(builder):
+    """A CSS selector that names no element fails silently and invisibly.
+
+    The page claims to be interactive. If a rule pointed at a class the markup
+    never emits, every gate would look selectable and nothing would move, and
+    no other test here would notice.
+    """
+    page = builder.render()
+    style = re.search(r"<style>(.*?)</style>", page, re.S).group(1)
+    body = page[page.index("</style>"):]
+
+    ids = re.findall(r'<input type="radio" name="gate" id="(gate\d)"', body)
+    assert len(ids) == len(builder.GATES)
+    assert len(re.findall(r'id="gate\d" checked', body)) == 1, (
+        "exactly one gate must start selected"
+    )
+
+    for gate, container, target in re.findall(
+        r"#(gate\d):checked~\.(\w+) \.(\w+)", style
+    ):
+        assert f'class="{container}"' in body, f"no .{container} for {gate}"
+        assert target in body, f"{gate} points at .{target}, which is never emitted"
+
+    for gate in ids:
+        assert f'for="{gate}"' in body, f"{gate} has no label to click"
+        assert f"label[for={gate}]" in style, f"{gate} never highlights when chosen"
+        assert f"#{gate}:focus-visible" in style, f"{gate} has no keyboard focus ring"
+
+
 def test_page_runs_no_script(builder):
     """The explorer is radio buttons and sibling selectors, deliberately."""
     page = builder.render()
