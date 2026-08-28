@@ -131,11 +131,32 @@ def test_unknown_engine_is_refused(tmp_path, monkeypatch):
         build_demo_video.build(engine="whatever-i-like")
 
 
-def test_piper_refuses_an_unpinned_voice(tmp_path):
+def test_piper_refuses_a_truncated_voice(tmp_path):
+    """The common failure: an interrupted download. Caught on size, cheaply."""
     impostor = tmp_path / "en_US-ljspeech-high.onnx"
     impostor.write_bytes(b"not the pinned voice")
+    with pytest.raises(ValueError, match="download is incomplete"):
+        build_demo_video._resolve_piper_model(impostor)
+
+
+def test_piper_refuses_a_substituted_voice(tmp_path):
+    """The dangerous failure: right size, different weights. Caught on digest.
+
+    A voice that passed silently here would change the audio of a published
+    artefact without changing anything that says so.
+    """
+    impostor = tmp_path / "en_US-ljspeech-high.onnx"
+    impostor.write_bytes(b"\0" * build_demo_video.PIPER_MODEL_BYTES)
     with pytest.raises(ValueError, match="refusing to narrate"):
         build_demo_video._resolve_piper_model(impostor)
+
+
+def test_piper_reports_where_to_get_the_voice_when_it_is_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv(build_demo_video.PIPER_MODEL_ENV, raising=False)
+    monkeypatch.setattr(build_demo_video, "DEMO", tmp_path / "demo")
+    monkeypatch.setattr(build_demo_video, "BUILD", tmp_path / "build")
+    with pytest.raises(FileNotFoundError, match="huggingface.co"):
+        build_demo_video._resolve_piper_model(None)
 
 
 def test_slide_renderer_produces_release_resolution(tmp_path):

@@ -21,6 +21,7 @@ import hashlib
 import json
 from functools import lru_cache
 import math
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -542,8 +543,6 @@ def render_slide(section: Section, number: int, total: int, path: Path) -> None:
 
 def _resolve_piper_model(explicit: Path | None) -> Path:
     """Locate the ONNX voice and refuse to use one we did not pin."""
-    import os
-
     candidates = [explicit] if explicit else []
     env = os.environ.get(PIPER_MODEL_ENV)
     if env:
@@ -554,6 +553,15 @@ def _resolve_piper_model(explicit: Path | None) -> Path:
     ])
     for candidate in candidates:
         if candidate and candidate.is_file():
+            # Size first: a truncated or interrupted download is the common
+            # failure and this reports it without hashing 109 MB to find out.
+            size = candidate.stat().st_size
+            if size != PIPER_MODEL_BYTES:
+                raise ValueError(
+                    f"{candidate} is {size} bytes, not the pinned "
+                    f"{PIPER_MODEL_BYTES}; the download is incomplete or is a "
+                    "different voice"
+                )
             digest = sha256_file(candidate)
             if digest != PIPER_MODEL_SHA256:
                 raise ValueError(
