@@ -368,6 +368,26 @@ def threshold_explorer() -> str:
     points = load("gamma_generalization_points.json")
     gamma_error = [(row[0], row[1]) for row in points["rows"]]
 
+    # The axes are fixed, the data is not: rerunning the study with a different
+    # seed or trial count could put a point outside the frame, where it would
+    # silently draw over the page instead of inside the plot. Fail instead.
+    for name, values, (lo, hi) in (
+        ("gamma", [g for g, _ in gamma_error], XLIM),
+        ("relative error", [e for _, e in gamma_error], YLIM),
+    ):
+        if min(values) <= 0:
+            raise ValueError(f"{name} must be positive to plot on a log axis")
+        low, high = math.log10(min(values)), math.log10(max(values))
+        if low < lo or high > hi:
+            raise ValueError(
+                f"{name} spans 10^{low:.2f} to 10^{high:.2f}, outside the plotted "
+                f"10^{lo:g} to 10^{hi:g}; widen the axis rather than clipping data"
+            )
+    # Gates are gamma values, so they belong on the horizontal axis.
+    for gate in GATES:
+        if not XLIM[0] <= math.log10(gate) <= XLIM[1]:
+            raise ValueError(f"gate {gate:g} would draw outside the plot")
+
     x0, x1 = PLOT["l"], PLOT["w"] - PLOT["r"]
     y0, y1 = PLOT["h"] - PLOT["b"], PLOT["t"]
 
@@ -404,7 +424,7 @@ def threshold_explorer() -> str:
     for index, gate in enumerate(GATES):
         checked = " checked" if gate == SHIPPED_GATE else ""
         inputs.append(f'<input type="radio" name="gate" id="gate{index}"{checked}>')
-        shipped = " &starf;" if gate == SHIPPED_GATE else ""
+        shipped = " &#9733;" if gate == SHIPPED_GATE else ""
         labels.append(f'<label for="gate{index}">&gamma; &lt; {gate:g}{shipped}</label>')
 
         gx = px(gate)
@@ -444,9 +464,7 @@ def threshold_explorer() -> str:
     {''.join(inputs)}
     <div class="gates">{''.join(labels)}</div>
     <figure class="plot">
-      <svg viewBox="0 0 {PLOT['w']} {PLOT['h']}" role="img"
-           aria-label="Loop-cut gradient error against the directional gain for
-           {len(gamma_error)} random coupled systems, with movable screening gates.">
+      <svg viewBox="0 0 {PLOT['w']} {PLOT['h']}" role="img" aria-label="Loop-cut gradient error against the directional gain for {len(gamma_error)} random coupled systems, with selectable screening gates.">
         {''.join(ticks)}
         {''.join(lines)}
         <g class="dots">{''.join(dots)}</g>
@@ -460,7 +478,7 @@ def threshold_explorer() -> str:
   </div>
   <p class="src">counts recomputed at build time from
   <code>results/gamma_generalization_points.json</code>, written by the same run that
-  produced the summary above. &starf; marks the gate <code>coupling_check.py</code>
+  produced the summary above. &#9733; marks the gate <code>coupling_check.py</code>
   actually ships.</p>"""
 
 
@@ -684,8 +702,6 @@ margin-top:.5rem}
 cursor:pointer;border:1px solid var(--rule);background:var(--card);color:var(--muted);
 padding:.5rem .7rem;border-radius:.35rem}
 .gates label:hover{border-color:var(--accent);color:var(--fg)}
-.explorer input:focus-visible+.gates label,
-.gates label:focus-within{outline:2px solid var(--accent)}
 .plot{margin:0}
 .plot svg{width:100%;height:auto;border:1px solid var(--rule);border-radius:.35rem;
 background:var(--card)}
@@ -712,6 +728,14 @@ padding-left:.95rem}
 #gate2:checked~.gates label[for=gate2],#gate3:checked~.gates label[for=gate3],
 #gate4:checked~.gates label[for=gate4]{background:var(--accent);color:var(--bg);
 border-color:var(--accent)}
+/* The radios are visually hidden, so the keyboard focus ring has to be put
+   back on the label the focused radio actually controls. */
+#gate0:focus-visible~.gates label[for=gate0],
+#gate1:focus-visible~.gates label[for=gate1],
+#gate2:focus-visible~.gates label[for=gate2],
+#gate3:focus-visible~.gates label[for=gate3],
+#gate4:focus-visible~.gates label[for=gate4]{outline:2px solid var(--fg);
+outline-offset:2px}
 footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--rule);
 font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
 """
@@ -747,6 +771,7 @@ def render() -> str:
     <a href="{REPO}">Repository</a>
     <a href="../PAPER.pdf">4-page paper</a>
     <a href="../demo/coldplate_submission.mp4">4:51 demo</a>
+    <a href="../demo/coldplate_submission_local_voice.mp4">demo, local voice</a>
     <a href="#reproduce">Reproduce</a>
     <a href="#negatives">What we do not claim</a>
   </nav>

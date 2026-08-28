@@ -96,6 +96,31 @@ def test_explorer_shows_a_gate_that_fails(builder):
     assert "false SAFE" in builder.render()
 
 
+def test_explorer_refuses_to_plot_outside_its_own_axes(builder, monkeypatch):
+    """Axes are fixed; the data is not. A point off the frame must stop the
+    build rather than draw over the page."""
+    real = builder.load
+
+    def with_an_outlier(name, sub="results"):
+        data = real(name, sub)
+        if name == "gamma_generalization_points.json":
+            data = dict(data)
+            data["rows"] = [*data["rows"], [1e-9, 0.5, 0.3, "normal", "linear"]]
+        return data
+
+    monkeypatch.setattr(builder, "load", with_an_outlier)
+    with pytest.raises(ValueError, match="widen the axis"):
+        builder.threshold_explorer()
+
+
+def test_every_gate_lands_inside_the_plot(builder):
+    import math
+
+    for gate in builder.GATES:
+        assert builder.XLIM[0] <= math.log10(gate) <= builder.XLIM[1]
+    assert builder.SHIPPED_GATE in builder.GATES
+
+
 def test_page_runs_no_script(builder):
     """The explorer is radio buttons and sibling selectors, deliberately."""
     page = builder.render()
