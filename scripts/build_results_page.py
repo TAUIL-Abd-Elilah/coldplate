@@ -27,6 +27,9 @@ OUT = ROOT / "docs" / "index.html"
 # root (a local clone, or Pages deployed from "/"), so these relative paths
 # resolve in both cases and nothing is duplicated into docs/.
 FIG = "../orchestrator/results"
+# Markdown files render as a download when Pages serves them, so prose links
+# point at the repository while assets stay relative and keep working offline.
+REPO = "https://github.com/TAUIL-Abd-Elilah/coldplate"
 
 
 def load(name: str, sub: str = "results"):
@@ -479,7 +482,7 @@ def section_negatives() -> str:
 
 
 def section_reproduce() -> str:
-    return """
+    return f"""
 <section id="reproduce">
   <h2>Reproduce it</h2>
   <p>Supported review path: Linux <code>amd64</code>, or Windows through WSL2, with a
@@ -496,7 +499,7 @@ python predict_error.py --N 20                 # what predicts the damage, for o
 python gamma_generalization.py --trials 2400   # no containers, no solver, closed-form truth
 python intervention_test.py --N 20 --Ra 3e4    # act on each gradient, re-solve the truth</code></pre>
   <p>The full command set, including the long optimisations and the frozen protocols, is in
-  the <a href="../README.md#reproduce">repository README</a>. The extended evidence is
+  the <a href="{REPO}#reproduce">repository README</a>. The extended evidence is
   byte-bound to the workflow runs that produced it in
   <code>orchestrator/results/EVIDENCE_PROVENANCE.json</code>, and rechecked with
   <code>python scripts/validate_evidence_provenance.py --verify-github</code>.</p>
@@ -580,7 +583,7 @@ def render() -> str:
   <p class="lede">One <code>jax.grad</code> across three languages, four derivative stacks
   and a two-way physics loop &mdash; and the loop is the part everyone else drops.</p>
   <nav>
-    <a href="../README.md">Repository</a>
+    <a href="{REPO}">Repository</a>
     <a href="../PAPER.pdf">4-page paper</a>
     <a href="../demo/coldplate_submission.mp4">4:51 demo</a>
     <a href="#reproduce">Reproduce</a>
