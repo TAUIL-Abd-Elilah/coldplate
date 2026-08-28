@@ -108,6 +108,9 @@ jobs:
           allowed = {
               "PAPER.pdf", "SHA256SUMS", "coldplate_submission.mp4",
               "coldplate_submission.en.srt", "poster.png", "video_manifest.json",
+              "coldplate_submission_local_voice.mp4",
+              "coldplate_submission_local_voice.en.srt",
+              "video_manifest_local_voice.json",
               "image-digests.txt", "release-provenance.json", f"coldplate-{sha}.tar.gz",
           }
           actual = {asset["name"] for asset in state["assets"]}
@@ -148,6 +151,9 @@ jobs:
             demo/coldplate_submission.en.srt
             demo/poster.png
             demo/video_manifest.json
+            demo/coldplate_submission_local_voice.mp4
+            demo/coldplate_submission_local_voice.en.srt
+            demo/video_manifest_local_voice.json
             orchestrator/results/EVIDENCE_PROVENANCE.json
             orchestrator/results/strong_coupling_showdown.json
             orchestrator/results/strong_coupling_showdown_interpretation.json
@@ -164,6 +170,11 @@ jobs:
             --video demo/coldplate_submission.mp4 \
             --manifest demo/video_manifest.json \
             --captions demo/coldplate_submission.en.srt \
+            --poster demo/poster.png
+          python scripts/validate_video.py \
+            --video demo/coldplate_submission_local_voice.mp4 \
+            --manifest demo/video_manifest_local_voice.json \
+            --captions demo/coldplate_submission_local_voice.en.srt \
             --poster demo/poster.png
 
       - name: Verify source, measurements, eligibility, and paper
@@ -232,6 +243,9 @@ jobs:
           cp demo/coldplate_submission.en.srt release-dist/
           cp demo/poster.png release-dist/
           cp demo/video_manifest.json release-dist/
+          cp demo/coldplate_submission_local_voice.mp4 release-dist/
+          cp demo/coldplate_submission_local_voice.en.srt release-dist/
+          cp demo/video_manifest_local_voice.json release-dist/
           python - <<'PY'
           import json
           import os
@@ -259,6 +273,9 @@ jobs:
               coldplate_submission.en.srt \
               poster.png \
               video_manifest.json \
+              coldplate_submission_local_voice.mp4 \
+              coldplate_submission_local_voice.en.srt \
+              video_manifest_local_voice.json \
               image-digests.txt \
               release-provenance.json \
               "coldplate-$GITHUB_SHA.tar.gz" \
@@ -286,6 +303,9 @@ jobs:
           allowed = {
               "PAPER.pdf", "SHA256SUMS", "coldplate_submission.mp4",
               "coldplate_submission.en.srt", "poster.png", "video_manifest.json",
+              "coldplate_submission_local_voice.mp4",
+              "coldplate_submission_local_voice.en.srt",
+              "video_manifest_local_voice.json",
               "image-digests.txt", "release-provenance.json", f"coldplate-{sha}.tar.gz",
           }
           actual = {asset["name"] for asset in state["assets"]}
@@ -329,6 +349,9 @@ jobs:
           expected = {
               "PAPER.pdf", "SHA256SUMS", "coldplate_submission.mp4",
               "coldplate_submission.en.srt", "poster.png", "video_manifest.json",
+              "coldplate_submission_local_voice.mp4",
+              "coldplate_submission_local_voice.en.srt",
+              "video_manifest_local_voice.json",
               "image-digests.txt", "release-provenance.json", f"coldplate-{sha}.tar.gz",
           }
           actual = {asset["name"] for asset in state["assets"]}
@@ -419,6 +442,9 @@ jobs:
           assets = {
               "PAPER.pdf", "SHA256SUMS", "coldplate_submission.mp4",
               "coldplate_submission.en.srt", "poster.png", "video_manifest.json",
+              "coldplate_submission_local_voice.mp4",
+              "coldplate_submission_local_voice.en.srt",
+              "video_manifest_local_voice.json",
               "image-digests.txt", "release-provenance.json", f"coldplate-{sha}.tar.gz",
           }
           downloaded = {path.name for path in directory.iterdir() if path.is_file()}
@@ -482,11 +508,19 @@ jobs:
             --manifest "$VERIFY_DIR/video_manifest.json" \
             --captions "$VERIFY_DIR/coldplate_submission.en.srt" \
             --poster "$VERIFY_DIR/poster.png"
+          python scripts/validate_video.py \
+            --video "$VERIFY_DIR/coldplate_submission_local_voice.mp4" \
+            --manifest "$VERIFY_DIR/video_manifest_local_voice.json" \
+            --captions "$VERIFY_DIR/coldplate_submission_local_voice.en.srt" \
+            --poster "$VERIFY_DIR/poster.png"
           cmp "$VERIFY_DIR/PAPER.pdf" PAPER.pdf
           cmp "$VERIFY_DIR/coldplate_submission.mp4" demo/coldplate_submission.mp4
           cmp "$VERIFY_DIR/coldplate_submission.en.srt" demo/coldplate_submission.en.srt
           cmp "$VERIFY_DIR/poster.png" demo/poster.png
           cmp "$VERIFY_DIR/video_manifest.json" demo/video_manifest.json
+          cmp "$VERIFY_DIR/coldplate_submission_local_voice.mp4" demo/coldplate_submission_local_voice.mp4
+          cmp "$VERIFY_DIR/coldplate_submission_local_voice.en.srt" demo/coldplate_submission_local_voice.en.srt
+          cmp "$VERIFY_DIR/video_manifest_local_voice.json" demo/video_manifest_local_voice.json
           prefix="coldplate-$PREPARED_SHA/"
           git archive --format=tar --prefix="$prefix" "$PREPARED_SHA" \
             | gzip -n > "$RUNNER_TEMP/expected-source.tar.gz"

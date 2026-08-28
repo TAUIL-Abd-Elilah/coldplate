@@ -150,3 +150,59 @@ def test_paper_build_fixes_font_timestamp_for_reproducible_pdf_bytes():
     script = (ROOT / "scripts" / "build_paper.sh").read_text(encoding="utf-8")
     assert 'SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1785715200}"' in script
     assert 'PYTHONHASHSEED="${PYTHONHASHSEED:-0}"' in script
+
+
+def test_release_publishes_both_narrations():
+    """The rights-clean render must not be able to fall out of a release.
+
+    It exists precisely so the submission never depends on audio whose
+    redistribution rights we could not confirm. A release that shipped only
+    the canonical MP4 would quietly undo that, so every stage that names the
+    canonical deliverable has to name this one too.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release-submission.yml").read_text(
+        encoding="utf-8"
+    )
+    variant = {
+        "mp4": "coldplate_submission_local_voice.mp4",
+        "srt": "coldplate_submission_local_voice.en.srt",
+        "manifest": "video_manifest_local_voice.json",
+    }
+    canonical = {
+        "mp4": "coldplate_submission.mp4",
+        "srt": "coldplate_submission.en.srt",
+        "manifest": "video_manifest.json",
+    }
+    for key, name in variant.items():
+        # The canonical name is a substring of nothing here, but the variant
+        # name contains no canonical name, so plain counting is unambiguous.
+        assert name in workflow, f"the release workflow never mentions {name}"
+        # Wherever the canonical deliverable is enumerated, so is this one.
+        assert workflow.count(name) >= 4, (
+            f"{name} appears {workflow.count(name)} times; the canonical "
+            f"{canonical[key]} is enumerated in the preflight asset sets, the "
+            "required-files list, the asset copy, the checksums and the "
+            "publish-phase verification"
+        )
+    assert workflow.count("--video demo/coldplate_submission_local_voice.mp4") == 1
+    assert workflow.count(
+        '--video "$VERIFY_DIR/coldplate_submission_local_voice.mp4"'
+    ) == 1
+
+
+def test_third_party_notices_state_the_narration_position():
+    """The narration licence position is load-bearing; it must stay explicit."""
+    notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    for phrase in (
+        # the admission about the canonical render
+        "no written confirmation",
+        # why the local render is clean
+        "public domain",
+        # and the licence of the tool that produced it, stated rather than glossed
+        "GPL-3.0-or-later",
+        "not** redistribute it",
+    ):
+        assert phrase in notices, f"THIRD_PARTY_NOTICES lost {phrase!r}"
+    # Both renders must be named, so a reader can find the clean one.
+    assert "demo/coldplate_submission.mp4" in notices
+    assert "demo/coldplate_submission_local_voice.mp4" in notices
