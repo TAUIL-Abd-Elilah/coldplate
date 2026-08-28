@@ -59,7 +59,9 @@ is where the naive gradient wins, and why that is not a defence ·
 [γ](#what-actually-predicts-it-one-vjp) is the one-VJP screen that predicts the
 damage, [tested off this problem entirely](#does-γ-generalise-past-this-cold-plate-2377-random-systems-say-yes--with-one-boundary) ·
 [architecture](#architecture) and [why this needs Tesseract](#why-this-needs-tesseract)
-cover the composition · [validation](#validation) is the numerical evidence ·
+cover the composition · [engineering contributions](#engineering-contributions)
+is what outlives this cold plate, and what the build refuses to take on trust ·
+[validation](#validation) is the numerical evidence ·
 [prior work](#prior-work-and-what-is-actually-new-here) says plainly what is not
 new here.
 
@@ -779,6 +781,92 @@ let this implementation solve the forward problem robustly in this regime.
 
 ---
 
+## Engineering contributions
+
+Things built here that outlive this cold plate, and things the build refuses to
+let us assert without proving.
+
+### A reusable diagnostic, not a cold-plate script
+
+[`fixed_point_adjoint.py`](fixed_point_adjoint.py) is the generic version of the
+γ result: it takes any JAX-traceable `phi`, a fixed point, and an objective
+cotangent — arbitrary PyTrees — and returns a frozen report with the relative
+adjoint residual, the raw norms behind it, repeated VJP norms, and an optional
+primal fixed-point residual. It ships **no default thresholds**: a verdict
+appears only when the caller supplies numbers calibrated on their own
+application, and a fixed point known to be repelling can never be labelled
+`SAFE`, because residual-to-error amplification is uncontrolled there. The
+repeated VJP norms are reported as diagnostics and are deliberately *not*
+described as a convergent Neumann series.
+[`coupling_check.py`](coupling_check.py) is the thin cold-plate policy wrapper
+around it — thresholds and a served-component adapter, nothing else.
+
+The generalisation study is the honest test of that separation: γ is measured on
+2,377 random coupled systems **by calling the shipped module**, not a
+reimplementation, and the shipped thresholds are the ones scored.
+
+A contribution-ready issue and PR plan for upstreaming it sits in
+[`upstream/TESSERACT_JAX_PROPOSAL.md`](upstream/TESSERACT_JAX_PROPOSAL.md). It
+has deliberately **not** been posted: opening a feature PR against
+`pasteurlabs/tesseract-jax` without maintainer coordination is not a
+contribution, it is homework for someone else. Nothing in this repository
+describes it as submitted or accepted.
+
+### A Fortran + Enzyme toolchain anyone can reuse
+
+[`tesseracts/thermal_fortran/toolchain/`](tesseracts/thermal_fortran/toolchain)
+is a standalone Debian image carrying LLVM 19, flang and the matching Enzyme
+plugin, split out of the component build so its ~200 MB of downloads are paid
+once. It is the piece missing from most "differentiate my Fortran" attempts, and
+it is reusable as-is for any Tesseract that wants compiler AD instead of a
+tracer. Two findings in it cost real hours and are documented at the point they
+bite:
+
+* **flang mangles names.** Without `bind(C, name="...")` the linked module
+  contains a *declaration* with no body, and Enzyme reports the unhelpful
+  "failed to find fn to differentiate".
+* **LFortran lowers `tanh` into its own runtime** as `_lfortran_dtanh`, which
+  Enzyme treats as opaque and refuses to differentiate. Binding straight to
+  libm's `tanh` through `ISO_C_BINDING` fixes it, because Enzyme carries a rule
+  for that one.
+
+The redistributed plugin is pinned **by content**, SHA-256
+`5b43014a…69ef031`, with its upstream Apache-2.0-with-LLVM-exceptions licence
+beside it, because Enzyme's nightly workflow deletes and recreates its release
+assets — a mutable URL is not a dependency, it is a future outage.
+
+### Claims the build refuses to take on trust
+
+Two statements in this README would be easy to write and hard to check, so the
+container build fails if either stops being true
+([`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml)):
+
+* **"No AD library is involved."** Neither the C++ nor the Fortran image may
+  import `jax`, `torch`, `tensorflow`, `autograd` or `casadi`. The build tries,
+  and stops if any of them succeeds.
+* **"Enzyme actually ran."** The linked Fortran library must import `cosh` — a
+  function appearing in no source file in this repository. It is Enzyme's
+  generated derivative of the `tanh` in the Péclet weighting. A silently
+  no-opped pass would leave that symbol absent, and the build stops.
+
+### Evidence that is expensive to fake
+
+`scripts/audit_claims.py` re-derives every quoted headline number from the
+stored measurements and fails on drift, and also refuses a list of specific
+overclaims we previously made and retracted. `scripts/build_results_page.py
+--check` does the same for [the results page](docs/index.html), which is a pure
+function of the committed JSON. `EVIDENCE_PROVENANCE.json` binds the frozen
+extended evidence to the GitHub Actions runs that produced it, and
+`scripts/validate_evidence_provenance.py --verify-github` rehashes the 48-file
+tree, queries the original run and artifact metadata, downloads each artifact
+and compares its bytes with what is committed. The paper PDF builds byte
+reproducibly, twice, in CI.
+
+None of that makes a result correct. It makes an *undetected* revision of a
+result difficult, which is a different and more achievable property.
+
+---
+
 ## The design it produces
 
 120 design iterations at 96×96, minimising mean chip temperature subject to a
@@ -851,11 +939,9 @@ So what is left?
    A known repelling map can never be labelled `SAFE`.
 
 If you take one thing from this repository, take `fixed_point_adjoint.py` and
-the finding that motivates it — not the cold plate. `coupling_check.py` is the
-cold-plate policy wrapper around that generic utility. A contribution-ready
-issue/PR design is recorded in
-[`upstream/TESSERACT_JAX_PROPOSAL.md`](upstream/TESSERACT_JAX_PROPOSAL.md); it
-has deliberately not been posted upstream without maintainer coordination.
+the finding that motivates it — not the cold plate. See
+[Engineering contributions](#engineering-contributions) for what that module
+does and does not promise.
 
 ## Physics
 
