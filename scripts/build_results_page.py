@@ -47,6 +47,12 @@ def pct(value: float, digits: int = 1) -> str:
     return f"{value * 100:.{digits}f}%"
 
 
+def sci(value: float) -> str:
+    """A measurement in the notation the README uses: 5.3 x 10^-12."""
+    mantissa, exponent = f"{value:.1e}".split("e")
+    return f"{mantissa}&nbsp;&times;&nbsp;10<sup>{int(exponent)}</sup>"
+
+
 def table(headers: list[str], rows: list[list[str]], *, align: str = "") -> str:
     head = "".join(f"<th>{h}</th>" for h in headers)
     body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
@@ -129,6 +135,7 @@ def section_headline() -> str:
 
 
 def section_composition() -> str:
+    parity = load("thermal_backend_parity.json")
     rows = [
         ["<code>stokes_brinkman</code>", "C++ / Eigen",
          "hand-derived discrete adjoint, no AD tool", "served"],
@@ -154,11 +161,24 @@ def section_composition() -> str:
   the composition is load-bearing rather than convenient: there is no ordering of these
   components in which one sweep of the chain rule suffices.</p>
   <p>The two thermal backends share a schema and nothing else, and they are
-  interchangeable rather than merely composable: swapping JAX autodiff for the
-  independently written Fortran code differentiated by Enzyme moves the end-to-end
-  <code>dJ/d&rho;</code> by 5.3&nbsp;&times;&nbsp;10<sup>&minus;12</sup>, cosine
-  1.000000000000. Reproduce it with
-  <code>python orchestrator/compare_thermal_backends.py 16</code>.</p>
+  interchangeable rather than merely composable. Swapping JAX autodiff for the
+  independently written Fortran differentiated by Enzyme, at a converged coupled
+  state on a {parity['N']}&times;{parity['N']} grid:</p>
+  {table(["level", "JAX vs Fortran/Enzyme"], [
+      ["component <code>T</code>", sci(parity["component_forward_T"])],
+      ["component JVP", sci(parity["component_jvp"])],
+      ["component VJP", sci(parity["component_vjp"])],
+      ["converged coupled state <code>T*</code>", sci(parity["coupled_state_T"])],
+      ["<b>end-to-end <code>dJ/d&rho;</code></b>",
+       f"<b>{sci(parity['end_to_end_gradient'])}</b>, cosine "
+       f"{parity['gradient_cosine']:.12f}"],
+  ], align="num")}
+  <p>The gradient that comes out of the whole composition &mdash; through the C++ fluid
+  solver and the PyTorch material map &mdash; does not care whether the thermal block was
+  differentiated by a Python tracer or by a compiler pass over Fortran. Reproduce it with
+  <code>python orchestrator/compare_thermal_backends.py {parity['N']}</code>, which writes
+  the file these numbers are read from.</p>
+  {source("results/thermal_backend_parity.json")}
   {figure("fig5_architecture.png", "Three active Tesseracts and one selectable thermal backend.")}
 </section>"""
 

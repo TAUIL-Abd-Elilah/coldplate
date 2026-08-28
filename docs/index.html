@@ -147,11 +147,16 @@ font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
   the composition is load-bearing rather than convenient: there is no ordering of these
   components in which one sweep of the chain rule suffices.</p>
   <p>The two thermal backends share a schema and nothing else, and they are
-  interchangeable rather than merely composable: swapping JAX autodiff for the
-  independently written Fortran code differentiated by Enzyme moves the end-to-end
-  <code>dJ/d&rho;</code> by 5.3&nbsp;&times;&nbsp;10<sup>&minus;12</sup>, cosine
-  1.000000000000. Reproduce it with
-  <code>python orchestrator/compare_thermal_backends.py 16</code>.</p>
+  interchangeable rather than merely composable. Swapping JAX autodiff for the
+  independently written Fortran differentiated by Enzyme, at a converged coupled
+  state on a 16&times;16 grid:</p>
+  <table class="num"><thead><tr><th>level</th><th>JAX vs Fortran/Enzyme</th></tr></thead><tbody><tr><td>component <code>T</code></td><td>7.1&nbsp;&times;&nbsp;10<sup>-16</sup></td></tr><tr><td>component JVP</td><td>1.4&nbsp;&times;&nbsp;10<sup>-15</sup></td></tr><tr><td>component VJP</td><td>4.3&nbsp;&times;&nbsp;10<sup>-15</sup></td></tr><tr><td>converged coupled state <code>T*</code></td><td>4.8&nbsp;&times;&nbsp;10<sup>-12</sup></td></tr><tr><td><b>end-to-end <code>dJ/d&rho;</code></b></td><td><b>5.3&nbsp;&times;&nbsp;10<sup>-12</sup></b>, cosine 1.000000000000</td></tr></tbody></table>
+  <p>The gradient that comes out of the whole composition &mdash; through the C++ fluid
+  solver and the PyTorch material map &mdash; does not care whether the thermal block was
+  differentiated by a Python tracer or by a compiler pass over Fortran. Reproduce it with
+  <code>python orchestrator/compare_thermal_backends.py 16</code>, which writes
+  the file these numbers are read from.</p>
+  <p class="src">measured in <code>results/thermal_backend_parity.json</code></p>
   <figure><img loading="lazy" src="../orchestrator/results/fig5_architecture.png" alt="Three active Tesseracts and one selectable thermal backend."><figcaption>Three active Tesseracts and one selectable thermal backend.</figcaption></figure>
 </section>
 <section id="decision">

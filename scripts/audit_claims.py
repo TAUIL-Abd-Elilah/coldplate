@@ -572,6 +572,40 @@ def main() -> int:
               and not docs_contain(f"{invalid_finned_rth:.2f}")
               and not docs_contain(f"{invalid_reduction:.2f}%"))
 
+    # ---- interchangeable thermal backends -------------------------------
+    # The strongest single claim in the README, and until now the only headline
+    # value with no stored artefact behind it. compare_thermal_backends.py now
+    # records what it measured, so the prose can be checked like the rest.
+    parity = load("thermal_backend_parity.json")
+    if parity:
+        print(f"backend parity: end-to-end {parity['end_to_end_gradient']:.3e}, "
+              f"cosine {parity['gradient_cosine']:.12f}")
+        check("both thermal backends reached a converged coupled state",
+              parity["converged"] is True and parity["interchangeable"] is True)
+
+        def as_prose(value: float) -> str:
+            """Render a measurement the way the README writes one."""
+            mantissa, exponent = f"{value:.1e}".split("e")
+            digits = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+            rendered = "".join(digits[int(d)] for d in str(abs(int(exponent))))
+            sign = "\u207b" if int(exponent) < 0 else ""
+            return f"{mantissa} \u00d7 10{sign}{rendered}"
+
+        for key in ("component_forward_T", "component_jvp", "component_vjp",
+                    "coupled_state_T", "end_to_end_gradient"):
+            expected = as_prose(parity[key])
+            # The detail stays ASCII: this script runs on a Windows console
+            # too, and a crash while reporting a passing check helps nobody.
+            check(f"README/PAPER quote the measured {key}",
+                  bool(docs_contain(expected)), f"prose must carry {parity[key]:.1e}")
+        # A cosine printed to twelve places must actually be one to twelve places.
+        check("README/PAPER quote a cosine that rounds to 1.000000000000",
+              f"{parity['gradient_cosine']:.12f}" == "1.000000000000"
+              and bool(docs_contain("1.000000000000")))
+        check("the parity artefact is a real swap, not one backend run twice",
+              parity["J_jax"] != parity["J_fortran"]
+              and abs(parity["J_jax"] - parity["J_fortran"]) < 1e-9)
+
     # ---- randomized generalization study -------------------------------
     gg = load("gamma_generalization.json")
     if gg:

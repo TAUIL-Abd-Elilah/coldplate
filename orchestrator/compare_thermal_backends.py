@@ -24,6 +24,8 @@ Python and in the other compiler-differentiated Fortran.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import sys
 import time
 
@@ -43,8 +45,10 @@ def relerr(a, b):
     return float(np.max(np.abs(a - b)) / max(np.max(np.abs(b)), 1e-300))
 
 
-def compare_components(N: int, rng) -> float:
+def compare_components(N: int, rng, record: dict | None = None) -> float:
     """Level 1: the two thermal blocks alone, on identical inputs."""
+    if record is None:
+        record = {}
     u = jnp.asarray(rng.normal(size=(N, N + 1)) * 5.0).at[:, 0].set(0.0).at[:, N].set(0.0)
     v = jnp.asarray(rng.normal(size=(N + 1, N)) * 5.0).at[0, :].set(0.0).at[N, :].set(0.0)
     k = jnp.asarray(rng.uniform(0.02, 1.0, size=(N, N)))
@@ -63,6 +67,7 @@ def compare_components(N: int, rng) -> float:
         T_for = apply_tesseract(fo, inputs)["T"]
         e = relerr(T_for, T_jax)
         worst = max(worst, e)
+        record["component_forward_T"] = e
         print(f"[1 component] forward T          rel err {e:.3e}")
         print(f"              max|T| jax {float(jnp.abs(T_jax).max()):.6f}  "
               f"fortran {float(jnp.abs(T_for).max()):.6f}")
@@ -79,6 +84,7 @@ def compare_components(N: int, rng) -> float:
         _, jvp_for = jax.jvp(lambda a, b, c: block(fo, a, b, c), (u, v, k), (du, dv, dk))
         e = relerr(jvp_for, jvp_jax)
         worst = max(worst, e)
+        record["component_jvp"] = e
         print(f"[1 component] JVP                rel err {e:.3e}")
 
         Tbar = jnp.asarray(rng.normal(size=(N, N)))
@@ -88,6 +94,7 @@ def compare_components(N: int, rng) -> float:
         gf = vjp_for(Tbar)
         e = max(relerr(gf[i], gj[i]) for i in range(3))
         worst = max(worst, e)
+        record["component_vjp"] = e
         print(f"[1 component] VJP (u, v, k)      rel err {e:.3e}")
 
         # Repeat the component contract at the de Vahl Davis wall mode. A
@@ -109,6 +116,7 @@ def compare_components(N: int, rng) -> float:
         Tc_for = cavity_block(fo, u, v, k)
         e = relerr(Tc_for, Tc_jax)
         worst = max(worst, e)
+        record["cavity_forward_T"] = e
         print(f"[1 cavity  ] forward T          rel err {e:.3e}")
 
         _, jvp_jax = jax.jvp(
@@ -121,6 +129,7 @@ def compare_components(N: int, rng) -> float:
         )
         e = relerr(jvp_for, jvp_jax)
         worst = max(worst, e)
+        record["cavity_jvp"] = e
         print(f"[1 cavity  ] JVP                rel err {e:.3e}")
 
         _, vjp_jax = jax.vjp(lambda a, b, c: cavity_block(jx, a, b, c), u, v, k)
@@ -128,6 +137,7 @@ def compare_components(N: int, rng) -> float:
         gj, gf = vjp_jax(Tbar), vjp_for(Tbar)
         e = max(relerr(gf[i], gj[i]) for i in range(3))
         worst = max(worst, e)
+        record["cavity_vjp"] = e
         print(f"[1 cavity  ] VJP (u, v, k)      rel err {e:.3e}")
     finally:
         for t in served.values():
@@ -138,7 +148,7 @@ def compare_components(N: int, rng) -> float:
     return worst
 
 
-def compare_pipeline(N: int, Ra: float = 1.0e4) -> float:
+def compare_pipeline(N: int, Ra: float = 1.0e4, record: dict | None = None) -> float:
     """Levels 2 and 3: the coupled state and the end-to-end gradient.
 
     Uses its own generator and a Rayleigh number where this design's fixed
@@ -146,6 +156,8 @@ def compare_pipeline(N: int, Ra: float = 1.0e4) -> float:
     backends do the same thing to the same iterate -- but a claim about the
     end-to-end gradient is only worth making at a converged steady state.
     """
+    if record is None:
+        record = {}
     rho = np.random.default_rng(0).uniform(0.25, 0.75, size=(N, N))
     p = Params(Nx=N, Ny=N, Ra=Ra)
     out = {}
@@ -175,6 +187,24 @@ def compare_pipeline(N: int, Ra: float = 1.0e4) -> float:
     ga, gb = a["grad"].ravel(), b["grad"].ravel()
     cos = float(ga @ gb / (np.linalg.norm(ga) * np.linalg.norm(gb)))
 
+    record.update({
+        "Ra": float(Ra),
+        "coupled_state_T": e_T,
+        "end_to_end_gradient": e_g,
+        "gradient_cosine": cos,
+        "objective_difference": abs(a["J"] - b["J"]),
+        "J_jax": float(a["J"]),
+        "J_fortran": float(b["J"]),
+        "converged": bool(a["info"]["ok"] and b["info"]["ok"]),
+        "newton_iterations": {
+            "thermal_advdiff": int(a["info"]["iters"]),
+            "thermal_fortran": int(b["info"]["iters"]),
+        },
+        "fixed_point_residual": {
+            "thermal_advdiff": float(a["info"]["residual"]),
+            "thermal_fortran": float(b["info"]["residual"]),
+        },
+    })
     print(f"\n[2 coupled ] converged T*         rel err {e_T:.3e}")
     print(f"[3 gradient] dJ/drho end-to-end   rel err {e_g:.3e}")
     print(f"[3 gradient] cosine between them  {cos:.12f}")
@@ -187,14 +217,25 @@ def main(N: int = 16) -> int:
     print(f"grid {N}x{N}\n")
     print("Swapping the thermal block: JAX autodiff  <->  Fortran + Enzyme compiler AD\n")
 
-    w1 = compare_components(N, rng)
+    record: dict = {"schema_version": 1, "N": int(N)}
+    w1 = compare_components(N, rng, record)
     print()
-    w2 = compare_pipeline(N)
+    w2 = compare_pipeline(N, record=record)
 
     worst = max(w1, w2)
-    print(f"\nworst rel err across all three levels: {worst:.3e}")
+    record["worst_relative_error"] = worst
     ok = worst < 1e-8
+    record["interchangeable"] = bool(ok)
+
+    # Store it. These are the README's strongest numbers, and a claim nobody
+    # can re-derive from a committed file is a claim on trust.
+    target = Path(__file__).resolve().parent / "results" / "thermal_backend_parity.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", newline="\n")
+
+    print(f"\nworst rel err across all three levels: {worst:.3e}")
     print("PASS: the two backends are interchangeable" if ok else "FAIL: backends disagree")
+    print(f"wrote {target}")
     return 0 if ok else 1
 
 

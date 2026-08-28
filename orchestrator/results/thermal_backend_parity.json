@@ -1,0 +1,28 @@
+{
+  "J_fortran": 2.9805575500623767,
+  "J_jax": 2.980557550065856,
+  "N": 16,
+  "Ra": 10000.0,
+  "cavity_forward_T": 7.653465816159562e-16,
+  "cavity_jvp": 1.0243118908050974e-15,
+  "cavity_vjp": 2.3871689389078882e-15,
+  "component_forward_T": 7.092147056650479e-16,
+  "component_jvp": 1.4379545865193394e-15,
+  "component_vjp": 4.332092874597426e-15,
+  "converged": true,
+  "coupled_state_T": 4.7930318163027654e-12,
+  "end_to_end_gradient": 5.335769887105653e-12,
+  "fixed_point_residual": {
+    "thermal_advdiff": 1.0055956067844818e-11,
+    "thermal_fortran": 1.9884094371036554e-11
+  },
+  "gradient_cosine": 1.0000000000000002,
+  "interchangeable": true,
+  "newton_iterations": {
+    "thermal_advdiff": 6,
+    "thermal_fortran": 6
+  },
+  "objective_difference": 3.4794389591752406e-12,
+  "schema_version": 1,
+  "worst_relative_error": 5.335769887105653e-12
+}

@@ -708,6 +708,13 @@ The gradient that comes out of the whole composition — through the C++ fluid
 solver and the PyTorch material map — does not care whether the thermal block
 was differentiated by a Python tracer or by a compiler pass over Fortran.
 
+Those five numbers are read from
+[`orchestrator/results/thermal_backend_parity.json`](orchestrator/results/thermal_backend_parity.json),
+which `compare_thermal_backends.py` writes and `scripts/audit_claims.py` checks
+this prose against — the table above is regenerated from the artefact, not
+transcribed from a terminal. The committed values were reproduced on a second
+machine, in a fresh Linux clone driving the real containers.
+
 Two details from building it, since both cost real time:
 
 * flang applies Fortran name mangling, so the subroutine needs
