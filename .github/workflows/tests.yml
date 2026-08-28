@@ -43,6 +43,12 @@ jobs:
       - name: Audit headline numbers against measurements
         run: python scripts/audit_claims.py
 
+      # The results page is a pure function of the committed measurements, so
+      # a stale page is a build failure rather than something a reader has to
+      # notice. Same rule the paper build applies to the PDF.
+      - name: Check the results page matches the measurements
+        run: python scripts/build_results_page.py --check
+
       - name: Check submission completeness
         # Private-safe during development; automatically strict after the
         # repository is made public on 29 August.

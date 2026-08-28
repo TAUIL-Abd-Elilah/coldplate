@@ -1,18 +1,31 @@
 # Coldplate
 
-**Track: Multi-physics & coupled systems · Apache-2.0**
+**Track: Multi-physics & coupled systems · Apache-2.0 · solo entry**
 
-A natural-convection cold plate differentiated end to end across three active
-Tesseracts: a PyTorch material map feeds a C++/Eigen fluid solver coupled in
-both directions to a thermal solver. The thermal slot accepts either JAX
-autodiff or an independently written Fortran implementation differentiated by
-**Enzyme at the LLVM IR level**. That is three implementation languages and
-four derivative stacks across the repository, with three containers served in
-any one run.
+**One `jax.grad` that crosses three languages, four derivative stacks and a
+two-way physics loop — and the loop is the part everyone else drops.**
+
+A natural-convection cold plate, differentiated end to end across three served
+Tesseracts: a PyTorch material map feeds a C++/Eigen fluid solver that is
+coupled **in both directions** to a thermal solver. The thermal slot accepts
+either JAX autodiff or an independently written Fortran implementation
+differentiated by **Enzyme at the LLVM IR level**. Temperature drives the flow
+through buoyancy, the flow drives temperature through advection, so the steady
+state is a fixed point and its gradient is an implicit-function-theorem adjoint
+whose every matvec crosses the container boundary.
+
+> **The result in one line.** Cutting that loop — the shortcut a competent
+> engineer writes when the fluid solver hands out no derivatives — leaves a
+> gradient that is **86% wrong with a third of the signs inverted**, and
+> nothing in the forward solution says so. Asked to place the same fixed
+> zero-sum design action, the coupling-complete gradient buys **58% more
+> realised cooling** when the true coupled solver re-scores both choices.
+
+| Watch | Read | Run | Browse |
+| --- | --- | --- | --- |
+| [4:51 narrated demo](demo/coldplate_submission.mp4) ([captions](demo/coldplate_submission.en.srt)) | [4-page technical paper](PAPER.pdf) | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) — 1–3 min warm | [results page](docs/index.html) · [figures](#figures) |
 
 ![The optimized material, temperature, coolant flow and objective history.](orchestrator/results/fig1_optimisation.gif)
-
-![Three active Tesseracts and one selectable thermal backend.](orchestrator/results/fig5_architecture.png)
 
 ## Thirty-second result
 
@@ -29,12 +42,28 @@ coupled state the shortcut is 86% wrong and flips a third of the signs; when it
 chooses where to apply a fixed raw-design action, the true forward solver confirms
 that the composed sensitivity makes the better engineering decision.
 
-**Start here:** [4:51 narrated demo](demo/coldplate_submission.mp4) ·
-[captions](demo/coldplate_submission.en.srt) · [technical paper](PAPER.pdf) ·
-[`scripts/judge_demo.sh`](scripts/judge_demo.sh) (safe 1–3 minute warm smoke test)
+## Reading this repository on a budget
+
+| you have | do this | you will have seen |
+| --- | --- | --- |
+| **2 minutes** | the table above, then the [results page](docs/index.html) | every headline number beside the file that produced it |
+| **5 minutes** | the [4:51 video](demo/coldplate_submission.mp4) | the loop, the backend swap, the decision, and the failures we kept |
+| **15 minutes** | the [4-page paper](PAPER.pdf), then [*The claim*](#the-claim) and [*Why this needs Tesseract*](#why-this-needs-tesseract) | the argument, and the objection we expect a reviewer to raise |
+| **30 minutes, a shell** | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) | both thermal backends served in containers, agreeing to 10⁻¹² end to end |
+| **an afternoon** | [*Reproduce*](#reproduce) | any table in this file, regenerated from source |
+
+**Map of the argument.** [The claim](#the-claim) states what is being compared ·
+[the decision](#the-gradient-changes-a-realised-engineering-decision) shows the
+gradient changing a physical outcome · [what we do *not* claim](#what-we-do-not-claim)
+is where the naive gradient wins, and why that is not a defence ·
+[γ](#what-actually-predicts-it-one-vjp) is the one-VJP screen that predicts the
+damage, [tested off this problem entirely](#does-γ-generalise-past-this-cold-plate-2377-random-systems-say-yes--with-one-boundary) ·
+[architecture](#architecture) and [why this needs Tesseract](#why-this-needs-tesseract)
+cover the composition · [validation](#validation) is the numerical evidence ·
+[prior work](#prior-work-and-what-is-actually-new-here) says plainly what is not
+new here.
 
 ---
-
 ## The claim
 
 The two physics blocks are coupled in both directions. Buoyancy makes
@@ -596,6 +625,8 @@ component boundary.
 
 ## Architecture
 
+![Three active Tesseracts and one selectable thermal backend.](orchestrator/results/fig5_architecture.png)
+
 ```
                   rho_raw  (design variables)
                      |
@@ -1128,6 +1159,16 @@ Regenerate every figure whose raw input is present:
 cd orchestrator && python make_figures.py --N 96
 ```
 
+Rebuild the browsable results page. It reads only the committed JSON in
+`orchestrator/results/`, so `--check` fails the build the moment the page and
+the measurements disagree — the rule the paper build applies to the PDF, applied
+to the web page. CI runs the check on every push:
+
+```bash
+python scripts/build_results_page.py          # writes docs/index.html
+python scripts/build_results_page.py --check  # fails if it is stale
+```
+
 A fresh clone includes the rendered figures and committed JSON histories, but
 intentionally omits large ignored `*.npz` intermediates used by figures 1, 7,
 9 and 11. Recreate those inputs with the corresponding optimisation,
@@ -1292,6 +1333,7 @@ python -m pytest tests -q
 ```
 fixed_point_adjoint.py  reusable, objective-aware fixed-point adjoint residual
 coupling_check.py       cold-plate thresholds and served-component adapter
+docs/index.html         browsable results page, generated from the stored measurements
 tesseracts/
   stokes_brinkman/    C++/Eigen fluid solver, hand-derived adjoint
   thermal_advdiff/    JAX advection-diffusion, sparse LU
@@ -1321,6 +1363,10 @@ orchestrator/
   show_trajectory.py      naive-gradient error along the optimisation
   make_figures.py         core figures and animation
   make_extended_figures.py  showdown, robustness, and physics figures
+scripts/
+  build_results_page.py   regenerates docs/index.html; --check fails on drift
+  audit_claims.py         re-derives every quoted headline number from the data
+  check_submission.py     the mechanical things a reviewer trips over
   results/EVIDENCE_PROVENANCE.json  byte/run/artifact bindings for frozen evidence
 prototype/
   reference_jax.py    independent monolithic reference implementation

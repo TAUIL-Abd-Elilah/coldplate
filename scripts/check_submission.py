@@ -137,6 +137,18 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
                 False,
                 str(exc),
             )
+    # The browsable results page. Its numbers are generated from the stored
+    # measurements, so a stale page is a defect rather than a cosmetic drift.
+    page = ROOT / "docs" / "index.html"
+    check("browsable results page present", page.is_file() and page.stat().st_size > 0)
+    if page.is_file():
+        stale = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "build_results_page.py"), "--check"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        check("results page still matches the committed measurements",
+              stale.returncode == 0, stale.stdout.strip().splitlines()[-1] if stale.stdout else "")
+
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     check("README names the track", "Multi-physics" in readme or "multi-physics" in readme)
     check("README justifies why Tesseract is needed",

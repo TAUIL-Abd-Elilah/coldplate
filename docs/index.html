@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coldplate &mdash; results</title>
+<meta name="description" content="A coupled cold-plate adjoint composed across C++, JAX, Fortran/Enzyme and PyTorch Tesseracts. Every number on this page is read from a committed measurement file.">
+<style>
+:root{--bg:#fbfaf8;--fg:#1a1a1a;--muted:#5d5a55;--rule:#e0dcd5;--accent:#7a3b12;
+--card:#fff;--code:#f2efe9;--ok:#1f6b3a}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#eeece7;--muted:#a5a099;
+--rule:#302e2b;--accent:#e2a06a;--card:#1c1b19;--code:#222120;--ok:#63c58a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:16px/1.62 ui-serif,Georgia,"Times New Roman",serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:52rem;margin:0 auto;padding:2.5rem 1.25rem 5rem}
+header{border-bottom:2px solid var(--fg);padding-bottom:1.5rem;margin-bottom:1rem}
+h1{font-size:2.4rem;line-height:1.1;margin:0 0 .5rem;letter-spacing:-.02em}
+h2{font-size:1.55rem;margin:3.2rem 0 .9rem;padding-top:1.4rem;
+border-top:1px solid var(--rule);letter-spacing:-.01em}
+h3{font-size:1.1rem;margin:2.1rem 0 .6rem;color:var(--accent)}
+p{margin:0 0 1rem}
+.kicker{font:600 .78rem/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.11em;
+text-transform:uppercase;color:var(--muted);margin:0 0 .8rem}
+.lede{font-size:1.07rem}
+nav{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.4rem}
+nav a{font:600 .85rem/1 ui-sans-serif,system-ui,sans-serif;text-decoration:none;
+border:1px solid var(--rule);background:var(--card);color:var(--fg);
+padding:.6rem .85rem;border-radius:.4rem}
+nav a:hover{border-color:var(--accent);color:var(--accent)}
+a{color:var(--accent)}
+table{width:100%;border-collapse:collapse;margin:1.1rem 0 .6rem;
+font:.9rem/1.45 ui-sans-serif,system-ui,sans-serif;display:block;overflow-x:auto}
+th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--rule);
+vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.76rem;letter-spacing:.05em;
+text-transform:uppercase}
+table.num td+td,table.num th+th{text-align:right;white-space:nowrap}
+code{background:var(--code);padding:.1em .35em;border-radius:.25em;
+font:.87em/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:var(--code);padding:1rem;border-radius:.45rem;overflow-x:auto;
+border:1px solid var(--rule)}
+pre code{background:none;padding:0;font-size:.83rem;line-height:1.6}
+figure{margin:1.6rem 0}
+figure img{width:100%;height:auto;border:1px solid var(--rule);border-radius:.35rem;
+background:var(--card)}
+figcaption{font:.83rem/1.5 ui-sans-serif,system-ui,sans-serif;color:var(--muted);
+margin-top:.5rem}
+.src{font:.78rem/1.5 ui-sans-serif,system-ui,sans-serif;color:var(--muted);margin:.2rem 0 0}
+.src code{background:none;padding:0}
+.caveat{border-left:3px solid var(--accent);padding-left:.95rem}
+.ok{color:var(--ok);font-weight:600}
+footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--rule);
+font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="kicker">Tesseract Hackathon 2026 &middot; Track: multi-physics &amp; coupled systems &middot; Apache-2.0</p>
+  <h1>Coldplate</h1>
+  <p class="lede">One <code>jax.grad</code> across three languages, four derivative stacks
+  and a two-way physics loop &mdash; and the loop is the part everyone else drops.</p>
+  <nav>
+    <a href="../README.md">Repository</a>
+    <a href="../PAPER.pdf">4-page paper</a>
+    <a href="../demo/coldplate_submission.mp4">4:51 demo</a>
+    <a href="#reproduce">Reproduce</a>
+    <a href="#negatives">What we do not claim</a>
+  </nav>
+</header>
+
+<section id="headline">
+  <h2>The result</h2>
+  <p class="lede">Temperature drives the flow through buoyancy and the flow drives
+  temperature through advection, so the steady state is a fixed point rather than a
+  chain. Cutting that loop &mdash; the shortcut written whenever one solver hands out no
+  derivatives &mdash; is not a small approximation. It is most of the gradient, and the
+  forward solution gives no warning at all.</p>
+  <table><thead><tr><th>what was measured</th><th>result</th></tr></thead><tbody><tr><td>the loop-cut gradient, against a true coupled finite difference</td><td>relative error <b>85.6%</b>, cosine 0.5335, <b>33%</b> of design variables with the wrong sign</td></tr><tr><td>the same shortcut with the velocity field frozen</td><td>relative error 83.1%, cosine 0.5604, 27% wrong sign</td></tr><tr><td>acting on each gradient, then scoring both with the true coupled solver</td><td>the coupling-complete choice cools by -0.08789 against -0.05565 &mdash; <b>58% more realised cooling</b> at equal raw-variable count and amplitude</td></tr><tr><td>screening the shortcut for one VJP</td><td>log-correlation <b>0.995</b> between &gamma; and the error over 14 converged configurations, against 0.825 for the spectral radius</td></tr></tbody></table>
+  <p class="src">measured in <code>results/gradient_validation.json</code> &middot; <code>results/intervention_test.json</code> &middot; <code>results/predictor_statistics.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig1_optimisation.gif" alt="The design evolving: material layout, temperature with streamlines, and the objective history."><figcaption>The design evolving: material layout, temperature with streamlines, and the objective history.</figcaption></figure>
+</section>
+<section id="composition">
+  <h2>What is composed</h2>
+  <p>Three implementation languages and four derivative stacks. Three containers are
+  served in any one run: the material map, the fluid solver, and exactly one of the two
+  interchangeable thermal backends.</p>
+  <table><thead><tr><th>Tesseract</th><th>language</th><th>how derivatives are obtained</th><th>role</th></tr></thead><tbody><tr><td><code>stokes_brinkman</code></td><td>C++ / Eigen</td><td>hand-derived discrete adjoint, no AD tool</td><td>served</td></tr><tr><td><code>thermal_advdiff</code></td><td>Python / JAX</td><td>JAX autodiff of the residual</td><td>served (thermal slot)</td></tr><tr><td><code>thermal_fortran</code></td><td>Fortran</td><td>Enzyme, compiler AD over LLVM IR</td><td>served (thermal slot)</td></tr><tr><td><code>material_map</code></td><td>Python / PyTorch</td><td>torch.autograd</td><td>served</td></tr></tbody></table>
+  <p>The forward solve is Newton&ndash;Krylov on
+  <code>F(T) = &Phi;(T) &minus; T</code>; the gradient is a GMRES solve against
+  <code>(I &minus; &Phi;<sub>T</sub>)<sup>T</sup></code>. Every matvec in both crosses the
+  container boundary &mdash; a JVP forward through the C++ block then the thermal block, a
+  VJP backward through the thermal block then the C++ block. That is the sense in which
+  the composition is load-bearing rather than convenient: there is no ordering of these
+  components in which one sweep of the chain rule suffices.</p>
+  <p>The two thermal backends share a schema and nothing else, and they are
+  interchangeable rather than merely composable: swapping JAX autodiff for the
+  independently written Fortran code differentiated by Enzyme moves the end-to-end
+  <code>dJ/d&rho;</code> by 5.3&nbsp;&times;&nbsp;10<sup>&minus;12</sup>, cosine
+  1.000000000000. Reproduce it with
+  <code>python orchestrator/compare_thermal_backends.py 16</code>.</p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig5_architecture.png" alt="Three active Tesseracts and one selectable thermal backend."><figcaption>Three active Tesseracts and one selectable thermal backend.</figcaption></figure>
+</section>
+<section id="decision">
+  <h2>The gradient changes a realised engineering decision</h2>
+  <p>Gradient accuracy only matters if acting on it changes the physical outcome. At a
+  strongly coupled state each gradient was given the same rule &mdash; raise the 5% of
+  design variables it calls most beneficial, lower the 5% it calls least beneficial by the
+  same amplitude, zero-sum in the raw variables &mdash; and then both predictions were
+  thrown away and the true coupled forward problem re-solved. Filtering and projection are
+  nonlinear, so this equalises the raw move, not the realised density move.</p>
+  <table class="num"><thead><tr><th>raw amplitude per selected cell</th><th>&Delta;J, cells chosen by the exact gradient</th><th>&Delta;J, cells chosen by the loop-cut gradient</th><th>extra realised cooling</th></tr></thead><tbody><tr><td>0.010</td><td>-0.01715</td><td>-0.01121</td><td><b>53%</b></td></tr><tr><td>0.025</td><td>-0.04322</td><td>-0.02800</td><td><b>54%</b></td></tr><tr><td>0.050</td><td>-0.08789</td><td>-0.05565</td><td><b>58%</b></td></tr></tbody></table>
+  <p class="src">measured in <code>results/intervention_test.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig10_intervention.png" alt="Equal zero-sum raw-design interventions selected by each gradient, evaluated by the true coupled solver."><figcaption>Equal zero-sum raw-design interventions selected by each gradient, evaluated by the true coupled solver.</figcaption></figure>
+
+  <h3>Repeated over a frozen 48-attempt matrix</h3>
+  <p>The retrospectively frozen extension completed every planned
+  <code>(Ra, seed)</code> cell and kept base-solver failures, incomplete action pairs, ties
+  and the one shortcut win. It is a robustness extension rather than an untouched
+  independent confirmation set: 13 of the 48 cells had stored evidence before the
+  design was frozen, and that split is reported rather than buried.</p>
+  <table class="num"><thead><tr><th>Ra</th><th>exact wins</th><th>shortcut wins</th><th>ties</th><th>noncomparable</th></tr></thead><tbody><tr><td>10,000</td><td>12</td><td>1</td><td>3</td><td>0</td></tr><tr><td>20,000</td><td>12</td><td>0</td><td>0</td><td>4</td></tr><tr><td>30,000</td><td>11</td><td>0</td><td>0</td><td>5</td></tr><tr><td><b>pooled</b></td><td><b>35</b></td><td><b>1</b></td><td><b>3</b></td><td><b>9</b></td></tr></tbody></table>
+  <p>35 of 39 comparable cases
+  (89.7%) favour the exact-gradient action; the
+  attempt-level Wilson interval is
+  76.4%&ndash;95.9%. Because each
+  seed appears at all three Rayleigh numbers, a secondary bootstrap resamples the
+  16 complete seed clusters rather than pretending the attempts
+  are independent; that post-freeze <em>descriptive</em> interval is
+  81.1%&ndash;97.4%.</p>
+  <p class="src">measured in <code>results/intervention_robustness_matrix_48.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig13_robustness_matrix.png" alt="All 48 retained outcomes, with per-Rayleigh Wilson intervals and a pooled seed-cluster bootstrap."><figcaption>All 48 retained outcomes, with per-Rayleigh Wilson intervals and a pooled seed-cluster bootstrap.</figcaption></figure>
+</section>
+<section id="predictor">
+  <h2>One VJP says whether the shortcut is safe</h2>
+  <p>The adjoint solves <code>(I &minus; &Phi;<sub>T</sub>)<sup>T</sup>&lambda; = g</code>.
+  Cutting the loop uses <code>&lambda;<sub>0</sub> = g</code>, whose residual in that
+  equation is exactly <code>&Phi;<sub>T</sub><sup>T</sup>g</code>. Its normalised norm
+  &mdash; the <b>directional gain</b>
+  <code>&gamma; = &#8214;&Phi;<sub>T</sub><sup>T</sup>g&#8214; / &#8214;g&#8214;</code>
+  &mdash; costs one VJP, far less than the gradient it screens, and unlike the spectral
+  radius it knows which direction the objective actually cares about.</p>
+  <table><thead><tr><th>predictor</th><th>correlation with log<sub>10</sub>(loop-cut error)</th></tr></thead><tbody><tr><td>&rho;(&Phi;<sub>T</sub>), the loop gain</td><td>+0.825</td></tr><tr><td><b>log<sub>10</sub>(&gamma;), the directional gain</b></td><td><b>+0.995</b></td></tr></tbody></table>
+  <p>Over 14 converged configurations drawn from
+  4 design families and 5
+  Rayleigh levels. Leave-one-family-out correlations are 0.994&ndash;0.997;
+  a seeded 10,000-sample bootstrap gives a 95% interval of
+  0.989&ndash;0.999.</p>
+  <p class="src">measured in <code>results/predictor_statistics.json</code> &middot; <code>results/predict_error.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig8_predictor.png" alt="The directional gain predicts the loop-cut error; the loop gain does not."><figcaption>The directional gain predicts the loop-cut error; the loop gain does not.</figcaption></figure>
+
+  <h3>The confound removed: hold the physics fixed, change only the objective</h3>
+  <p>At one design and one Rayleigh number there is a single coupled state, hence a single
+  &rho;(&Phi;<sub>T</sub>) = 0.5481 on every row below. Changing what is being measured
+  changes <code>g = dJ/dT</code>, and therefore &gamma; &mdash; but &rho; cannot move. The
+  error still varies by a factor of 136&times;, so a constant cannot explain it.</p>
+  <table class="num"><thead><tr><th>objective</th><th>&gamma;</th><th>loop-cut relative error</th></tr></thead><tbody><tr><td>outlet mean</td><td>0.0027</td><td>0.0117</td></tr><tr><td>top half mean</td><td>0.0076</td><td>0.0026</td></tr><tr><td>chip peak</td><td>0.0261</td><td>0.0385</td></tr><tr><td>chip mean</td><td>0.0300</td><td>0.0399</td></tr><tr><td>domain mean</td><td>0.0967</td><td>0.0211</td></tr><tr><td>left column mean</td><td>0.3879</td><td>0.3535</td></tr></tbody></table>
+  <p>&gamma; moves with the error and gets the dangerous row right, but it is a screening
+  signal with a theoretical basis, not a formula: across objectives it correlates 0.80
+  against 0.995 across designs, because converting an adjoint-equation residual into a
+  design-gradient error also involves
+  <code>(I &minus; &Phi;<sub>T</sub><sup>T</sup>)<sup>&minus;1</sup></code>.</p>
+  <p class="src">measured in <code>results/objective_sweep.json</code></p>
+
+  <h3>Does it generalise off this problem? 2,377 random systems</h3>
+  <p>The physics is removed entirely: random coupled fixed points
+  <code>x* = &Phi;(x*, &theta;)</code> where every quantity is closed form &mdash; no solver
+  tolerance, no finite differences &mdash; across four structural families and both linear
+  and nonlinear loops, with &gamma; computed by calling the shipped
+  <code>coupling_check.py</code> rather than a reimplementation.</p>
+  <table class="num"><thead><tr><th>subset</th><th>n</th><th>corr(log &gamma;, log error)</th><th>corr(&rho;, log error)</th></tr></thead><tbody><tr><td><b>all</b></td><td><b>2,377</b></td><td><b>+0.9893</b></td><td>+0.6907</td></tr><tr><td>lowrank</td><td>600</td><td>+0.9900</td><td>+0.7159</td></tr><tr><td>nonnormal</td><td>579</td><td>+0.9817</td><td>+0.6502</td></tr><tr><td>normal</td><td>600</td><td>+0.9957</td><td>+0.7979</td></tr><tr><td>sparse</td><td>598</td><td>+0.9945</td><td>+0.7222</td></tr><tr><td>linear loops</td><td>1,906</td><td>+0.9884</td><td>+0.6923</td></tr><tr><td>nonlinear loops</td><td>471</td><td>+0.9935</td><td>+0.7095</td></tr></tbody></table>
+  <p>The shipped thresholds hold, which matters more than the correlation, because a false
+  <span class="ok">SAFE</span> is the verdict that hurts someone &mdash; it tells them to
+  skip the adjoint. <b>656 cases below &gamma; = 0.01</b> have a worst error of
+  1.4%, and 100% sit under 5%: no
+  false SAFE. <b>965 cases above &gamma; = 0.10</b> are
+  100% genuinely above 5% error: no false alarm.</p>
+  <p class="caveat"><b>And the boundary, which we would rather not have found.</b> &gamma;
+  correlates +0.9925 on the
+  2,199 attracting fixed points (&rho; &lt; 1) but only
+  +0.36 on the 178 repelling
+  ones, because the residual it measures is amplified by
+  <code>(I &minus; &Phi;<sub>T</sub><sup>T</sup>)<sup>&minus;1</sup></code> and no
+  contraction bound applies there. The shipped policy for a repelling fixed point is
+  therefore to refuse to screen and compute the adjoint &mdash; which is exactly what this
+  project does at its own headline state, where &rho; &asymp; 1.19.</p>
+  <p class="src">measured in <code>results/gamma_generalization.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig11_generalization.png" alt="The directional gain against the truth on random coupled systems, and where it stops working."><figcaption>The directional gain against the truth on random coupled systems, and where it stops working.</figcaption></figure>
+</section>
+<section id="validation">
+  <h2>Validation</h2>
+  <h3>The coupled physics reproduces the classical onset of convection</h3>
+  <p>A fluid layer heated from below stays motionless until buoyancy overcomes viscous and
+  thermal diffusion, at a precisely known <code>Ra<sub>c</sub> = 1707.762</code> for rigid
+  walls. Onset is also exactly where this project's own machinery puts it: at the
+  conduction state the coupling loop <em>is</em> the linear stability operator, so
+  convection begins precisely when the loop gain reaches one. No-slip side walls stabilise
+  a confined box, so the measured value must sit above the classical one and fall towards
+  it as the box widens.</p>
+  <table class="num"><thead><tr><th>aspect ratio</th><th>Ra<sub>c</sub> measured</th><th>excess over 1707.762</th></tr></thead><tbody><tr><td>1</td><td>2519.07</td><td>+47.507%</td></tr><tr><td>2</td><td>1970.84</td><td>+15.405%</td></tr><tr><td>4</td><td>1779.02</td><td>+4.172%</td></tr><tr><td>8</td><td>1707.97</td><td>+0.012%</td></tr></tbody></table>
+  <p>At aspect ratio 8 that is agreement to four significant figures. One
+  number checks the C++ Stokes solver, the thermal solver, the buoyancy coupling between
+  them and the loop-gain machinery, all at once.</p>
+  <p class="src">measured in <code>results/critical_rayleigh.json</code></p>
+
+  <h3>The discretisation converges at second order</h3>
+  <p>Verification rather than validation: does the code solve its own equations at the rate
+  the scheme implies? Smooth analytic properties, the grid-dependent density filter
+  bypassed, Richardson extrapolation on two independent grid trios &mdash; observed order
+  1.87 and 1.83, monotone in J.</p>
+  <table class="num"><thead><tr><th>N</th><th>J</th><th>converged</th></tr></thead><tbody><tr><td>16</td><td>3.750196</td><td>yes</td></tr><tr><td>24</td><td>3.762598</td><td>yes</td></tr><tr><td>32</td><td>3.767089</td><td>yes</td></tr><tr><td>48</td><td>3.770452</td><td>yes</td></tr><tr><td>64</td><td>3.771708</td><td>yes</td></tr><tr><td>96</td><td>3.772662</td><td>yes</td></tr></tbody></table>
+  <p class="src">measured in <code>results/grid_convergence.json</code></p>
+
+  <h3>Nonlinear, finite-Prandtl cavity</h3>
+  <p>The de Vahl Davis benchmark activates the Navier&ndash;Stokes inertia term, so it
+  validates the nonlinear path rather than asking the Stokes approximation to reproduce
+  finite-Prandtl flow. Both cases converge, and all 6 Nusselt and centreline-velocity observables land within 1.2% of the published references.</p>
+  <p class="src">measured in <code>results/de_vahl_davis.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig14_physics_validation.png" alt="The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit."><figcaption>The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit.</figcaption></figure>
+</section>
+<section id="negatives">
+  <h2>What we do not claim</h2>
+  <p class="lede">These are the results that did not go our way. They are kept because a
+  study that cannot record a negative is not evidence.</p>
+
+  <h3>Both gradients drive the long optimisation successfully</h3>
+  <p>Run twice at 96&times;96 from the same seed and schedule, the coupling-complete and
+  loop-cut gradients reach essentially the same objective &mdash; and the naive run ends a
+  hair lower. An optimiser converging is not evidence that a gradient is right. Along that
+  trajectory the shortcut is only 4&ndash;20% off with a cosine above 0.98 and almost no
+  sign errors: a perfectly serviceable search direction. Two things differ from the
+  strongly coupled state above &mdash; the Rayleigh number, and the fact that filtered,
+  projected designs are smooth while the random design used for the gradient study is
+  not.</p>
+
+  <h3>Serviceable as a direction, worthless as an attribution</h3>
+  <p>Descent needs only a positive inner product with the truth. Attribution &mdash; which
+  parts of the design actually drive the objective, the question behind tolerancing,
+  sensor placement and mesh refinement &mdash; reads the gradient entry by entry, so every
+  entry has to be right on its own. Ranking every design cell by influence, the loop-cut
+  ordering of magnitudes correlates <b>-0.011</b> with the
+  true one: statistically indistinguishable from chance. Its single most influential cell
+  is truly the #4; it recovers
+  70% of the true top ten and 56% of the true
+  top fifty; and it promotes into its own top fifty a cell that is truly ranked
+  #1,015 of 1,024 &mdash; among the least
+  influential in the entire domain. Sign agreement on the cells that genuinely matter is
+  100%. Signs survive; magnitudes do not, and
+  nothing in the forward solution would warn the engineer who tightened a tolerance on that
+  cell.</p>
+  <p class="src">measured in <code>results/sensitivity_ranking.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig9_attribution.png" alt="Which cells each gradient says matter: signs survive, ranking does not."><figcaption>Which cells each gradient says matter: signs survive, ranking does not.</figcaption></figure>
+
+  <h3>The frozen eight-step showdown did not complete</h3>
+  <p>Three branches were given the same initial design, proposal rule, projected-volume
+  target, eight update opportunities and candidate-solve budget. The composed branch
+  accepted five decisions and then its sixth candidate failed to converge inside the frozen
+  budget. Because the horizons differ, the eight-step endpoint is <b>not evaluable and
+  there is no verdict</b>. The shared five-step prefix &mdash;
+  11.83% composed,
+  5.16% loop-cut,
+  4.71% frozen-flow &mdash; was examined after the
+  failure; it is descriptive context, not the frozen endpoint, and it is not called a
+  win.</p>
+  <p class="src">measured in <code>results/strong_coupling_showdown_interpretation.json</code></p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig12_showdown.png" alt="The incomplete frozen showdown, with the solver failure retained and only the shared prefix compared."><figcaption>The incomplete frozen showdown, with the solver failure retained and only the shared prefix compared.</figcaption></figure>
+
+  <h3>The dimensional SI example is a failed audit</h3>
+  <p>Only 3 of 6 planned layout and mesh solves converged, and even
+  the converged baseline temperature sits outside the constant-property liquid-water regime
+  the model assumes. Its apparent resistance reduction is withheld rather than reported.
+  The exact bookkeeping, the solver outcomes and the failure all remain stored, and the
+  script exits non-zero on this condition rather than printing a number.</p>
+  <p class="src">measured in <code>results/dimensional_coldplate.json</code></p>
+
+  <h3>And the scope</h3>
+  <p>This is a steady two-dimensional research prototype at modest resolution, with no
+  experimental validation, no pressure-drop or manufacturing analysis and no
+  three-dimensional effects. Differentiable topology optimisation of thermo-fluidic devices
+  is not new, and neither is natural-convection heat-sink design; what is new here is
+  composition across genuinely heterogeneous components, the demonstration that spectral
+  radius alone is insufficient for this decision, and &gamma; as an operational one-VJP
+  check.</p>
+</section>
+<section id="reproduce">
+  <h2>Reproduce it</h2>
+  <p>Supported review path: Linux <code>amd64</code>, or Windows through WSL2, with a
+  running Docker daemon and Python 3.12+.</p>
+  <pre><code>pip install -r requirements-orchestrator.txt
+bash scripts/judge_demo.sh        # 1-3 minutes warm: serves both thermal backends
+                                  # and swaps them on an 8x8 smoke grid</code></pre>
+  <p>Then any of:</p>
+  <pre><code>cd orchestrator
+python validate_pipeline.py 16                 # composed gradient vs finite differences
+python compare_thermal_backends.py 16          # JAX and Fortran/Enzyme are interchangeable
+python sweep_coupling.py                       # where component-wise differentiation breaks
+python predict_error.py --N 20                 # what predicts the damage, for one VJP
+python gamma_generalization.py --trials 2400   # no containers, no solver, closed-form truth
+python intervention_test.py --N 20 --Ra 3e4    # act on each gradient, re-solve the truth</code></pre>
+  <p>The full command set, including the long optimisations and the frozen protocols, is in
+  the <a href="../README.md#reproduce">repository README</a>. The extended evidence is
+  byte-bound to the workflow runs that produced it in
+  <code>orchestrator/results/EVIDENCE_PROVENANCE.json</code>, and rechecked with
+  <code>python scripts/validate_evidence_provenance.py --verify-github</code>.</p>
+</section>
+<footer>
+  <p>This page is generated by <code>scripts/build_results_page.py</code> from the JSON
+  files in <code>orchestrator/results/</code>. No result on it is typed by hand, and
+  <code>python scripts/build_results_page.py --check</code> fails the build the moment the
+  page and the measurements disagree.</p>
+  <p>Apache-2.0. Built on <a href="https://github.com/pasteurlabs/tesseract-core">Tesseract</a>,
+  from Pasteur Labs and ISI.</p>
+</footer>
+</div>
+</body>
+</html>
