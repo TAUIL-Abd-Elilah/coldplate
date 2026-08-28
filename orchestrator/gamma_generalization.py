@@ -326,7 +326,35 @@ def main(trials: int = 2000, n: int = 40, m: int = 25, seed: int = 0,
         family=np.array([r["family"] for r in rows]),
         kind=np.array([r["kind"] for r in rows]),
     )
-    print(f"\nwrote {target} and {target.with_suffix('.npz')}")
+    # The .npz is a large intermediate and stays out of the repository, so the
+    # per-trial values the results page plots are written as compact JSON too:
+    # gamma, the true relative error, the spectral radius, and the two labels,
+    # rounded to six figures. Enough to redraw the scatter and recount the
+    # screening thresholds in a fresh clone, without shipping a binary.
+    points = target.with_name(target.stem + "_points.json")
+    points.write_text(
+        json.dumps(
+            {
+                "n": len(rows),
+                "columns": ["gamma", "rel_err", "rho", "family", "kind"],
+                "rows": [
+                    [
+                        float(f"{r['gamma']:.6g}"),
+                        float(f"{r['rel_err']:.6g}"),
+                        float(f"{r['rho']:.6g}"),
+                        r["family"],
+                        r["kind"],
+                    ]
+                    for r in rows
+                ],
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        newline="\n",
+    )
+
+    print(f"\nwrote {target}, {points} and {target.with_suffix('.npz')}")
     return 0
 
 
