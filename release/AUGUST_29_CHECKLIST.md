@@ -34,10 +34,38 @@ On August 29:
    digest, verifies every release checksum and actual video stream, checks out
    the prepared SHA (not the new dispatch SHA), then publishes only if the
    release is still a draft pinned to that commit.
-6. Open a logged-out browser and recheck the repository, release, paper, video,
-   and hero assets. Run a credential-free clone on Linux/amd64.
-7. Keep the repository, release, and packages public through judging. Complete
+6. Set the repository's public metadata, which judges see before any file:
+
+   ```bash
+   gh repo edit TAUIL-Abd-Elilah/coldplate \
+     --description "A coupled cold-plate adjoint composed across C++/Eigen, JAX, Fortran+Enzyme and PyTorch Tesseracts. Tesseract Hackathon 2026, multi-physics track." \
+     --homepage "https://tauil-abd-elilah.github.io/coldplate/docs/" \
+     --add-topic tesseract --add-topic differentiable-simulation \
+     --add-topic adjoint --add-topic topology-optimization \
+     --add-topic multiphysics --add-topic enzyme-ad --add-topic jax
+   ```
+
+   Then enable Pages so `docs/index.html` has a public URL. Deploy from branch
+   `master`, folder **`/` (root)** — not `/docs`: the page loads its figures
+   from `../orchestrator/results/`, which only resolves when the whole
+   repository is served. `.nojekyll` at the root keeps Jekyll out of the way.
+   Upload `demo/poster.png` as the social preview in repository settings; that
+   is the image every shared link renders.
+
+7. Open a logged-out browser and recheck the repository, release, paper, video,
+   hero assets, and the Pages URL. Run a credential-free clone on Linux/amd64.
+8. Keep the repository, release, and packages public through judging. Complete
    the required LinkedIn post and official submission form before August 31.
+   The form is at <https://tally.so/r/KYNZMg>; the LinkedIn post must carry the
+   repository link and tag Pasteur Labs & ISI and Tesseract.
+
+9. Optional, and only after the repository is public so the reference
+   implementation is visible: file the `fixed_point_adjoint` feature request on
+   `pasteurlabs/tesseract-jax` from
+   `upstream/TESSERACT_JAX_PROPOSAL.md`. Their CONTRIBUTING asks for an issue
+   before code and requires a signed CLA for a pull request, so the issue is the
+   correct first step. Until a public URL exists, nothing anywhere in the
+   submission may describe it as submitted or accepted.
 
 Owner-only rule gates before the final form:
 
