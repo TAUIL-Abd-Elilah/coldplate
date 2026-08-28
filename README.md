@@ -42,6 +42,18 @@ coupled state the shortcut is 86% wrong and flips a third of the signs; when it
 chooses where to apply a fixed raw-design action, the true forward solver confirms
 that the composed sensitivity makes the better engineering decision.
 
+**Who this is for.** Anyone standing in front of a coupled pipeline deciding
+whether to build the coupled adjoint or just differentiate the components
+separately — conjugate heat transfer, fluid–structure interaction,
+reservoir–geomechanics, any two solvers that feed each other. That call is
+usually made on intuition, because the forward solution looks healthy either
+way. This repository measures what the shortcut actually costs on one such
+problem, shows that the obvious diagnostic (the loop gain ρ) is *not*
+sufficient, and ships the one-VJP screen that works better, as a module you can
+point at your own loop: [`fixed_point_adjoint.py`](fixed_point_adjoint.py) takes
+any JAX-traceable `phi`, knows nothing about cold plates, and refuses to return
+a verdict until you give it thresholds calibrated on your own application.
+
 ## Reading this repository on a budget
 
 | you have | do this | you will have seen |

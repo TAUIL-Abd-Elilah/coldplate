@@ -79,6 +79,14 @@ font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
   forward solution gives no warning at all.</p>
   <table><thead><tr><th>what was measured</th><th>result</th></tr></thead><tbody><tr><td>the loop-cut gradient, against a true coupled finite difference</td><td>relative error <b>85.6%</b>, cosine 0.5335, <b>33%</b> of design variables with the wrong sign</td></tr><tr><td>the same shortcut with the velocity field frozen</td><td>relative error 83.1%, cosine 0.5604, 27% wrong sign</td></tr><tr><td>acting on each gradient, then scoring both with the true coupled solver</td><td>the coupling-complete choice cools by -0.08789 against -0.05565 &mdash; <b>58% more realised cooling</b> at equal raw-variable count and amplitude</td></tr><tr><td>screening the shortcut for one VJP</td><td>log-correlation <b>0.995</b> between &gamma; and the error over 14 converged configurations, against 0.825 for the spectral radius</td></tr></tbody></table>
   <p class="src">measured in <code>results/gradient_validation.json</code> &middot; <code>results/intervention_test.json</code> &middot; <code>results/predictor_statistics.json</code></p>
+  <p><b>Who this is for.</b> Anyone standing in front of a coupled pipeline deciding
+  whether to build the coupled adjoint or just differentiate the components separately
+  &mdash; conjugate heat transfer, fluid&ndash;structure interaction,
+  reservoir&ndash;geomechanics, any two solvers that feed each other. That call is usually
+  made on intuition, because the forward solution looks healthy either way. This project
+  measures what the shortcut actually costs on one such problem, shows that the obvious
+  diagnostic is not sufficient, and ships the one-VJP screen that works better as a module
+  that knows nothing about cold plates.</p>
   <figure><img loading="lazy" src="../orchestrator/results/fig1_optimisation.gif" alt="The design evolving: material layout, temperature with streamlines, and the objective history."><figcaption>The design evolving: material layout, temperature with streamlines, and the objective history.</figcaption></figure>
 </section>
 <section id="composition">

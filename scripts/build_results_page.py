@@ -111,6 +111,14 @@ def section_headline() -> str:
   {table(["what was measured", "result"], rows)}
   {source("results/gradient_validation.json", "results/intervention_test.json",
           "results/predictor_statistics.json")}
+  <p><b>Who this is for.</b> Anyone standing in front of a coupled pipeline deciding
+  whether to build the coupled adjoint or just differentiate the components separately
+  &mdash; conjugate heat transfer, fluid&ndash;structure interaction,
+  reservoir&ndash;geomechanics, any two solvers that feed each other. That call is usually
+  made on intuition, because the forward solution looks healthy either way. This project
+  measures what the shortcut actually costs on one such problem, shows that the obvious
+  diagnostic is not sufficient, and ships the one-VJP screen that works better as a module
+  that knows nothing about cold plates.</p>
   {figure("fig1_optimisation.gif",
           "The design evolving: material layout, temperature with streamlines, and the objective history.")}
 </section>"""
