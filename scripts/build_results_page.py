@@ -160,6 +160,18 @@ def section_composition() -> str:
   VJP backward through the thermal block then the C++ block. That is the sense in which
   the composition is load-bearing rather than convenient: there is no ordering of these
   components in which one sweep of the chain rule suffices.</p>
+  <p><b>Chain, unrolled loop, solved loop.</b> &ldquo;Two-way coupled&rdquo; covers three
+  different things. A <em>chain</em> needs one sweep of the chain rule. An
+  <em>unrolled loop</em> contracts, so you iterate a fixed number of times and
+  differentiate through the iterations &mdash; exact for the iterate it computes, no
+  adjoint solve needed, and the right choice when the loop contracts and the coupled
+  state is small. This is the third kind. At the gradient-study state
+  &rho;(&Phi;<sub>T</sub>) &asymp; 1.19 &gt; 1, so the Picard iteration you would unroll
+  does not converge at all &mdash; ours did not, and Anderson acceleration did not rescue
+  it &mdash; and the coupled state is a temperature field carrying N&sup2; unknowns rather
+  than a handful of scalars. The steady state has to be <em>solved</em> for, by Newton,
+  and its sensitivity by a second transposed solve whose operator exists only as an
+  action across the container boundary.</p>
   <p>The two thermal backends share a schema and nothing else, and they are
   interchangeable rather than merely composable. Swapping JAX autodiff for the
   independently written Fortran differentiated by Enzyme, at a converged coupled

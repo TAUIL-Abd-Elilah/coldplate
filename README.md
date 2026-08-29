@@ -786,20 +786,50 @@ nor the Fortran image can import `jax`, `torch`, `tensorflow`, `autograd` or
 Enzyme's generated derivative of `tanh`. If the pass had silently no-opped, that
 symbol would be missing and the build would stop.
 
-### Chain versus loop
+### Chain, unrolled loop, solved loop
 
-Worth being precise about what kind of composition this is, because the two are
-often conflated. A *chain* — component A feeds component B feeds an objective —
-is differentiable by one sweep of the chain rule, and a single `jax.grad` over
-wrapped components suffices. Nothing needs to be solved.
+"Two-way coupled" covers three quite different things, and they differ in what
+they cost and what they require. Worth separating, because only the third needs
+any of the machinery in this repository.
 
-This is a *loop*. The fluid solver's output is the thermal solver's input and
-the thermal solver's output is the fluid solver's input, so there is no ordering
-in which one sweep suffices. The steady state must be solved for, and its
-sensitivity requires solving a second, transposed system — the adjoint of
-equation (1) — whose operator is available only as an action, only by calling
-both components. That is the sense in which Tesseract is load-bearing here
-rather than convenient.
+**A chain.** Component A feeds component B feeds an objective. One sweep of the
+chain rule differentiates it and a single `jax.grad` over wrapped components
+suffices. Nothing is solved.
+
+**An unrolled loop.** The components feed each other, but the iteration
+*contracts*, so you run it a fixed number of times and differentiate through
+the unrolled iterations. This is a completely reasonable engineering choice —
+it is exact for the iterate it computes, it needs no adjoint solve, and when
+the fixed point converges geometrically it lands close to the true fixed-point
+gradient. If your loop contracts and your coupled state is small, do this.
+
+**A solved loop**, which is what is here. Two things rule the unroll out at this
+operating point:
+
+* **The fixed point is repelling.** ρ(Φ_T) ≈ 1.19 > 1 at the gradient-study
+  state, so the Picard iteration whose unrolling you would differentiate does
+  not converge in the first place — ours did not, and Anderson acceleration did
+  not rescue them. There is no converged iterate to unroll toward. The steady
+  state still exists and is still differentiable; reaching it takes Newton, and
+  Newton does not require Φ to be contractive.
+* **The coupled state is a field, not a handful of scalars.** T* carries N²
+  unknowns — 9,216 at the 96×96 optimisation. Unrolling k iterations of a map on
+  a field that size means storing k coupled states for the reverse pass;
+  implicit differentiation stores one.
+
+So the steady state must be *solved* for, and its sensitivity requires solving a
+second, transposed system — the adjoint of equation (1) — whose operator exists
+only as an action, only by calling both components. Both solves are Krylov
+iterations whose every matvec crosses the container boundary. That is the sense
+in which Tesseract is load-bearing here rather than convenient: not that the
+components are in different languages, but that the *solver* has to talk to them
+in both directions, repeatedly, to converge at all.
+
+The honest converse is stated in [what we do *not* claim](#what-we-do-not-claim):
+along the optimiser's own trajectory the loop gain is 0.43–0.76, the coupling is
+weak, and the cheap gradient is a serviceable search direction there. Which
+regime you are in is not visible in the forward solution — that is what
+[γ](#what-actually-predicts-it-one-vjp) is for.
 
 ### Why Newton, not Picard
 
