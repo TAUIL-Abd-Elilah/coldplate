@@ -189,7 +189,7 @@ state, reached by a different nonlinear solver (5 Newton iterations against 21
 Picard). Conduction-only energy balance closes to 5.3 × 10⁻¹⁵.
 
 **The coupling-complete discrete gradient is validated.** A directional
-derivative agrees with central differences to 8.3 × 10⁻⁶, holding at ~10⁻⁵ across step sizes from 10⁻³ to
+derivative agrees with central differences to 7.45 × 10⁻⁶, holding at ~10⁻⁵ across step sizes from 10⁻³ to
 10⁻⁴ — that plateau is the differencing noise floor, since the fixed point is
 converged only to ~10⁻¹⁰.
 

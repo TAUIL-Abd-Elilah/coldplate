@@ -86,11 +86,14 @@ def main(N: int = 20, backend: str = "thermal_advdiff",
         print(f"[2] directional derivative along a random unit vector")
         print(f"    analytic  <g, d> = {analytic:.10e}")
         best = np.inf
+        eps_sweep = []
         for eps in (1e-3, 3e-4, 1e-4):
             t0 = time.time()
             fd_dir = (J_at(rho + eps * d) - J_at(rho - eps * d)) / (2 * eps)
             e = abs(fd_dir - analytic) / max(abs(analytic), 1e-30)
             best = min(best, e)
+            eps_sweep.append({"eps": float(eps), "finite_difference": float(fd_dir),
+                              "relative_error": float(e)})
             print(f"    eps={eps:7.0e}  finite-diff = {fd_dir:.10e}   "
                   f"rel err = {e:.2e}   ({time.time()-t0:.0f}s)")
         print()
@@ -121,7 +124,16 @@ def main(N: int = 20, backend: str = "thermal_advdiff",
                   f"{o[n]:14.6e} {f[n]:14.6e}")
 
         results = {"fd": fd.tolist(), "composed": a.tolist(),
-                   "frozen": f.tolist(), "one_way": o.tolist()}
+                   "frozen": f.tolist(), "one_way": o.tolist(),
+                   # The directional check is the headline, so record it rather
+                   # than printing it and hoping the prose keeps up.
+                   "N": int(N),
+                   "Ra": float(p.Ra),
+                   "directional": {
+                       "analytic": analytic,
+                       "best_relative_error": float(best),
+                       "eps_sweep": eps_sweep,
+                   }}
 
         print(f"  composed adjoint : directional rel err {best:.3e}   <-- exact")
         # Statistics over the WHOLE gradient field, not the five sampled

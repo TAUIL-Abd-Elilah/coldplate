@@ -44,7 +44,7 @@ service terms govern the audio. Both, and why there are two, are in
 | proof | measured result |
 | --- | --- |
 | Swap JAX autodiff for Fortran/Enzyme | end-to-end gradient changes by **5.3 × 10⁻¹²**, cosine 1.000000000000 |
-| Validate the composed adjoint | directional derivative matches a true coupled finite difference to **8.3 × 10⁻⁶** |
+| Validate the composed adjoint | directional derivative matches a true coupled finite difference to **7.45 × 10⁻⁶** |
 | Act on the sensitivities at strong coupling | under the same zero-sum raw-design rule, the exact-gradient action gives **58% more realised cooling**; a retrospectively frozen 48-attempt extension records **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable attempts**—35/39 wins among comparable cases, with an **81.1%** post-freeze descriptive seed-cluster-bootstrap lower endpoint |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 
@@ -122,12 +122,12 @@ numbers reproduced by the script, not quoted from a notebook):
 
 | gradient | rel. error | cosine vs true | design variables with the wrong sign |
 | --- | --- | --- | --- |
-| **composed adjoint** | **8.3 × 10⁻⁶** | 1.0000 | 0% |
+| **composed adjoint** | **7.45 × 10⁻⁶** | 1.0000 | 0% |
 | one-way (naive) | 0.856 | +0.53 | **33%** |
 | frozen-flow (naive) | 0.831 | +0.56 | **27%** |
 
 The composed figure is a directional derivative along a random unit vector,
-agreeing with central differences to 8.3 × 10⁻⁶ and holding at ~10⁻⁵ across
+agreeing with central differences to 7.45 × 10⁻⁶ and holding at ~10⁻⁵ across
 step sizes from 10⁻³ to 10⁻⁴ — that plateau *is* the finite-difference noise
 floor, since the fixed point is only converged to ~10⁻¹⁰. The
 coupling-complete adjoint differentiates the converged discrete equations,
@@ -1194,7 +1194,7 @@ written references.
 | Composed Tesseracts vs monolithic JAX reference (per block and full loop) | 2.5 × 10⁻¹² |
 | Converged **coupled state** T\* vs the reference's, reached by a different nonlinear solver (5 Newton iterations vs 21 Picard) | 1.5 × 10⁻¹² |
 | Conduction-only energy balance, flux in vs flux out | 5.3 × 10⁻¹⁵ |
-| Composed end-to-end gradient vs finite differences (directional derivative) | 8.3 × 10⁻⁶ |
+| Composed end-to-end gradient vs finite differences (directional derivative) | 7.45 × 10⁻⁶ |
 | Sparse thermal assembly vs the JAX residual it must reproduce | 1.4 × 10⁻¹⁶ |
 
 The reference implementation (`prototype/reference_jax.py`) is deliberately

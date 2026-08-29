@@ -572,6 +572,34 @@ def main() -> int:
               and not docs_contain(f"{invalid_finned_rth:.2f}")
               and not docs_contain(f"{invalid_reduction:.2f}%"))
 
+    # ---- the composed gradient against a true coupled finite difference ----
+    # This is headline #2 and it drifted: the README said 8.3e-6 while its own
+    # backend table said 7.45e-6 for the same quantity, because validate_pipeline
+    # printed the number and stored nothing. It is recorded now, and the prose is
+    # derived from the record.
+    grad = load("gradient_validation.json")
+    if grad and "directional" in grad:
+        directional = grad["directional"]
+        best = directional["best_relative_error"]
+        print(f"composed directional check: rel err {best:.3e} "
+              f"at N={grad['N']}, Ra={grad['Ra']:.0e}")
+        mantissa, exponent = f"{best:.2e}".split("e")
+        digits = "\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079"
+        rendered = "".join(digits[int(c)] for c in str(abs(int(exponent))))
+        expected = f"{mantissa} \u00d7 10\u207b{rendered}"
+        check("README/PAPER quote the measured directional error",
+              len(docs_contain(expected)) == 2, f"prose must carry {best:.2e}")
+        check("the directional check swept more than one step size",
+              len(directional["eps_sweep"]) >= 3)
+        check("the quoted error is the best over that sweep, not a lucky single step",
+              abs(best - min(row["relative_error"]
+                             for row in directional["eps_sweep"])) < 1e-18)
+        # The claim is that this is the finite-difference noise floor, so every
+        # step size must land near it rather than one being wildly better.
+        worst = max(row["relative_error"] for row in directional["eps_sweep"])
+        check("every swept step size stays at the ~1e-5 noise floor",
+              worst < 1e-4, f"worst {worst:.2e}")
+
     # ---- interchangeable thermal backends -------------------------------
     # The strongest single claim in the README, and until now the only headline
     # value with no stored artefact behind it. compare_thermal_backends.py now
