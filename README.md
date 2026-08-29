@@ -76,6 +76,9 @@ a verdict until you give it thresholds calibrated on your own application.
 | **30 minutes, a shell** | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) | both thermal backends served in containers, agreeing to 10⁻¹² end to end |
 | **an afternoon** | [*Reproduce*](#reproduce) | any table in this file, regenerated from source |
 
+**Scoring this entry?** [Judged against the published criteria](#judged-against-the-published-criteria)
+maps all six onto the command or committed file that settles each one.
+
 **Map of the argument.** [The claim](#the-claim) states what is being compared ·
 [the decision](#the-gradient-changes-a-realised-engineering-decision) shows the
 gradient changing a physical outcome · [what we do *not* claim](#what-we-do-not-claim)
@@ -88,6 +91,30 @@ is what outlives this cold plate, and what the build refuses to take on trust ·
 [validation](#validation) is the numerical evidence ·
 [prior work](#prior-work-and-what-is-actually-new-here) says plainly what is not
 new here.
+
+
+---
+
+## Judged against the published criteria
+
+The [challenge page](https://pasteurlabs.ai/tesseract-hackathon-2026) lists six
+criteria in priority order. Each row below names what would have to be false for
+the claim to fail, and the single command or committed file that settles it.
+
+| # | criterion | what this submission offers | check it |
+| --- | --- | --- | --- |
+| 1 | **Composition across a real boundary** | Four Tesseracts, three implementation languages, four independent derivative stacks: a hand-derived C++/Eigen discrete adjoint, JAX autodiff, **Enzyme compiler AD over Fortran at the LLVM IR level**, and torch.autograd. The two thermal blocks are *interchangeable*, not merely composable — swapping them moves the end-to-end gradient by **5.3 × 10⁻¹²**, cosine 1.000000000000. | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) serves both and swaps them, 1–3 min warm · [`thermal_backend_parity.json`](orchestrator/results/thermal_backend_parity.json) |
+| 2 | **Gradients doing measurable work** | Not "an optimiser converged". Given the same fixed zero-sum design action, the coupling-complete gradient buys **58% more realised cooling** when the true coupled solver re-scores both choices — and a retrospectively frozen 48-attempt matrix keeps every contrary outcome (35 exact wins, **1 shortcut win**, 3 ties, 9 noncomparable). The gradient also drives an 84.6% chip-temperature reduction, and γ-gating cuts cross-boundary VJPs by 92%. | `python orchestrator/intervention_test.py --N 20 --Ra 3e4` · [fig 10](orchestrator/results/fig10_intervention.png), [fig 13](orchestrator/results/fig13_robustness_matrix.png) |
+| 3 | **Why Tesseract is essential, not optional** | This is a *solved* loop, not a chain and not an unrolled one. At ρ(Φ_T) ≈ 1.19 the fixed point is **repelling**, so there is no converging Picard iteration to unroll; Newton–Krylov reaches it and the adjoint is a second transposed solve. Every matvec of both crosses the container boundary. The [`jax.custom_vjp` objection is answered explicitly](#the-honest-objection-why-not-jaxcustom_vjp), and two claims about component isolation are *enforced by the build* rather than asserted. | [*Chain, unrolled loop, solved loop*](#chain-unrolled-loop-solved-loop) · [`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml) fails the build if any AD framework is importable, or if Enzyme's generated `cosh` is absent |
+| 4 | **Real application relevance** | Honestly: the cold plate is a 2-D steady research prototype, and [we say so](#application-scope) — the dimensional SI case is kept as a *failed* audit, not performance evidence. The transferable result is the diagnostic. Anyone with two solvers that feed each other faces "do I need the coupled adjoint?", answers it by intuition, and gets no warning from the forward solution. [`fixed_point_adjoint.py`](fixed_point_adjoint.py) answers it for one VJP and knows nothing about cold plates. | `python orchestrator/gamma_generalization.py --trials 2400` — 2,377 random coupled systems, no physics, no containers |
+| 5 | **Execution and technical depth** | Classical Ra_c = 1707.762 reproduced to **four significant figures**; second-order convergence on two independent grid trios; the nonlinear de Vahl Davis cavity within **1.2%** of the literature; a separately written monolithic reference agreeing to 1.5 × 10⁻¹²; a hand-derived adjoint that survives adding Navier–Stokes inertia, checked against `jax.jvp`/`jax.vjp`. | `python -m pytest tests -q` — 193 tests · [*Validation*](#validation) |
+| 6 | **Reproducibility and communication** | Every quoted number is re-derived from stored measurements by [`audit_claims.py`](scripts/audit_claims.py), which also **refuses a list of overclaims we previously made and retracted**. [The results page](https://tauil-abd-elilah.github.io/coldplate/docs/) is a pure function of the committed JSON and CI fails if it drifts. Extended evidence is byte-bound to the Actions runs that produced it. Two narrated films, one of them narrated locally so no service's terms govern the audio. | `python scripts/audit_claims.py` · `python scripts/validate_evidence_provenance.py --verify-github` |
+
+**What we do not claim** has [its own section](#what-we-do-not-claim), because the
+results that went against us are load-bearing: the long optimisation where the
+cheap gradient did just as well, a frozen protocol that stopped when a solve
+failed and therefore has **no verdict**, and a dimensional study that failed its
+own audit. A study that cannot record a negative is not evidence.
 
 ---
 ## The claim
