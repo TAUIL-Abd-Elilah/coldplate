@@ -315,6 +315,51 @@ font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
   <p class="src">measured in <code>results/de_vahl_davis.json</code></p>
   <figure><img loading="lazy" src="../orchestrator/results/fig14_physics_validation.png" alt="The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit."><figcaption>The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit.</figcaption></figure>
 </section>
+<section id="independent">
+  <h2>What Tesseract's own gradient checker found</h2>
+  <p>Every other check on this page is one we wrote. Tesseract ships its own: it samples
+  random input/output index pairs and compares each declared derivative endpoint against a
+  central difference taken through <code>apply</code>. It knows nothing about cold plates.
+  Run against all four components at the converged coupled state, it found two things.</p>
+  <table><thead><tr><th>Tesseract</th><th>how its derivatives are obtained</th><th>inputs checked</th><th>relative disagreement</th><th>phantom</th></tr></thead><tbody><tr><td><code>stokes_brinkman</code></td><td>C++/Eigen, hand-derived discrete adjoint</td><td><code>T</code>, <code>alpha</code></td><td>4.8e-08</td><td>0</td></tr><tr><td><code>thermal_advdiff</code></td><td>JAX autodiff</td><td><code>k</code>, <code>u</code>, <code>v</code></td><td>6.0e-08</td><td><strong>20</strong></td></tr><tr><td><code>thermal_fortran</code></td><td>Fortran, Enzyme compiler AD at the LLVM IR level</td><td><code>k</code>, <code>u</code>, <code>v</code></td><td>8.4e-07</td><td>0</td></tr><tr><td><code>material_map</code></td><td>PyTorch, torch.autograd</td><td><code>rho_raw</code></td><td>5.0e-11</td><td>0</td></tr></tbody></table>
+  <p><strong>The live comparisons agree.</strong> Across
+  156 comparisons the worst disagreement between any endpoint
+  and a central difference is <strong>8.4e-07</strong>
+  relative &mdash; four derivative implementations sharing no machinery, measured by
+  somebody else's tool. Each figure is the best rung of a
+  5-step ladder of finite-difference steps, and the number
+  is not a pass at a threshold picked afterwards: the checker's verdict is
+  <code>allclose(fd, endpoint, atol=1e-8, rtol=r)</code> and neither side depends on
+  <code>r</code>, so running it at <code>rtol&nbsp;=&nbsp;0</code> hands back both rows and
+  the disagreement follows by arithmetic.</p>
+  <p><strong>And it found a defect we had not.</strong> 20 of the sampled
+  comparisons are <em>phantom sensitivities</em>: the finite difference is exactly zero
+  because the forward map never reads the perturbed input, while the endpoint reports a
+  real number. They are the wall-face velocities &mdash; the assembly <code>apply</code>
+  uses sums fluxes over interior faces only, while the JAX residual the derivative path
+  differentiates includes wall terms that vanish in value at a no-slip wall but not in
+  derivative. The independently written Fortran block has none, which localises it; and
+  swapping that block in moves the end-to-end gradient by only 5.3&nbsp;&times;&nbsp;10<sup>-12</sup>,
+  which bounds what the defect can cost. It is recorded here rather than quietly fixed.</p>
+  <figure><img loading="lazy" src="../orchestrator/results/fig15_check_gradients.png" alt="The step-size ladder behind the independent check, and the two findings side by side."><figcaption>The step-size ladder behind the independent check, and the two findings side by side.</figcaption></figure>
+  <p class="src">measured in <code>results/check_gradients.json</code></p>
+
+  <h3>What the coupled adjoint costs, and what it replaces</h3>
+  <p>If you were not going to build it, the alternatives are the loop-cut shortcut &mdash;
+  whose error is the subject of this whole page &mdash; or finite differences over the
+  design vector. At 48&times;48 that is
+  2,304 design variables and two coupled solves apiece.</p>
+  <table><thead><tr><th>cost of</th><th>wall clock</th><th>basis</th></tr></thead><tbody><tr><td>one coupled solve from cold, 10 Newton iterations</td><td>10.2&nbsp;s</td><td>measured</td></tr><tr><td>one finite-difference probe &mdash; perturb one variable, warm-started</td><td>1.02&nbsp;s</td><td>measured, median of 5</td></tr><tr><td>one composed adjoint gradient, 13 JVP + 15 VJP across the boundary</td><td>3.98&nbsp;s</td><td>measured, median of 3</td></tr><tr><td>one central-difference gradient, 4,608 coupled solves</td><td>1.3&nbsp;h</td><td><strong>extrapolated</strong></td></tr></tbody></table>
+  <p>Roughly <strong>1,178&times;</strong>. The per-solve figure is a warm-started
+  probe rather than a cold solve, which is the number most favourable to finite
+  differences. The whole 120-iteration optimisation took
+  <strong>7.8 minutes</strong>; on central differences the
+  same schedule extrapolates to
+  <strong>6.5 days</strong>.
+  We did not run 4,608 solves to prove a multiplication, and
+  the table says which row was measured and which was not.</p>
+  <p class="src">measured in <code>results/adjoint_cost.json</code></p>
+</section>
 <section id="negatives">
   <h2>What we do not claim</h2>
   <p class="lede">These are the results that did not go our way. They are kept because a

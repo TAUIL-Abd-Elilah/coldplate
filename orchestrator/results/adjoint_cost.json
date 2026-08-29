@@ -1,0 +1,58 @@
+{
+  "N": 48,
+  "adjoint_speedup_over_central_differences": 1177.6630082628024,
+  "adjoint_timing": {
+    "seconds": [
+      7.192,
+      3.9817,
+      3.9814
+    ],
+    "what_is_timed": "value_and_grad on a design one step from the base, warm-started from the base state -- the same conditions as a probe"
+  },
+  "central_difference_gradient": {
+    "coupled_solves_required": 4608,
+    "extrapolated_from": "measured seconds_one_coupled_forward_solve",
+    "extrapolated_seconds": 4689.1008,
+    "timing_basis": "median of perturbed warm-started probe solves, which is the cheapest honest per-solve figure and therefore favours finite differences"
+  },
+  "cold_solve": {
+    "newton_iterations": 10,
+    "seconds": 10.210814952850342
+  },
+  "cross_boundary_matvecs_per_gradient": {
+    "jvp": 13,
+    "vjp": 15
+  },
+  "finite_difference_probe": {
+    "newton_iterations": [
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "probes": 5,
+    "seconds": [
+      0.976,
+      1.1041,
+      1.0176,
+      1.0943,
+      1.0134
+    ],
+    "step": 0.0001,
+    "what_is_timed": "re-solve after perturbing one design variable, warm-started from the base state, which is what a differencing sweep does"
+  },
+  "n_design_variables": 2304,
+  "optimisation": {
+    "J_final": 1.2677273239528628,
+    "J_start": 7.991550582105429,
+    "extrapolated_seconds_with_central_differences": 562692.096,
+    "iterations": 120,
+    "measured_seconds": 470.5058786869049,
+    "source": "history_composed_N48.json"
+  },
+  "repeats": 3,
+  "schema_version": 1,
+  "seconds_one_composed_gradient": 3.9817,
+  "seconds_one_coupled_forward_solve": 1.0176
+}

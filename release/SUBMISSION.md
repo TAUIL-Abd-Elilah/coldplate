@@ -61,6 +61,17 @@ Built on Tesseract, from @Pasteur Labs & ISI. #Tesseract
 
 ---
 
+## 1b. The forum showcase post
+
+Not required by the rules, and worth doing anyway: the organisers read
+[the hackathon category](https://si-tesseract.discourse.group/c/hackathons-events/tesseract-summer-hackathon-2026/)
+and have replied to entries posted there. Two of the strongest public entries
+posted one; this repository had no presence there at all.
+
+The post is written and ready in [`FORUM_POST.md`](FORUM_POST.md), sized for
+Discourse, with the four figures to attach named in the order they are
+referenced. It needs the entrant's own forum account.
+
 ## 2. The form
 
 <https://tally.so/r/KYNZMg> — four required fields, one submission per team.

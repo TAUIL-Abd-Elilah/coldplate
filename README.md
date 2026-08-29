@@ -47,6 +47,8 @@ service terms govern the audio. Both, and why there are two, are in
 | Validate the composed adjoint | directional derivative matches a true coupled finite difference to **7.45 × 10⁻⁶** |
 | Act on the sensitivities at strong coupling | under the same zero-sum raw-design rule, the exact-gradient action gives **58% more realised cooling**; a retrospectively frozen 48-attempt extension records **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable attempts**—35/39 wins among comparable cases, with an **81.1%** post-freeze descriptive seed-cluster-bootstrap lower endpoint |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
+| Hand all four to somebody else's checker | every live comparison agrees to **8.4e-07** relative — and it found **20 phantom sensitivities** in our JAX thermal block that we had not |
+| Ask what the adjoint replaces | one gradient in 4.0 s against 4,608 coupled solves (~1.3 h) for a differencing sweep, about **1,178×** |
 
 The exact and loop-cut gradients can both drive the weakly coupled long
 optimisation, which is why convergence alone is not validation. At a strongly
@@ -105,9 +107,9 @@ the claim to fail, and the single command or committed file that settles it.
 | --- | --- | --- | --- |
 | 1 | **Composition across a real boundary** | Four Tesseracts, three implementation languages, four independent derivative stacks: a hand-derived C++/Eigen discrete adjoint, JAX autodiff, **Enzyme compiler AD over Fortran at the LLVM IR level**, and torch.autograd. The two thermal blocks are *interchangeable*, not merely composable — swapping them moves the end-to-end gradient by **5.3 × 10⁻¹²**, cosine 1.000000000000. | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) serves both and swaps them, 1–3 min warm · [`thermal_backend_parity.json`](orchestrator/results/thermal_backend_parity.json) |
 | 2 | **Gradients doing measurable work** | Not "an optimiser converged". Given the same fixed zero-sum design action, the coupling-complete gradient buys **58% more realised cooling** when the true coupled solver re-scores both choices — and a retrospectively frozen 48-attempt matrix keeps every contrary outcome (35 exact wins, **1 shortcut win**, 3 ties, 9 noncomparable). The gradient also drives an 84.6% chip-temperature reduction, and γ-gating cuts cross-boundary VJPs by 92%. | `python orchestrator/intervention_test.py --N 20 --Ra 3e4` · [fig 10](orchestrator/results/fig10_intervention.png), [fig 13](orchestrator/results/fig13_robustness_matrix.png) |
-| 3 | **Why Tesseract is essential, not optional** | This is a *solved* loop, not a chain and not an unrolled one. At ρ(Φ_T) ≈ 1.19 the fixed point is **repelling**, so there is no converging Picard iteration to unroll; Newton–Krylov reaches it and the adjoint is a second transposed solve. Every matvec of both crosses the container boundary. The [`jax.custom_vjp` objection is answered explicitly](#the-honest-objection-why-not-jaxcustom_vjp), and two claims about component isolation are *enforced by the build* rather than asserted. | [*Chain, unrolled loop, solved loop*](#chain-unrolled-loop-solved-loop) · [`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml) fails the build if any AD framework is importable, or if Enzyme's generated `cosh` is absent |
+| 3 | **Why Tesseract is essential, not optional** | This is a *solved* loop, not a chain and not an unrolled one. At ρ(Φ_T) ≈ 1.19 the fixed point is **repelling**, so there is no converging Picard iteration to unroll; Newton–Krylov reaches it and the adjoint is a second transposed solve. Every matvec of both crosses the container boundary — a measured 13 JVPs and 15 VJPs per gradient, replacing the 4,608 coupled solves a differencing sweep would need. The [`jax.custom_vjp` objection is answered explicitly](#the-honest-objection-why-not-jaxcustom_vjp), and two claims about component isolation are *enforced by the build* rather than asserted. | [*Chain, unrolled loop, solved loop*](#chain-unrolled-loop-solved-loop) · [*what the adjoint costs*](#what-the-coupled-adjoint-costs-and-what-it-replaces) · [`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml) fails the build if any AD framework is importable, or if Enzyme's generated `cosh` is absent |
 | 4 | **Real application relevance** | Honestly: the cold plate is a 2-D steady research prototype, and [we say so](#application-scope) — the dimensional SI case is kept as a *failed* audit, not performance evidence. The transferable result is the diagnostic. Anyone with two solvers that feed each other faces "do I need the coupled adjoint?", answers it by intuition, and gets no warning from the forward solution. [`fixed_point_adjoint.py`](fixed_point_adjoint.py) answers it for one VJP and knows nothing about cold plates. | `python orchestrator/gamma_generalization.py --trials 2400` — 2,377 random coupled systems, no physics, no containers |
-| 5 | **Execution and technical depth** | Classical Ra_c = 1707.762 reproduced to **four significant figures**; second-order convergence on two independent grid trios; the nonlinear de Vahl Davis cavity within **1.2%** of the literature; a separately written monolithic reference agreeing to 1.5 × 10⁻¹²; a hand-derived adjoint that survives adding Navier–Stokes inertia, checked against `jax.jvp`/`jax.vjp`. | `python -m pytest tests -q` — 193 tests · [*Validation*](#validation) |
+| 5 | **Execution and technical depth** | Classical Ra_c = 1707.762 reproduced to **four significant figures**; second-order convergence on two independent grid trios; the nonlinear de Vahl Davis cavity within **1.2%** of the literature; a separately written monolithic reference agreeing to 1.5 × 10⁻¹²; a hand-derived adjoint that survives adding Navier–Stokes inertia, checked against `jax.jvp`/`jax.vjp`. And **Tesseract's own gradient checker agrees with all four across 156 comparisons, worst case 8.4e-07 relative** — while finding **20 phantom sensitivities** in the JAX thermal block that nothing we wrote had caught. | `python -m pytest tests -q` — 217 tests · [*Validation*](#validation) · [*What the checker found*](#what-tesseracts-own-gradient-checker-found) |
 | 6 | **Reproducibility and communication** | Every quoted number is re-derived from stored measurements by [`audit_claims.py`](scripts/audit_claims.py), which also **refuses a list of overclaims we previously made and retracted**. [The results page](https://tauil-abd-elilah.github.io/coldplate/docs/) is a pure function of the committed JSON and CI fails if it drifts. Extended evidence is byte-bound to the Actions runs that produced it. Two narrated films, one of them narrated locally so no service's terms govern the audio. | `python scripts/audit_claims.py` · `python scripts/validate_evidence_provenance.py --verify-github` |
 
 **What we do not claim** has [its own section](#what-we-do-not-claim), because the
@@ -865,6 +867,39 @@ regime you are in is not visible in the forward solution — that is what
 
 ---
 
+### What the coupled adjoint costs, and what it replaces
+
+If you were not going to build it, there are two other ways to get a descent
+direction here: the loop-cut shortcut, whose error is most of this README, or
+finite differences over the design vector. At 48×48 that vector is
+2,304 long, so one central-difference gradient is
+4,608 coupled solves.
+
+| cost of | wall clock | basis |
+| --- | ---: | --- |
+| one coupled solve from cold, 10 Newton iterations | 10.2 s | measured |
+| one finite-difference probe — perturb one variable, warm-started | 1.02 s | measured, median of 5 |
+| one composed adjoint gradient, 13 JVP + 15 VJP across the boundary | 3.98 s | measured, median of 3 |
+| one central-difference gradient, 4,608 coupled solves | 1.3 h | **extrapolated** |
+
+Roughly **1,178×**. The
+per-solve figure is a warm-started probe rather than a cold solve, which is the
+number most favourable to finite differences — a differencing sweep would
+warm-start every perturbed solve from the base state too. Timing the *same*
+design instead would have been worse than useless: warm-started from its own
+answer, Newton exits in one iteration and you measure a convergence check, which
+flatters the alternative by two orders of magnitude. We did not run
+4,608 solves to prove a multiplication, and the table
+says which row was measured and which was not.
+
+The whole 120-iteration optimisation took **7.8
+minutes**. On central differences the same schedule extrapolates to
+**6.5 days**. That
+is the argument for having an adjoint at all; the argument for the *coupled*
+adjoint rather than the cheap component-wise one is everything above.
+
+---
+
 ## Engineering contributions
 
 Things built here that outlive this cold plate, and things the build refuses to
@@ -889,12 +924,38 @@ The generalisation study is the honest test of that separation: γ is measured o
 2,377 random coupled systems **by calling the shipped module**, not a
 reimplementation, and the shipped thresholds are the ones scored.
 
-A contribution-ready issue and PR plan for upstreaming it sits in
+It has been proposed upstream as
+[tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247),
+verbatim from [`upstream/READY_TO_POST_ISSUE_BODY.md`](upstream/READY_TO_POST_ISSUE_BODY.md);
+the longer design note behind it is
 [`upstream/TESSERACT_JAX_PROPOSAL.md`](upstream/TESSERACT_JAX_PROPOSAL.md). It
-has deliberately **not** been posted: opening a feature PR against
-`pasteurlabs/tesseract-jax` without maintainer coordination is not a
-contribution, it is homework for someone else. Nothing in this repository
-describes it as submitted or accepted.
+is an *issue* and not a pull request on purpose: their CONTRIBUTING asks for one
+before code, and opening a feature PR against `pasteurlabs/tesseract-jax`
+without maintainer coordination is not a contribution, it is homework for
+someone else. **It is open, not accepted** — nothing here describes it as
+merged, and if it is declined that sentence is what will change.
+
+### Two things reported back to Tesseract
+
+Composing four components in three languages, with four different derivative
+stacks, exercises corners of the platform that a single-framework pipeline does
+not. Two reports came out of it, both
+open at the time of writing and neither described here as accepted:
+
+| where | what |
+| --- | --- |
+| [tesseract-core#706](https://github.com/pasteurlabs/tesseract-core/issues/706) | `check-gradients` documents `--eps` as a step "as a fraction of the maximum absolute value of each input" and applies it as an *absolute* one. Our Brinkman drag is of order 10⁴, so the documented reading of `--eps=1e-6` asks for 0.02 and takes 10⁻⁶ — and the checker then reports **400 failures out of 400** against a derivative that matches an independent JAX reimplementation. Holding everything else fixed and changing only the step on that one input, 120/120 failures become **4/120**. Six-line reproducer, no container needed; also notes that `--show-progress` has no `--no-` form, so CI cannot turn the progress bar off. |
+| [tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247) | The feature request above: make the one-VJP fixed-point residual a library call, with the repelling-map boundary documented rather than hidden. |
+
+The first is the kind of defect that only shows up when a component's inputs
+are not O(1), and its failure mode is the worst kind: the tool accuses your
+code, confidently, with no hint that the step was the problem.
+[`orchestrator/check_gradients.py`](orchestrator/check_gradients.py) works
+around it by doing per input path what the docstring says the tool already does.
+
+The demo film was recorded before either was filed and says so on screen; it has
+not been re-narrated for this, because the two URLs above are checkable and a
+re-recording is not.
 
 ### A Fortran + Enzyme toolchain anyone can reuse
 
@@ -1228,6 +1289,89 @@ The reference implementation (`prototype/reference_jax.py`) is deliberately
 written a different way — dense operators assembled by `jacfwd` of a linear
 residual — so that agreement is evidence rather than a shared bug.
 
+
+### What Tesseract's own gradient checker found
+
+Every check in the table above is one we wrote. Tesseract ships its own: it
+samples random (input index, output index) pairs and compares each declared
+derivative endpoint against a central difference taken through `apply`. It knows
+nothing about cold plates. `check_gradients.py` calls the same function the
+`tesseract-runtime check-gradients` CLI calls, against each component's
+`tesseract_api.py` directly — the way [`tests/conftest.py`](tests/conftest.py)
+exercises everything else here — with the compiled C++ and Fortran objects
+built from the working tree and their SHA-256 recorded, because a cached image
+that predates the source hands over a stale binary and a gradient check against
+the wrong object is worse than none.
+
+It found two things.
+
+| Tesseract | how its derivatives are obtained | inputs checked | relative disagreement | phantom |
+| --- | --- | --- | ---: | ---: |
+| `stokes_brinkman` | C++/Eigen, hand-derived discrete adjoint | `alpha`, `T` | 4.8e-08 | 0 |
+| `thermal_advdiff` | JAX autodiff | `u`, `v`, `k` | 6.0e-08 | **20** |
+| `thermal_fortran` | Fortran, Enzyme compiler AD at the LLVM IR level | `u`, `v`, `k` | 8.4e-07 | 0 |
+| `material_map` | PyTorch, `torch.autograd` | `rho_raw` | 5.0e-11 | 0 |
+
+**One: the live comparisons agree.** Across 156
+comparisons at the converged coupled state, the worst disagreement between any
+endpoint and a central difference through `apply` is
+**8.4e-07** relative — four derivative
+implementations that share no machinery, measured by somebody else's tool.
+
+Each figure is the best rung of a 5-step ladder
+of finite-difference steps, kept in the record because one step is not evidence
+of a plateau. The number is not a pass at a threshold chosen afterwards either:
+the checker's verdict is `allclose(fd, endpoint, atol=1e-8, rtol=r)` and neither
+side depends on `r`, so running it at `rtol = 0` hands back both rows and the
+disagreement follows by arithmetic. Its own CLI default is `rtol = 0.1`, which
+at float64 measures the sampler rather than the derivative. Getting a usable
+step at all required scaling it to each input's own magnitude, one invocation
+per input path, because the checker applies `--eps` absolutely while documenting
+it as relative — [reported upstream](#two-things-reported-back-to-tesseract).
+
+![What Tesseract's own gradient checker found across a ladder of finite-difference steps.](orchestrator/results/fig15_check_gradients.png)
+
+The ladder is worth reading rather than skipping, because the shape carries more
+than the number does. Most curves fall with slope 2 — the ε² truncation error of
+a central difference still converging on an analytic derivative — and then flatten
+or turn up once the step is small enough that the solvers' own convergence noise,
+divided by ε, takes over. A derivative that were merely *close* would level off
+early at its own error instead of tracking the difference scheme down.
+
+One curve runs the other way from the start, and that is also right. With
+`inertia = 0` the flow depends *linearly* on the temperature that drives
+buoyancy, so the central difference of `stokes_brinkman` with respect to `T`
+carries no truncation error to shrink; only round-off remains, and that grows
+as the step gets smaller. An exactly-differenced linear dependence is what an
+upward slope means here.
+
+**Two: it found a real defect in `thermal_advdiff`, and we had not.**
+20 of the sampled comparisons are *phantom
+sensitivities*: the finite difference is exactly zero because the forward map
+never reads the perturbed input, while the derivative endpoint reports a real
+number. They are the wall-face entries of the velocity field. `assemble`, which
+`apply` uses, sums fluxes over interior faces only (`u[:, 1:Nx]`), so the wall
+columns genuinely cannot move `T`. The JAX residual the derivative path
+differentiates does include wall-face advection terms. At a no-slip wall
+`u = 0`, so the two agree on every *value* and disagree only on the derivative
+with respect to an input that is always zero — which is exactly why nothing else
+in this repository caught it.
+
+The independently written Fortran block has **none**, which localises the defect
+rather than leaving it as a suspicion: `thermal_fortran`
+solves the same equation, was written separately, and reports no derivative for
+inputs its forward map does not read.
+
+That same independence bounds the damage, using a measurement that was already
+committed before any of this was looked for. Swapping the affected block for the
+clean one moves the end-to-end gradient by **5.3 × 10⁻¹²**, cosine
+1.000000000000 ([`thermal_backend_parity.json`](orchestrator/results/thermal_backend_parity.json)).
+If the phantom cotangents reached the composed gradient, that number could not
+be what it is. So the defect is real, it is ours, it does not move any result in
+this README — and it is recorded here rather than quietly fixed on the last day,
+because a repository that only reports the checks it passes is not reporting
+checks.
+
 ---
 
 ## Reproduce
@@ -1551,8 +1695,11 @@ orchestrator/
   inertia_study.py        when does dropping (u.grad)u change the gradient?
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
+  check_gradients.py      Tesseract's own gradient checker, all four components
+  adjoint_cost.py         what the adjoint costs against a differencing sweep
   make_figures.py         core figures and animation
   make_extended_figures.py  showdown, robustness, and physics figures
+  make_check_gradients_figure.py  the step-size ladder behind the independent check
 scripts/
   build_results_page.py   regenerates docs/index.html; --check fails on drift
   audit_claims.py         re-derives every quoted headline number from the data
@@ -1580,6 +1727,7 @@ prototype/
 | `fig12_showdown.png` | the retained solver failure and post-hoc shared five-step prefix |
 | `fig13_robustness_matrix.png` | all 48 outcomes, per-Ra Wilson intervals and seed-cluster bootstrap |
 | `fig14_physics_validation.png` | nonlinear cavity reference and explicit 1 W SI illustration |
+| `fig15_check_gradients.png` | Tesseract's own gradient checker on all four components, across a ladder of finite-difference steps |
 
 ## License
 

@@ -68,13 +68,25 @@ On August 29:
    The form is at <https://tally.so/r/KYNZMg>; the LinkedIn post must carry the
    repository link and tag Pasteur Labs & ISI and Tesseract.
 
-9. Optional, and only after the repository is public so the reference
-   implementation is visible: file the `fixed_point_adjoint` feature request on
-   `pasteurlabs/tesseract-jax` from
-   `upstream/TESSERACT_JAX_PROPOSAL.md`. Their CONTRIBUTING asks for an issue
-   before code and requires a signed CLA for a pull request, so the issue is the
-   correct first step. Until a public URL exists, nothing anywhere in the
-   submission may describe it as submitted or accepted.
+9. **Done, 2026-08-29.** Two issues are filed upstream from the entrant's
+   account, both open and neither accepted:
+
+   - [tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247)
+     — the `fixed_point_adjoint` feature request, posted verbatim from
+     `upstream/READY_TO_POST_ISSUE_BODY.md`.
+   - [tesseract-core#706](https://github.com/pasteurlabs/tesseract-core/issues/706)
+     — `check-gradients` documents `--eps` as a fraction of each input's
+     magnitude and applies it as an absolute step, with a container-free
+     reproducer. Body kept at `upstream/CHECK_GRADIENTS_ISSUE_BODY.md`.
+
+   Nothing in the submission may describe either as merged or accepted. If
+   either is declined, the README sentence that names it is what changes. A
+   pull request for either fix would need the Pasteur CLA signed by the
+   entrant first; that has not been done.
+
+10. Optional, and free: post the showcase thread in `release/FORUM_POST.md` to
+    the hackathon Discourse category. The organisers reply to entries there,
+    and two of the strongest public entries posted one.
 
 Owner-only rule gates before the final form:
 

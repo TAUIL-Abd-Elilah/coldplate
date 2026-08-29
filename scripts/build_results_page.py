@@ -570,6 +570,94 @@ def section_validation() -> str:
 </section>"""
 
 
+def section_independent() -> str:
+    checked = load("check_gradients.json")
+    cost = load("adjoint_cost.json")
+
+    order = ("stokes_brinkman", "thermal_advdiff", "thermal_fortran", "material_map")
+    rows = []
+    for name in order:
+        component = checked["components"][name]
+        paths = ", ".join(f"<code>{esc(p)}</code>" for p in component["input_paths"])
+        count = component["phantom_rows"]
+        rows.append([
+            f"<code>{esc(name)}</code>",
+            esc(component["how_differentiated"]),
+            paths,
+            f"{component['relative_disagreement']:.1e}",
+            f"<strong>{count}</strong>" if count else "0",
+        ])
+
+    fd = cost["central_difference_gradient"]
+    hours = fd["extrapolated_seconds"] / 3600.0
+    matvecs = cost["cross_boundary_matvecs_per_gradient"]
+    cost_rows = [
+        [f"one coupled solve from cold, {cost['cold_solve']['newton_iterations']} Newton iterations",
+         f"{cost['cold_solve']['seconds']:.1f}&nbsp;s", "measured"],
+        ["one finite-difference probe &mdash; perturb one variable, warm-started",
+         f"{cost['seconds_one_coupled_forward_solve']:.2f}&nbsp;s",
+         f"measured, median of {cost['finite_difference_probe']['probes']}"],
+        [f"one composed adjoint gradient, {matvecs['jvp']} JVP + {matvecs['vjp']} VJP "
+         f"across the boundary",
+         f"{cost['seconds_one_composed_gradient']:.2f}&nbsp;s",
+         f"measured, median of {cost['repeats']}"],
+        [f"one central-difference gradient, {fd['coupled_solves_required']:,} coupled solves",
+         f"{hours:,.1f}&nbsp;h", "<strong>extrapolated</strong>"],
+    ]
+    speedup = cost["adjoint_speedup_over_central_differences"]
+    opt = cost["optimisation"]
+    phantom = checked["phantom_rows_total"]
+
+    return f"""
+<section id="independent">
+  <h2>What Tesseract's own gradient checker found</h2>
+  <p>Every other check on this page is one we wrote. Tesseract ships its own: it samples
+  random input/output index pairs and compares each declared derivative endpoint against a
+  central difference taken through <code>apply</code>. It knows nothing about cold plates.
+  Run against all four components at the converged coupled state, it found two things.</p>
+  {table(["Tesseract", "how its derivatives are obtained", "inputs checked",
+          "relative disagreement", "phantom"], rows)}
+  <p><strong>The live comparisons agree.</strong> Across
+  {checked["total_comparisons"]} comparisons the worst disagreement between any endpoint
+  and a central difference is <strong>{checked["worst_relative_disagreement"]:.1e}</strong>
+  relative &mdash; four derivative implementations sharing no machinery, measured by
+  somebody else's tool. Each figure is the best rung of a
+  {len(checked["rel_eps_ladder"])}-step ladder of finite-difference steps, and the number
+  is not a pass at a threshold picked afterwards: the checker's verdict is
+  <code>allclose(fd, endpoint, atol=1e-8, rtol=r)</code> and neither side depends on
+  <code>r</code>, so running it at <code>rtol&nbsp;=&nbsp;0</code> hands back both rows and
+  the disagreement follows by arithmetic.</p>
+  <p><strong>And it found a defect we had not.</strong> {phantom} of the sampled
+  comparisons are <em>phantom sensitivities</em>: the finite difference is exactly zero
+  because the forward map never reads the perturbed input, while the endpoint reports a
+  real number. They are the wall-face velocities &mdash; the assembly <code>apply</code>
+  uses sums fluxes over interior faces only, while the JAX residual the derivative path
+  differentiates includes wall terms that vanish in value at a no-slip wall but not in
+  derivative. The independently written Fortran block has none, which localises it; and
+  swapping that block in moves the end-to-end gradient by only 5.3&nbsp;&times;&nbsp;10<sup>-12</sup>,
+  which bounds what the defect can cost. It is recorded here rather than quietly fixed.</p>
+  {figure("fig15_check_gradients.png",
+          "The step-size ladder behind the independent check, and the two findings side by side.")}
+  {source("results/check_gradients.json")}
+
+  <h3>What the coupled adjoint costs, and what it replaces</h3>
+  <p>If you were not going to build it, the alternatives are the loop-cut shortcut &mdash;
+  whose error is the subject of this whole page &mdash; or finite differences over the
+  design vector. At {cost['N']}&times;{cost['N']} that is
+  {cost['n_design_variables']:,} design variables and two coupled solves apiece.</p>
+  {table(["cost of", "wall clock", "basis"], cost_rows)}
+  <p>Roughly <strong>{speedup:,.0f}&times;</strong>. The per-solve figure is a warm-started
+  probe rather than a cold solve, which is the number most favourable to finite
+  differences. The whole {opt['iterations']}-iteration optimisation took
+  <strong>{opt['measured_seconds'] / 60:.1f} minutes</strong>; on central differences the
+  same schedule extrapolates to
+  <strong>{opt['extrapolated_seconds_with_central_differences'] / 86400:.1f} days</strong>.
+  We did not run {fd['coupled_solves_required']:,} solves to prove a multiplication, and
+  the table says which row was measured and which was not.</p>
+  {source("results/adjoint_cost.json")}
+</section>"""
+
+
 def section_negatives() -> str:
     interp = load("strong_coupling_showdown_interpretation.json")
     prefix = interp["descriptive_common_prefix"]["methods"]
@@ -780,6 +868,7 @@ def render() -> str:
         section_decision(),
         section_predictor(),
         section_validation(),
+        section_independent(),
         section_negatives(),
         section_reproduce(),
     ])

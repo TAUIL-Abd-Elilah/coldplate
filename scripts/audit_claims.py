@@ -634,6 +634,90 @@ def main() -> int:
               parity["J_jax"] != parity["J_fortran"]
               and abs(parity["J_jax"] - parity["J_fortran"]) < 1e-9)
 
+    # ---- Tesseract's own gradient checker ------------------------------
+    checked = load("check_gradients.json")
+    if checked:
+        worst = checked["worst_relative_disagreement"]
+        phantom = checked["phantom_rows_total"]
+        print(f"independent checker: worst live disagreement {worst:.3g}, "
+              f"{phantom} phantom sensitivities")
+        check("all four Tesseracts were checked",
+              set(checked["components"]) == {
+                  "stokes_brinkman", "thermal_advdiff",
+                  "thermal_fortran", "material_map"})
+        check("every live comparison agrees",
+              math.isfinite(worst) and worst < 1e-5,
+              f"worst {worst:.3g}")
+        # A single step size is not evidence of anything; the ladder is what
+        # shows there was a plateau to sit at.
+        check("each input path was checked across a ladder of step sizes",
+              all(len(entry["by_rel_eps"]) >= 4
+                  for c in checked["components"].values()
+                  for entry in c["input_paths"].values()))
+        check("the step was scaled to each input, not left absolute",
+              all(entry["by_rel_eps"][repr(rel)]["eps"]
+                  == rel * entry["input_magnitude"]
+                  for c in checked["components"].values()
+                  for entry in c["input_paths"].values()
+                  for rel in checked["rel_eps_ladder"]))
+        # The checker folds a hard-coded atol=1e-8 into its verdict, so a step
+        # that pushes a Jacobian row under that floor scores perfectly for
+        # having nothing left to compare. No headline may rest on one.
+        check("no reported agreement rests on a step with nothing to compare",
+              all(entry["by_rel_eps"][repr(entry["best_rel_eps"])]["live_rows"] > 0
+                  or entry["all_within_atol"]
+                  for c in checked["components"].values()
+                  for entry in c["input_paths"].values()))
+        check("the phantom-sensitivity total is the sum of its parts",
+              phantom == sum(c["phantom_rows"]
+                             for c in checked["components"].values()))
+        # Having found a defect in our own component, the prose has to say so.
+        affected = [name for name, c in checked["components"].items()
+                    if c["phantom_rows"]]
+        if affected:
+            check("delivered prose names every component with phantom sensitivities",
+                  all(bool(docs_contain(name, files=("README.md",)))
+                      for name in affected),
+                  ", ".join(affected))
+            check("delivered prose reports the phantom count",
+                  bool(docs_contain(str(phantom), files=("README.md",))))
+            check("delivered prose never calls the checker run clean",
+                  not docs_contain("clean on all four components",
+                                   files=("README.md", "PAPER.md")))
+        check("the native components record which binary was checked",
+              all(len(checked["native_libraries"][name]["sha256"]) == 64
+                  for name in ("stokes_brinkman", "thermal_fortran")))
+
+    # ---- what the alternative to the adjoint would cost -----------------
+    cost = load("adjoint_cost.json")
+    if cost:
+        fd = cost["central_difference_gradient"]
+        ratio = cost["adjoint_speedup_over_central_differences"]
+        print(f"adjoint cost: {cost['seconds_one_composed_gradient']:.2f}s against "
+              f"{fd['extrapolated_seconds'] / 3600:.1f}h extrapolated, {ratio:.0f}x")
+        check("the finite-difference solve count is two per design variable",
+              fd["coupled_solves_required"] == 2 * cost["n_design_variables"])
+        check("the design-variable count matches the grid",
+              cost["n_design_variables"] == cost["N"] ** 2)
+        check("the extrapolated cost is exactly the product it claims",
+              math.isclose(fd["extrapolated_seconds"],
+                           fd["coupled_solves_required"]
+                           * cost["seconds_one_coupled_forward_solve"],
+                           rel_tol=1e-6))
+        check("the quoted ratio is those two numbers divided",
+              math.isclose(ratio,
+                           fd["extrapolated_seconds"]
+                           / cost["seconds_one_composed_gradient"],
+                           rel_tol=1e-3))
+        check("the artefact labels its unmeasured number as extrapolated",
+              "extrapolat" in fd["extrapolated_from"]
+              or "measured" in fd["extrapolated_from"])
+        check("the gradient crossed the boundary in both directions",
+              cost["cross_boundary_matvecs_per_gradient"]["jvp"] > 0
+              and cost["cross_boundary_matvecs_per_gradient"]["vjp"] > 0)
+        check("delivered prose never presents the extrapolation as a measured run",
+              not docs_contain("we ran finite differences"))
+
     # ---- randomized generalization study -------------------------------
     gg = load("gamma_generalization.json")
     if gg:
