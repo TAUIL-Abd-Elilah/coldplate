@@ -1,5 +1,10 @@
 # Coldplate
 
+[![tests](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/workflows/tests.yml/badge.svg)](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/workflows/tests.yml)
+[![container integration](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/workflows/container-integration.yml/badge.svg)](https://github.com/TAUIL-Abd-Elilah/coldplate/actions/workflows/container-integration.yml)
+[![results page](https://img.shields.io/badge/results-live%20page-7a3b12)](https://tauil-abd-elilah.github.io/coldplate/docs/)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 **Track: Multi-physics & coupled systems · Apache-2.0 · solo entry**
 
 **One `jax.grad` that crosses three languages, four derivative stacks and a
@@ -23,7 +28,7 @@ whose every matvec crosses the container boundary.
 
 | Watch | Read | Run | Browse |
 | --- | --- | --- | --- |
-| [4:51 narrated demo](demo/coldplate_submission.mp4) ([captions](demo/coldplate_submission.en.srt)) | [4-page technical paper](PAPER.pdf) | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) — 1–3 min warm | [results page](docs/index.html) · [figures](#figures) |
+| [4:51 narrated demo](demo/coldplate_submission.mp4) ([captions](demo/coldplate_submission.en.srt)) | [4-page technical paper](PAPER.pdf) | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) — 1–3 min warm | [results page](https://tauil-abd-elilah.github.io/coldplate/docs/) · [figures](#figures) |
 
 The same film also ships with
 [locally synthesised narration](demo/coldplate_submission_local_voice.mp4)
@@ -65,7 +70,7 @@ a verdict until you give it thresholds calibrated on your own application.
 
 | you have | do this | you will have seen |
 | --- | --- | --- |
-| **2 minutes** | the table above, then the [results page](docs/index.html) | every headline number beside the file that produced it |
+| **2 minutes** | the table above, then the [results page](https://tauil-abd-elilah.github.io/coldplate/docs/) | every headline number beside the file that produced it |
 | **5 minutes** | the [4:51 video](demo/coldplate_submission.mp4) | the loop, the backend swap, the decision, and the failures we kept |
 | **15 minutes** | the [4-page paper](PAPER.pdf), then [*The claim*](#the-claim) and [*Why this needs Tesseract*](#why-this-needs-tesseract) | the argument, and the objection we expect a reviewer to raise |
 | **30 minutes, a shell** | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) | both thermal backends served in containers, agreeing to 10⁻¹² end to end |
