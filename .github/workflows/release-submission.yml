@@ -223,8 +223,14 @@ jobs:
             docker tag "$component:latest" "$target:$RELEASE_TAG"
             push_output="$(docker push "$target:$GITHUB_SHA")"
             docker push "$target:$RELEASE_TAG"
-            digest="$(printf '%s\n' "$push_output" | awk '/digest:/ {print $2}' | tail -1)"
-            test -n "$digest"
+            # docker prints "<tag>: digest: sha256:<hex> size: <n>", so the
+            # digest is the sha256 token rather than a fixed field number --
+            # taking $2 lifts the literal word "digest:" instead, which is
+            # non-empty and therefore survives a bare -n check all the way to
+            # a malformed manifest.
+            digest="$(printf '%s\n' "$push_output" \
+              | tr ' ' '\n' | grep -E '^sha256:[0-9a-f]{64}$' | tail -1)"
+            printf '%s' "$digest" | grep -qE '^sha256:[0-9a-f]{64}$'
             printf '%s=%s@%s\n' "$component" "$target" "$digest" \
               | tee -a release-dist/image-digests.txt
           done
