@@ -291,6 +291,12 @@ def main(*, strict_public: bool = False, allow_dirty: bool = False) -> int:  # n
     dead = sorted(anchors - slugs)
     check(f"{len(anchors)} README section links resolve", not dead, str(dead))
 
+    # Two headings with the same text read as an editing accident to anyone
+    # going through the document linearly, and GitHub silently renames the
+    # second slug, so no anchor check would catch it either.
+    repeated = sorted({h for h in headings if headings.count(h) > 1})
+    check("no README heading appears twice", not repeated, str(repeated))
+
     print("\n=== README shell commands are runnable ===")
     cmds = re.findall(r"```bash\n(.*?)```", readme, re.S)
     flat = [l.strip() for b in cmds for l in b.strip().splitlines()

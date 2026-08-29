@@ -836,17 +836,6 @@ weak, and the cheap gradient is a serviceable search direction there. Which
 regime you are in is not visible in the forward solution — that is what
 [γ](#what-actually-predicts-it-one-vjp) is for.
 
-### Why Newton, not Picard
-
-A practical consequence worth noting: Newton–Krylov matters here. At the
-gradient-study operating point, ρ(Φ_T) = 1.19 makes the fixed point locally
-unstable to ordinary Picard iteration; our Picard runs fail, and Anderson
-acceleration did not rescue them. A radius above one rules out local
-contraction and generic Picard convergence, not every exceptional initial
-state. Newton does not require Φ to be contractive; here the linearisation is
-nonsingular and damped Newton converges from the stated start. The JVP endpoints
-let this implementation solve the forward problem robustly in this regime.
-
 ---
 
 ## Engineering contributions
