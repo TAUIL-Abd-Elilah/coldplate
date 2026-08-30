@@ -97,6 +97,17 @@ def test_publish_uses_checksummed_provenance_and_exact_prepared_checkout():
     assert "python scripts/validate_video.py" in workflow
 
 
+def test_release_cli_always_names_the_repository_explicitly():
+    """Pre-checkout release steps cannot rely on a local git repository."""
+    workflow = (ROOT / ".github" / "workflows" / "release-submission.yml").read_text(
+        encoding="utf-8"
+    )
+    logical_lines = workflow.replace("\\\n", " ").splitlines()
+    release_commands = [line for line in logical_lines if "gh release " in line]
+    assert release_commands
+    assert all('--repo "$GITHUB_REPOSITORY"' in command for command in release_commands)
+
+
 def test_every_github_action_is_pinned_to_a_full_commit_sha():
     workflows = ROOT / ".github" / "workflows"
     uses = []

@@ -96,7 +96,8 @@ jobs:
           TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --json isDraft,tagName,targetCommitish,assets \
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,tagName,targetCommitish,assets \
               > "$RUNNER_TEMP/preflight-release.json" 2>/dev/null; then
             python - <<'PY'
           import json
@@ -294,7 +295,8 @@ jobs:
           TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --json isDraft,tagName,targetCommitish,assets \
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,tagName,targetCommitish,assets \
               > "$RUNNER_TEMP/existing-release.json" 2>/dev/null; then
             # Fail before mutating anything unless this is an idempotent
             # refresh of the same draft and full commit SHA. Missing expected
@@ -333,16 +335,18 @@ jobs:
               raise SystemExit("existing tag is not a lightweight tag at the prepared SHA; left untouched")
           PY
             fi
-            gh release edit "$TAG" --draft \
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "Coldplate -- Tesseract Hackathon 2026" \
               --notes-file release/RELEASE_NOTES.md
-            gh release upload "$TAG" release-dist/* --clobber
+            gh release upload "$TAG" release-dist/* \
+              --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" release-dist/* --draft --target "$GITHUB_SHA" \
+            gh release create "$TAG" release-dist/* \
+              --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
               --title "Coldplate -- Tesseract Hackathon 2026" \
               --notes-file release/RELEASE_NOTES.md
           fi
-          gh release view "$TAG" \
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
             --json isDraft,tagName,targetCommitish,assets \
             > "$RUNNER_TEMP/prepared-release.json"
           python - <<'PY'
@@ -414,9 +418,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$VERIFY_DIR"
-          gh release view "$TAG" --json isDraft,tagName,targetCommitish,assets \
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,tagName,targetCommitish,assets \
             > "$VERIFY_DIR/release-state.json"
-          gh release download "$TAG" --dir "$VERIFY_DIR"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$VERIFY_DIR"
           (cd "$VERIFY_DIR" && sha256sum -c SHA256SUMS)
           python - <<'PY'
           import json
@@ -549,7 +554,8 @@ jobs:
           VERIFY_DIR: ${{ runner.temp }}/release-verify
         run: |
           set -euo pipefail
-          gh release view "$TAG" --json isDraft,tagName,targetCommitish,assets \
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,tagName,targetCommitish,assets \
             > "$RUNNER_TEMP/pre-publish-state.json"
           python - <<'PY'
           import json
@@ -569,8 +575,10 @@ jobs:
           if fingerprint(state) != fingerprint(original):
               raise SystemExit("draft assets changed after checksum and anonymous-pull verification")
           PY
-          gh release edit "$TAG" --target "$PREPARED_SHA" --draft=false --latest
-          gh release view "$TAG" --json isDraft,tagName,targetCommitish \
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --target "$PREPARED_SHA" --draft=false --latest
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,tagName,targetCommitish \
             > "$RUNNER_TEMP/published-state.json"
           python - <<'PY'
           import json
