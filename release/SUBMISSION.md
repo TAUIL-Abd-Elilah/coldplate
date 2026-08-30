@@ -52,6 +52,12 @@ optimisation where the cheap gradient did just as well. Those are in the README
 under "What we do not claim", because a study that cannot record a negative is
 not evidence.
 
+The work also produced a tested upstream fix, tesseract-core#713
+(https://github.com/pasteurlabs/tesseract-core/pull/713): per-input
+finite-difference steps for `check-gradients`, after the tool exposed 20 real
+phantom sensitivities in our own JAX block. The CLA and public checks are
+green; maintainer review is pending.
+
 Code, four-page paper, narrated demo and every number beside the file that
 produced it:
 https://github.com/TAUIL-Abd-Elilah/coldplate

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Coldplate contributors.
 # SPDX-License-Identifier: Apache-2.0
-"""Check that the headline numbers quoted in README/PAPER are measured.
+"""Check that headline numbers in the public-facing materials are measured.
 
 Written after several claims in this repository turned out to be stale or wrong
 -- a gradient comparison that measured a mean-removal instead of the coupling
@@ -589,6 +589,12 @@ def main() -> int:
         expected = f"{mantissa} \u00d7 10\u207b{rendered}"
         check("README/PAPER quote the measured directional error",
               len(docs_contain(expected)) == 2, f"prose must carry {best:.2e}")
+        check("release notes quote the measured directional error",
+              docs_contain(
+                  expected,
+                  files=("release/RELEASE_NOTES.md",),
+              ) == ["release/RELEASE_NOTES.md"],
+              f"release notes must carry {best:.2e}")
         check("the directional check swept more than one step size",
               len(directional["eps_sweep"]) >= 3)
         check("the quoted error is the best over that sweep, not a lucky single step",
@@ -894,6 +900,8 @@ def main() -> int:
         ROOT / "PAPER.md",
         ROOT / "DEMO_SCRIPT.md",
         ROOT / "release" / "RELEASE_NOTES.md",
+        ROOT / "release" / "SUBMISSION.md",
+        ROOT / "release" / "FORUM_POST.md",
     ]
     delivered = "\n".join(path.read_text(encoding="utf-8") for path in delivered_files)
     for bad in (

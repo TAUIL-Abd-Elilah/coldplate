@@ -1,19 +1,27 @@
-# August 29 publication sequence
+# Final publication sequence
 
-The repository remains private during development. The workflow is hard-locked
-until **2026-08-29 00:00 UTC**. The GitHub environment
+The repository is public. The workflow was hard-locked until
+**2026-08-29 00:00 UTC**. The GitHub environment
 `submission-production` already exists with a custom branch policy restricted
 to `master`; its branch policy is the protection rule checked by the workflow.
-After making the repository public, add a required reviewer with self-review
-disabled only if an independent reviewer is available to approve both phases.
+Add a required reviewer with self-review disabled only if an independent
+reviewer is available to approve both phases.
 Do not add a reviewer gate to a solo submission: it would deadlock preparation
 and publication. The existing `master` branch policy is already the protection
 rule required by the workflow.
 
+**Current release state, 2026-08-30:** the draft `submission-2026` was prepared
+at `82714e2`, and `master` has advanced since then. Do not publish that stale
+draft as the final release. The safest recovery is to prepare and publish a new
+tag such as `submission-2026-final`; this preserves the old draft for audit and
+does not require deleting or repointing anything. The prepare and publish
+phases must use the same new tag, and its `targetCommitish` must equal the final
+40-character `master` SHA.
+
 This checklist follows the [official hackathon page](https://pasteurlabs.ai/tesseract-hackathon-2026/)
 and its [terms](https://pasteurlabs.ai/tesseract-hackathon-2026/terms_and_conditions.txt).
 
-On August 29:
+Before final submission:
 
 1. Revalidate both committed MP4s and their SRTs and manifests, the shared
    poster, the paper PDF, the provenance manifest, and the result JSON, then
@@ -27,13 +35,17 @@ On August 29:
    raised about the narration, the answer is to point at the local render, not
    to argue about the other one. `THIRD_PARTY_NOTICES.md` states the position
    for both; do not soften it.
-2. Make the GitHub repository public and confirm its API is anonymously
-   readable.
+2. Confirm the GitHub repository and Pages site are anonymously readable.
 3. Run the `submission release` workflow with phase `prepare` and confirmation
-   `PREPARE`. This tests the source, builds all four images, pushes commit and
-   release tags, and creates a draft release with checksums. Record the prepared
-   commit SHA from the workflow summary. The draft includes checksummed
-   provenance tying the tag and source archive to that full SHA.
+   `PREPARE`, using a fresh final tag because the existing draft is stale. This
+   tests the source, builds all four images, pushes commit and release tags, and
+   creates a draft release with checksums. Record the prepared commit SHA from
+   the workflow summary. The draft includes checksummed provenance tying the
+   tag and source archive to that full SHA. Before publishing, require:
+
+   ```bash
+   test "$(gh release view submission-2026-final --json targetCommitish --jq .targetCommitish)" = "$(git rev-parse HEAD)"
+   ```
 4. In GitHub Packages, independently set these four container packages to
    **Public**: `coldplate-stokes_brinkman`, `coldplate-thermal_advdiff`,
    `coldplate-thermal_fortran`, and `coldplate-material_map`. Repository
@@ -88,11 +100,9 @@ On August 29:
    Nothing in the submission may describe any of them as merged or accepted. If
    one is declined, the README rows that name them are what change.
 
-   **The PR needs the CLA before it can be accepted.** The bot asks for a
-   comment on the PR, verbatim:
-   `@PasteurBot I have read the CLA Document and I hereby sign the CLA`.
-   That is a statement about what the entrant has read, so only the entrant can
-   post it.
+   **Done, 2026-08-30:** the entrant signed the CLA and the bot confirmed it.
+   The public PR checks are green; maintainer review is still pending, so the
+   submission must continue to describe the PR as open rather than accepted.
 
 10. Optional, and free: post the showcase thread in `release/FORUM_POST.md` to
     the hackathon Discourse category. The organisers reply to entries there,

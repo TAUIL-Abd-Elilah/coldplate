@@ -10,7 +10,7 @@ boundary with JVPs; a matrix-free implicit adjoint crosses it again with VJPs.
 - Swapping JAX autodiff for compiler-differentiated Fortran changes the full
   coupled gradient by only **5.3 × 10⁻¹²**.
 - The composed adjoint matches a true coupled finite difference to
-  **8.3 × 10⁻⁶**, while a loop-cut shortcut is 86% wrong at the strong state.
+  **7.45 × 10⁻⁶**, while a loop-cut shortcut is 86% wrong at the strong state.
 - Under the same zero-sum raw-variable count and amplitude—not an equal
   realised-density budget—the composed sensitivity produces **58% more
   realised cooling** at the largest step.
@@ -21,6 +21,28 @@ boundary with JVPs; a matrix-free implicit adjoint crosses it again with VJPs.
 - A separate frozen eight-step showdown is retained as incomplete: the
   composed step-six candidate did not converge, so there is no eight-step
   winner claim. Its common five-step prefix is labelled post-hoc only.
+
+## Why Tesseract is load-bearing
+
+This is a feedback loop, not a feed-forward chain. A measured control study
+shows that unrolling agrees with the implicit adjoint when the fixed point
+contracts, but does not rescue the repelling case. Newton-Krylov therefore
+solves the state and a transposed matrix-free solve obtains its sensitivity;
+every matvec in both directions crosses the served-component boundary.
+
+## Tesseract engineering returned upstream
+
+- [`tesseract-core#706`](https://github.com/pasteurlabs/tesseract-core/issues/706)
+  isolates a misleading finite-difference step-size contract in
+  `check-gradients` with a six-line reproducer.
+- [`tesseract-core#713`](https://github.com/pasteurlabs/tesseract-core/pull/713)
+  is the tested fix: per-input-path steps, corrected documentation and a
+  scriptable `--no-show-progress`. Its CLA and public checks are green;
+  maintainer review is pending.
+- [`tesseract-jax#247`](https://github.com/pasteurlabs/tesseract-jax/issues/247)
+  proposes the objective-aware one-VJP residual as a reusable library feature.
+
+All three are open. None is described here as merged or accepted.
 
 ## Release integrity
 

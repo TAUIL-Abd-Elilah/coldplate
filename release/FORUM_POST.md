@@ -136,7 +136,8 @@ describing either as accepted:
 - **[tesseract-core#713](https://github.com/pasteurlabs/tesseract-core/pull/713)**
   — a pull request fixing that one: `eps` also takes a step per input path, a
   scalar behaves exactly as before, the docstring is made true, and
-  `--no-show-progress` exists. Green on the 422 runtime tests.
+  `--no-show-progress` exists. Green locally on the 422 runtime tests; the CLA
+  and public PR checks are green, and maintainer review is pending.
 - **[tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247)**
   — the γ diagnostic above, proposed as a library call rather than something
   every user rediscovers.
