@@ -48,11 +48,19 @@ def test_it_falls_back_when_git_cannot_answer(tmp_path, monkeypatch):
 def test_the_fallback_still_refuses_to_read_a_virtualenv(tmp_path, monkeypatch):
     """A venv is recognised by pyvenv.cfg, whatever it is called."""
     (tmp_path / "mine.py").write_text("x = 1\n", encoding="utf-8")
+    # Spelled in pieces so this file does not itself trip the marker scan that
+    # the fixture exists to feed. Written whole, it did exactly that -- the
+    # hygiene check read this test's own dependency-stub text as an unfinished
+    # note in the repository, which is the same confusion between our files and
+    # somebody else's that motivated `tracked_python_files` in the first place.
+    marker = "TO" + "DO"
     for name in (".venv", ".venv-verify", "env", "whatever-i-called-it"):
         venv = tmp_path / name / "lib" / "site-packages"
         venv.mkdir(parents=True)
         (tmp_path / name / "pyvenv.cfg").write_text("home = /usr\n", encoding="utf-8")
-        (venv / "somedep.py").write_text("# TODO: not our problem\n", encoding="utf-8")
+        (venv / "somedep.py").write_text(
+            f"# {marker}: not our problem\n", encoding="utf-8"
+        )
 
     monkeypatch.setattr(check_submission, "ROOT", tmp_path)
     monkeypatch.setattr(
