@@ -7,12 +7,14 @@
 
 **Track: Multi-physics & coupled systems · Apache-2.0 · solo entry**
 
-**One `jax.grad` that crosses three languages, four derivative stacks and a
-two-way physics loop — and the loop is the part everyone else drops.**
+**One `jax.grad` across four Tesseracts, three languages, four derivative
+stacks and a two-way physics loop — and the loop is the part everyone else
+drops.**
 
-A natural-convection cold plate, differentiated end to end across three served
-Tesseracts: a PyTorch material map feeds a C++/Eigen fluid solver that is
-coupled **in both directions** to a thermal solver. The thermal slot accepts
+A natural-convection cold plate, differentiated end to end. Four Tesseracts,
+three served at once because the thermal slot takes either of two
+interchangeable implementations: a PyTorch material map feeds a C++/Eigen fluid
+solver that is coupled **in both directions** to a thermal solver. The thermal slot accepts
 either JAX autodiff or an independently written Fortran implementation
 differentiated by **Enzyme at the LLVM IR level**. Temperature drives the flow
 through buoyancy, the flow drives temperature through advection, so the steady
@@ -1240,7 +1242,29 @@ check.
 
 ### Application scope
 
-This is a **research prototype**, not a manufacturing-ready cold plate. The
+**What the problem is.** Topology optimisation of a natural-convection heat
+sink is an established engineering discipline with an industrial purpose:
+cooling electronics without a fan, where the coolant is driven by the heat it
+is removing. [Alexandersen et al.](https://arxiv.org/abs/1508.04596) solve
+exactly this problem in 3-D with full Navier–Stokes at 40–330 million degrees
+of freedom, and the branching structure our optimiser finds is a qualitative
+reproduction of what that literature reports. The design question here is the
+real one — where to put metal so a chip runs cooler — and the coupling that
+makes it hard is the real one too, because buoyancy is what couples the two
+physics in both directions.
+
+**What transfers beyond it.** The decision this repository actually measures —
+*build the coupled adjoint, or differentiate the components separately?* —
+belongs to anyone with two solvers that feed each other: conjugate heat
+transfer, fluid–structure interaction, reservoir–geomechanics,
+neutronics–thermal-hydraulics. That call is usually made on intuition, because
+the forward solution looks healthy either way.
+[`fixed_point_adjoint.py`](fixed_point_adjoint.py) answers it for one VJP, knows
+nothing about cold plates, and is tested on 2,377 random coupled systems with no
+physics in them at all.
+
+**And what it is not.** This is a **research prototype**, not a
+manufacturing-ready cold plate. The
 core studies remain nondimensional. `dimensional_coldplate.py` now makes one
 mapping explicit—a sealed 5 × 5 × 2 mm water/aluminium cavity near 25 °C with a
 1 W chip and a stated out-of-plane depth—and reports its nondimensional inputs,
