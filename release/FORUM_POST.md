@@ -133,6 +133,10 @@ describing either as accepted:
   changing only the step on that one input, 120/120 failures become 4/120. Six-line reproducer, no container
   needed. It also notes that `--show-progress` has no `--no-` form, so a CI job
   cannot turn the progress bar off.
+- **[tesseract-core#713](https://github.com/pasteurlabs/tesseract-core/pull/713)**
+  — a pull request fixing that one: `eps` also takes a step per input path, a
+  scalar behaves exactly as before, the docstring is made true, and
+  `--no-show-progress` exists. Green on the 422 runtime tests.
 - **[tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247)**
   — the γ diagnostic above, proposed as a library call rather than something
   every user rediscovers.

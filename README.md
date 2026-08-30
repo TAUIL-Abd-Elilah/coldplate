@@ -935,23 +935,27 @@ without maintainer coordination is not a contribution, it is homework for
 someone else. **It is open, not accepted** — nothing here describes it as
 merged, and if it is declined that sentence is what will change.
 
-### Two things reported back to Tesseract
+### Three things sent back to Tesseract
 
 Composing four components in three languages, with four different derivative
 stacks, exercises corners of the platform that a single-framework pipeline does
-not. Two reports came out of it, both
-open at the time of writing and neither described here as accepted:
+not. Three things went upstream. All three are **open, none merged, none
+accepted** at the time of writing; if any is declined, these rows are what
+change.
 
 | where | what |
 | --- | --- |
 | [tesseract-core#706](https://github.com/pasteurlabs/tesseract-core/issues/706) | `check-gradients` documents `--eps` as a step "as a fraction of the maximum absolute value of each input" and applies it as an *absolute* one. Our Brinkman drag is of order 10⁴, so the documented reading of `--eps=1e-6` asks for 0.02 and takes 10⁻⁶ — and the checker then reports **400 failures out of 400** against a derivative that matches an independent JAX reimplementation. Holding everything else fixed and changing only the step on that one input, 120/120 failures become **4/120**. Six-line reproducer, no container needed; also notes that `--show-progress` has no `--no-` form, so CI cannot turn the progress bar off. |
 | [tesseract-jax#247](https://github.com/pasteurlabs/tesseract-jax/issues/247) | The feature request above: make the one-VJP fixed-point residual a library call, with the repelling-map boundary documented rather than hidden. |
+| [tesseract-core#713](https://github.com/pasteurlabs/tesseract-core/pull/713) | A **pull request** fixing the first: `eps` also accepts one step per differentiated input path, a scalar behaves exactly as before, and the docstring is made true. Adds the missing `--no-show-progress`. Four tests, including one that a per-path step actually *reaches* the difference — a cubic differenced with step `h` is wrong by `h²`, so a large step on one input fails that input while the other keeps passing, which cannot happen if the mapping is ignored. Green on their 422 runtime tests and their pre-commit hooks. |
 
 The first is the kind of defect that only shows up when a component's inputs
 are not O(1), and its failure mode is the worst kind: the tool accuses your
 code, confidently, with no hint that the step was the problem.
-[`orchestrator/check_gradients.py`](orchestrator/check_gradients.py) works
-around it by doing per input path what the docstring says the tool already does.
+[`orchestrator/check_gradients.py`](orchestrator/check_gradients.py) worked
+around it by doing per input path what the docstring said the tool already did;
+the pull request is that workaround offered back, so the next person does not
+need it.
 
 The demo film was recorded before either was filed and says so on screen; it has
 not been re-narrated for this, because the two URLs above are checkable and a
@@ -1327,7 +1331,7 @@ disagreement follows by arithmetic. Its own CLI default is `rtol = 0.1`, which
 at float64 measures the sampler rather than the derivative. Getting a usable
 step at all required scaling it to each input's own magnitude, one invocation
 per input path, because the checker applies `--eps` absolutely while documenting
-it as relative — [reported upstream](#two-things-reported-back-to-tesseract).
+it as relative — [reported upstream](#three-things-sent-back-to-tesseract).
 
 ![What Tesseract's own gradient checker found across a ladder of finite-difference steps.](orchestrator/results/fig15_check_gradients.png)
 

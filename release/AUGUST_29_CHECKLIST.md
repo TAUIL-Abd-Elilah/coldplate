@@ -79,10 +79,20 @@ On August 29:
      magnitude and applies it as an absolute step, with a container-free
      reproducer. Body kept at `upstream/CHECK_GRADIENTS_ISSUE_BODY.md`.
 
-   Nothing in the submission may describe either as merged or accepted. If
-   either is declined, the README sentence that names it is what changes. A
-   pull request for either fix would need the Pasteur CLA signed by the
-   entrant first; that has not been done.
+   - [tesseract-core#713](https://github.com/pasteurlabs/tesseract-core/pull/713)
+     — a pull request implementing the fix for #706: per-input-path `eps`, a
+     corrected docstring, and the missing `--no-show-progress`. Green on their
+     422 runtime tests and pre-commit hooks. Body kept at
+     `upstream/CHECK_GRADIENTS_PR_BODY.md`.
+
+   Nothing in the submission may describe any of them as merged or accepted. If
+   one is declined, the README rows that name them are what change.
+
+   **The PR needs the CLA before it can be accepted.** The bot asks for a
+   comment on the PR, verbatim:
+   `@PasteurBot I have read the CLA Document and I hereby sign the CLA`.
+   That is a statement about what the entrant has read, so only the entrant can
+   post it.
 
 10. Optional, and free: post the showcase thread in `release/FORUM_POST.md` to
     the hackathon Discourse category. The organisers reply to entries there,
