@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -76,23 +77,46 @@ CODE_RE = re.compile(r"`([^`]*)`")
 
 
 def tracked_python_files() -> list[Path]:
-    """Every .py file git tracks, and nothing else.
+    """Every .py file this repository owns, and nothing else.
 
     Walking the working tree instead was a trap: a reviewer who creates a
     virtualenv *inside* the clone -- the obvious thing to do, and nothing in
     the README tells them not to -- made this script read twelve thousand
     site-packages files and report Pillow's own TODO comments as unfinished
     work in this repository. Only the "`.venv`" spelling was excluded, so
-    `.venv-verify` or `env/` walked straight in. Ask git what belongs here.
+    `.venv-verify` or `env/` walked straight in. Ask git what belongs here,
+    and when there is no git to ask, exclude a virtualenv by what one
+    actually is rather than by what it is usually called.
     """
-    listing = subprocess.run(
+    probe = subprocess.run(
         ["git", "ls-files", "-z", "--", "*.py"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    return sorted(
-        ROOT / name for name in listing.split("\0")
-        if name and (ROOT / name).is_file()
+        cwd=ROOT, capture_output=True, text=True, check=False,
     )
+    if probe.returncode == 0:
+        return sorted(
+            ROOT / name for name in probe.stdout.split("\0")
+            if name and (ROOT / name).is_file()
+        )
+
+    # No git index to ask -- which happens in exactly the place it matters
+    # most: the deterministic source archive this project's own release ships.
+    # A reviewer who downloads that tarball and runs this script used to get a
+    # CalledProcessError traceback instead of a report. Fall back to a walk,
+    # but keep the lesson that motivated asking git in the first place: a
+    # virtualenv inside the tree must not be scanned, and it is recognised by
+    # the `pyvenv.cfg` that actually defines one rather than by guessing at
+    # names like ".venv" (the guess that let ".venv-verify" walk straight in).
+    skip = {".git", "__pycache__", "node_modules", "build", "dist",
+            ".pytest_cache", ".mypy_cache", ".ruff_cache", "site-packages"}
+    found: list[Path] = []
+    for directory, subdirectories, filenames in os.walk(ROOT):
+        here = Path(directory)
+        subdirectories[:] = [
+            name for name in subdirectories
+            if name not in skip and not (here / name / "pyvenv.cfg").is_file()
+        ]
+        found.extend(here / name for name in filenames if name.endswith(".py"))
+    return sorted(found)
 
 
 def github_slug(heading: str) -> str:
