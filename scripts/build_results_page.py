@@ -947,7 +947,6 @@ def render() -> str:
     <a href="{REPO}">Repository</a>
     <a href="../PAPER.pdf">4-page paper</a>
     <a href="../demo/coldplate_submission.mp4">4:51 demo</a>
-    <a href="../demo/coldplate_submission_local_voice.mp4">demo, local voice</a>
     <a href="#reproduce">Reproduce</a>
     <a href="#negatives">What we do not claim</a>
   </nav>
