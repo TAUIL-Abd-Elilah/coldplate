@@ -570,6 +570,60 @@ def section_validation() -> str:
 </section>"""
 
 
+def section_unroll() -> str:
+    study = load("unroll_study.json")
+    rep = study["regimes"]["repelling"]
+    con = study["regimes"]["contracting"]
+    best_rep = min(r["relative_error"] for r in rep["unrolled"]
+                   if r["relative_error"] is not None)
+    best_con = min(r["relative_error"] for r in con["unrolled"]
+                   if r["relative_error"] is not None)
+
+    rows = []
+    for a, b in zip(sorted(rep["unrolled"], key=lambda r: r["sweeps"]),
+                    sorted(con["unrolled"], key=lambda r: r["sweeps"]), strict=True):
+        def fmt(row):
+            return "not finite" if row["relative_error"] is None else f"{row['relative_error']:.2e}"
+        rows.append([str(a["sweeps"]), fmt(a), fmt(b)])
+
+    head = [
+        ["loop gain &rho;(&Phi;<sub>T</sub>)",
+         f"<strong>{rep['loop_gain']:.3f}</strong>", f"{con['loop_gain']:.3f}"],
+        ["plain Picard",
+         f"{rep['picard']['residuals'][0]:.2e} &rarr; {rep['picard']['residuals'][-1]:.2e}, stalls",
+         f"{con['picard']['residuals'][0]:.2e} &rarr; {con['picard']['residuals'][-1]:.2e}, converges"],
+        ["implicit adjoint",
+         f"<strong>{rep['implicit_relative_error']:.2e}</strong>",
+         f"{con['implicit_relative_error']:.2e}"],
+        ["best unrolled gradient",
+         f"{best_rep:.2e}", f"<strong>{best_con:.2e}</strong>"],
+    ]
+
+    return f"""
+<section id="unroll">
+  <h2>Where an unrolled loop is fine, and where it is not</h2>
+  <p>&ldquo;Two-way coupled&rdquo; covers three different things: a chain, an
+  <em>unrolled</em> loop, and a <em>solved</em> loop. Only the third needs any of the
+  machinery here, so that claim is worth testing rather than asserting. Same design
+  draw, same three components, same containers &mdash; only the Rayleigh number moves.
+  Both candidates are scored against a central difference of the fully solved coupled
+  problem, the one referee sharing no method with either.</p>
+  {table(["", "repelling (Ra = 3&times;10<sup>4</sup>)", "contracting (Ra = 10<sup>3</sup>)"], head)}
+  {table(["sweeps unrolled", "repelling", "contracting"], rows, align="num")}
+  <p><strong>Read the right-hand column first.</strong> Where the loop contracts,
+  differentiating the unrolled iteration is as accurate as the implicit adjoint
+  &mdash; {best_con:.1e} against {con['implicit_relative_error']:.1e}. If your loop
+  contracts, unroll it; nothing here is needed.</p>
+  <p>The left-hand column is why this exists. At &rho; = {rep['loop_gain']:.2f} the plain
+  iteration stalls at {rep['picard']['residuals'][-1]:.1e} instead of converging, the
+  gradient differentiated through it is {best_rep * 100:.0f}% wrong <em>at best</em>, and
+  more sweeps make it worse rather than better &mdash; there is no converged iterate to
+  unroll toward. The implicit adjoint lands at {rep['implicit_relative_error']:.2e}, about
+  {best_rep / rep['implicit_relative_error']:,.0f}&times; closer.</p>
+  {source("results/unroll_study.json")}
+</section>"""
+
+
 def section_independent() -> str:
     checked = load("check_gradients.json")
     cost = load("adjoint_cost.json")
@@ -868,6 +922,7 @@ def render() -> str:
         section_decision(),
         section_predictor(),
         section_validation(),
+        section_unroll(),
         section_independent(),
         section_negatives(),
         section_reproduce(),

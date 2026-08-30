@@ -688,6 +688,45 @@ def main() -> int:
               all(len(checked["native_libraries"][name]["sha256"]) == 64
                   for name in ("stokes_brinkman", "thermal_fortran")))
 
+    # ---- chain, unrolled loop, solved loop ------------------------------
+    unroll = load("unroll_study.json")
+    if unroll:
+        rep = unroll["regimes"]["repelling"]
+        con = unroll["regimes"]["contracting"]
+        best_rep = min(r["relative_error"] for r in rep["unrolled"]
+                       if r["relative_error"] is not None)
+        best_con = min(r["relative_error"] for r in con["unrolled"]
+                       if r["relative_error"] is not None)
+        print(f"unroll study: repelling rho={rep['loop_gain']:.3f} "
+              f"(unroll {best_rep:.2e} vs implicit {rep['implicit_relative_error']:.2e}), "
+              f"contracting rho={con['loop_gain']:.3f} "
+              f"(unroll {best_con:.2e} vs implicit {con['implicit_relative_error']:.2e})")
+        check("the two regimes really do straddle rho = 1",
+              rep["loop_gain"] > 1.0 > con["loop_gain"])
+        check("only the Rayleigh number differs between the regimes",
+              rep["Ra"] != con["Ra"])
+        # The concession is load-bearing: if the unroll stopped matching the
+        # implicit adjoint where the loop contracts, this study would be
+        # arguing for machinery nobody needs.
+        check("the unroll is conceded where the loop contracts",
+              con["picard"]["converged"] is True
+              and (best_con <= 10 * con["implicit_relative_error"] or best_con < 1e-6),
+              f"unroll {best_con:.2e} vs implicit {con['implicit_relative_error']:.2e}")
+        check("the unroll fails where the fixed point repels",
+              rep["picard"]["converged"] is False and best_rep > 1e-3,
+              f"best unroll {best_rep:.2e}")
+        # A monotonically improving sequence would mean it just needed more
+        # sweeps, which would undo the whole argument.
+        errors = [r["relative_error"] for r in
+                  sorted(rep["unrolled"], key=lambda x: x["sweeps"])
+                  if r["relative_error"] is not None]
+        check("more sweeps do not rescue the repelling case",
+              not all(b <= a for a, b in zip(errors, errors[1:])))
+        check("delivered prose quotes the measured repelling loop gain",
+              bool(docs_contain(f"{rep['loop_gain']:.3f}", files=("README.md",))))
+        check("delivered prose never claims the unroll always fails",
+              not docs_contain("unrolling is never", files=("README.md", "PAPER.md")))
+
     # ---- what the alternative to the adjoint would cost -----------------
     cost = load("adjoint_cost.json")
     if cost:

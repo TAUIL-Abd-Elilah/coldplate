@@ -315,6 +315,28 @@ font:.85rem/1.6 ui-sans-serif,system-ui,sans-serif;color:var(--muted)}
   <p class="src">measured in <code>results/de_vahl_davis.json</code></p>
   <figure><img loading="lazy" src="../orchestrator/results/fig14_physics_validation.png" alt="The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit."><figcaption>The nonlinear cavity reference, and the explicit 1 W SI illustration that failed its audit.</figcaption></figure>
 </section>
+<section id="unroll">
+  <h2>Where an unrolled loop is fine, and where it is not</h2>
+  <p>&ldquo;Two-way coupled&rdquo; covers three different things: a chain, an
+  <em>unrolled</em> loop, and a <em>solved</em> loop. Only the third needs any of the
+  machinery here, so that claim is worth testing rather than asserting. Same design
+  draw, same three components, same containers &mdash; only the Rayleigh number moves.
+  Both candidates are scored against a central difference of the fully solved coupled
+  problem, the one referee sharing no method with either.</p>
+  <table><thead><tr><th></th><th>repelling (Ra = 3&times;10<sup>4</sup>)</th><th>contracting (Ra = 10<sup>3</sup>)</th></tr></thead><tbody><tr><td>loop gain &rho;(&Phi;<sub>T</sub>)</td><td><strong>1.361</strong></td><td>0.056</td></tr><tr><td>plain Picard</td><td>3.03e+01 &rarr; 4.74e-02, stalls</td><td>3.03e+01 &rarr; 4.38e-12, converges</td></tr><tr><td>implicit adjoint</td><td><strong>1.27e-05</strong></td><td>6.44e-07</td></tr><tr><td>best unrolled gradient</td><td>4.84e-02</td><td><strong>5.61e-07</strong></td></tr></tbody></table>
+  <table class="num"><thead><tr><th>sweeps unrolled</th><th>repelling</th><th>contracting</th></tr></thead><tbody><tr><td>1</td><td>6.17e-01</td><td>5.40e-04</td></tr><tr><td>2</td><td>4.84e-02</td><td>3.71e-05</td></tr><tr><td>4</td><td>3.89e+00</td><td>5.61e-07</td></tr><tr><td>8</td><td>3.11e+01</td><td>6.44e-07</td></tr><tr><td>16</td><td>2.87e+00</td><td>6.44e-07</td></tr></tbody></table>
+  <p><strong>Read the right-hand column first.</strong> Where the loop contracts,
+  differentiating the unrolled iteration is as accurate as the implicit adjoint
+  &mdash; 5.6e-07 against 6.4e-07. If your loop
+  contracts, unroll it; nothing here is needed.</p>
+  <p>The left-hand column is why this exists. At &rho; = 1.36 the plain
+  iteration stalls at 4.7e-02 instead of converging, the
+  gradient differentiated through it is 5% wrong <em>at best</em>, and
+  more sweeps make it worse rather than better &mdash; there is no converged iterate to
+  unroll toward. The implicit adjoint lands at 1.27e-05, about
+  3,795&times; closer.</p>
+  <p class="src">measured in <code>results/unroll_study.json</code></p>
+</section>
 <section id="independent">
   <h2>What Tesseract's own gradient checker found</h2>
   <p>Every other check on this page is one we wrote. Tesseract ships its own: it samples

@@ -48,6 +48,7 @@ service terms govern the audio. Both, and why there are two, are in
 | Act on the sensitivities at strong coupling | under the same zero-sum raw-design rule, the exact-gradient action gives **58% more realised cooling**; a retrospectively frozen 48-attempt extension records **35 exact wins, 1 shortcut win, 3 ties and 9 noncomparable attempts**—35/39 wins among comparable cases, with an **81.1%** post-freeze descriptive seed-cluster-bootstrap lower endpoint |
 | Screen the shortcut for one VJP | normalized adjoint residual `γ = ‖Φ_Tᵀg‖/‖g‖`; 14 converged cases give log-correlation **0.995**, leave-one-family-out 0.994–0.997 |
 | Hand all four to somebody else's checker | every live comparison agrees to **8.4e-07** relative — and it found **20 phantom sensitivities** in our JAX thermal block that we had not |
+| Ask whether the loop must be *solved* | at ρ = 1.36 the unrolled-loop gradient is **5% wrong at best** and worsens with sweeps, against **1.3e-05** for the implicit adjoint — and where the loop contracts the unroll ties it, 5.6e-07 |
 | Ask what the adjoint replaces | one gradient in 4.0 s against 4,608 coupled solves (~1.3 h) for a differencing sweep, about **1,178×** |
 
 The exact and loop-cut gradients can both drive the weakly coupled long
@@ -107,9 +108,9 @@ the claim to fail, and the single command or committed file that settles it.
 | --- | --- | --- | --- |
 | 1 | **Composition across a real boundary** | Four Tesseracts, three implementation languages, four independent derivative stacks: a hand-derived C++/Eigen discrete adjoint, JAX autodiff, **Enzyme compiler AD over Fortran at the LLVM IR level**, and torch.autograd. The two thermal blocks are *interchangeable*, not merely composable — swapping them moves the end-to-end gradient by **5.3 × 10⁻¹²**, cosine 1.000000000000. | [`bash scripts/judge_demo.sh`](scripts/judge_demo.sh) serves both and swaps them, 1–3 min warm · [`thermal_backend_parity.json`](orchestrator/results/thermal_backend_parity.json) |
 | 2 | **Gradients doing measurable work** | Not "an optimiser converged". Given the same fixed zero-sum design action, the coupling-complete gradient buys **58% more realised cooling** when the true coupled solver re-scores both choices — and a retrospectively frozen 48-attempt matrix keeps every contrary outcome (35 exact wins, **1 shortcut win**, 3 ties, 9 noncomparable). The gradient also drives an 84.6% chip-temperature reduction, and γ-gating cuts cross-boundary VJPs by 92%. | `python orchestrator/intervention_test.py --N 20 --Ra 3e4` · [fig 10](orchestrator/results/fig10_intervention.png), [fig 13](orchestrator/results/fig13_robustness_matrix.png) |
-| 3 | **Why Tesseract is essential, not optional** | This is a *solved* loop, not a chain and not an unrolled one. At ρ(Φ_T) ≈ 1.19 the fixed point is **repelling**, so there is no converging Picard iteration to unroll; Newton–Krylov reaches it and the adjoint is a second transposed solve. Every matvec of both crosses the container boundary — a measured 13 JVPs and 15 VJPs per gradient, replacing the 4,608 coupled solves a differencing sweep would need. The [`jax.custom_vjp` objection is answered explicitly](#the-honest-objection-why-not-jaxcustom_vjp), and two claims about component isolation are *enforced by the build* rather than asserted. | [*Chain, unrolled loop, solved loop*](#chain-unrolled-loop-solved-loop) · [*what the adjoint costs*](#what-the-coupled-adjoint-costs-and-what-it-replaces) · [`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml) fails the build if any AD framework is importable, or if Enzyme's generated `cosh` is absent |
+| 3 | **Why Tesseract is essential, not optional** | This is a *solved* loop, not a chain and not an unrolled one — and that is now **measured, not asserted**. At ρ(Φ_T) = 1.36 the plain iteration stalls instead of converging, the gradient differentiated through an unrolled loop is 5% wrong at its best sweep count and gets worse with more sweeps, and the implicit adjoint is 3,795× closer to a true coupled finite difference. Where the same physics contracts (Ra = 10³), the unroll ties the adjoint and we say so. Newton–Krylov reaches the fixed point and the adjoint is a second transposed solve. Every matvec of both crosses the container boundary — a measured 13 JVPs and 15 VJPs per gradient, replacing the 4,608 coupled solves a differencing sweep would need. The [`jax.custom_vjp` objection is answered explicitly](#the-honest-objection-why-not-jaxcustom_vjp), and two claims about component isolation are *enforced by the build* rather than asserted. | [*Chain, unrolled loop, solved loop*](#chain-unrolled-loop-solved-loop) · [*measured*](#measured-where-the-unroll-is-fine-and-where-it-is-not) · [*what the adjoint costs*](#what-the-coupled-adjoint-costs-and-what-it-replaces) · [`tesseract_config.yaml`](tesseracts/thermal_fortran/tesseract_config.yaml) fails the build if any AD framework is importable, or if Enzyme's generated `cosh` is absent |
 | 4 | **Real application relevance** | Honestly: the cold plate is a 2-D steady research prototype, and [we say so](#application-scope) — the dimensional SI case is kept as a *failed* audit, not performance evidence. The transferable result is the diagnostic. Anyone with two solvers that feed each other faces "do I need the coupled adjoint?", answers it by intuition, and gets no warning from the forward solution. [`fixed_point_adjoint.py`](fixed_point_adjoint.py) answers it for one VJP and knows nothing about cold plates. | `python orchestrator/gamma_generalization.py --trials 2400` — 2,377 random coupled systems, no physics, no containers |
-| 5 | **Execution and technical depth** | Classical Ra_c = 1707.762 reproduced to **four significant figures**; second-order convergence on two independent grid trios; the nonlinear de Vahl Davis cavity within **1.2%** of the literature; a separately written monolithic reference agreeing to 1.5 × 10⁻¹²; a hand-derived adjoint that survives adding Navier–Stokes inertia, checked against `jax.jvp`/`jax.vjp`. And **Tesseract's own gradient checker agrees with all four across 156 comparisons, worst case 8.4e-07 relative** — while finding **20 phantom sensitivities** in the JAX thermal block that nothing we wrote had caught. | `python -m pytest tests -q` — 221 tests · [*Validation*](#validation) · [*What the checker found*](#what-tesseracts-own-gradient-checker-found) |
+| 5 | **Execution and technical depth** | Classical Ra_c = 1707.762 reproduced to **four significant figures**; second-order convergence on two independent grid trios; the nonlinear de Vahl Davis cavity within **1.2%** of the literature; a separately written monolithic reference agreeing to 1.5 × 10⁻¹²; a hand-derived adjoint that survives adding Navier–Stokes inertia, checked against `jax.jvp`/`jax.vjp`. And **Tesseract's own gradient checker agrees with all four across 156 comparisons, worst case 8.4e-07 relative** — while finding **20 phantom sensitivities** in the JAX thermal block that nothing we wrote had caught. | `python -m pytest tests -q` — 230 tests · [*Validation*](#validation) · [*What the checker found*](#what-tesseracts-own-gradient-checker-found) |
 | 6 | **Reproducibility and communication** | Every quoted number is re-derived from stored measurements by [`audit_claims.py`](scripts/audit_claims.py), which also **refuses a list of overclaims we previously made and retracted**. [The results page](https://tauil-abd-elilah.github.io/coldplate/docs/) is a pure function of the committed JSON and CI fails if it drifts. Extended evidence is byte-bound to the Actions runs that produced it. Two narrated films, one of them narrated locally so no service's terms govern the audio. | `python scripts/audit_claims.py` · `python scripts/validate_evidence_provenance.py --verify-github` |
 
 **What we do not claim** has [its own section](#what-we-do-not-claim), because the
@@ -858,6 +859,54 @@ iterations whose every matvec crosses the container boundary. That is the sense
 in which Tesseract is load-bearing here rather than convenient: not that the
 components are in different languages, but that the *solver* has to talk to them
 in both directions, repeatedly, to converge at all.
+
+#### Measured: where the unroll is fine, and where it is not
+
+The split above is testable, so [`unroll_study.py`](orchestrator/unroll_study.py)
+tests it. Same design draw, same three components, same containers; the only
+thing that changes between the two columns is the Rayleigh number. Both
+candidates are scored against a central difference of the fully *solved*
+coupled problem, which is the one referee that shares no method with either.
+
+| | repelling (Ra = 3×10⁴) | contracting (Ra = 10³) |
+| --- | ---: | ---: |
+| loop gain ρ(Φ_T) | **1.361** | 0.056 |
+| plain Picard, 16 sweeps | 3.03e+01 → 4.74e-02, **stalls** | 3.03e+01 → 4.38e-12, converges |
+| implicit adjoint (this repository) | **1.27e-05** | 6.44e-07 |
+| best unrolled gradient, any sweep count | 4.84e-02 | **5.61e-07** |
+
+Relative error of the unrolled gradient against that referee, by sweep count:
+
+| sweeps | repelling | contracting |
+| ---: | ---: | ---: |
+| 1 | 6.17e-01 | 5.40e-04 |
+| 2 | 4.84e-02 | 3.71e-05 |
+| 4 | 3.89e+00 | 5.61e-07 |
+| 8 | 3.11e+01 | 6.44e-07 |
+| 16 | 2.87e+00 | 6.44e-07 |
+
+Read the right-hand column first, because it is the one that concedes the
+argument. Where the loop contracts, differentiating the unrolled iteration is
+**as accurate as the implicit adjoint** — 5.6e-07 against
+6.4e-07, converging monotonically and then sitting
+on the same floor. If your loop contracts, unroll it. Nothing in this
+repository is needed, and none of it would earn its complexity.
+
+The left-hand column is why this repository exists. At ρ = 1.36
+the plain iteration does not converge — it falls out of the cold start, then
+stalls at 4.7e-02 with contraction ratios sitting
+around 0.52, above the ½ that
+would make a short unroll safe. The gradient differentiated through it is
+**5% wrong at best**, and more sweeps make it worse rather
+than better (0.62 → 0.048 → 3.9 → 31 → 2.9),
+because there is no converged iterate to unroll toward. The implicit adjoint,
+solving the same problem across the same container boundary, lands at
+1.27e-05 — about 3,795× closer.
+
+That is the whole case for a *solved* loop stated as a measurement rather than
+an assertion, and it is the reason the forward Newton–Krylov and the adjoint
+GMRES both have to talk to the components repeatedly, in both directions, to
+get an answer at all.
 
 The honest converse is stated in [what we do *not* claim](#what-we-do-not-claim):
 along the optimiser's own trajectory the loop gain is 0.43–0.76, the coupling is
@@ -1699,6 +1748,7 @@ orchestrator/
   inertia_study.py        when does dropping (u.grad)u change the gradient?
   gradient_map_sweep.py   spatial maps of gradient disagreement vs coupling
   show_trajectory.py      naive-gradient error along the optimisation
+  unroll_study.py         where an unrolled loop is legitimate, and where it is not
   check_gradients.py      Tesseract's own gradient checker, all four components
   adjoint_cost.py         what the adjoint costs against a differencing sweep
   make_figures.py         core figures and animation

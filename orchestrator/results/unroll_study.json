@@ -1,0 +1,183 @@
+{
+  "N": 20,
+  "design_draw": "validate_pipeline.py's: default_rng(0).uniform(0.25, 0.75)",
+  "referee": "central difference of the fully solved coupled problem",
+  "regimes": {
+    "contracting": {
+      "Ra": 1000.0,
+      "eps": 0.0003,
+      "finite_difference_truth": -0.020351201642417514,
+      "implicit_adjoint": -0.020351188539048333,
+      "implicit_relative_error": 6.438621862040529e-07,
+      "loop_gain": 0.0555520923669479,
+      "picard": {
+        "contraction_ratios": [
+          0.0012745223447661763,
+          0.027571436812179908,
+          0.04165220495467197,
+          0.05054781449359376,
+          0.05397763560127735
+        ],
+        "converged": true,
+        "criterion": "the plain iteration converges when its residual reaches 1e-6; the contraction ratios are reported for the sweeps above that floor, where they still carry information",
+        "residuals": [
+          30.293961611098386,
+          0.03861033098483364,
+          0.0010645423010456929,
+          4.434053410607331e-05,
+          2.241317092540661e-06,
+          1.2098099728807422e-07,
+          6.656991863440789e-09,
+          3.675841378481524e-10,
+          2.2271834864454783e-11,
+          4.042515194000579e-12,
+          4.503287165021798e-12,
+          3.937937173257901e-12,
+          4.433493254862796e-12,
+          2.734860810684711e-12,
+          3.087986933616892e-12,
+          4.384719299793809e-12
+        ],
+        "tolerance": 1e-06
+      },
+      "unrolled": [
+        {
+          "directional_derivative": -0.020362192574578164,
+          "finite": true,
+          "relative_error": 0.0005400630564114473,
+          "seconds": 0.3,
+          "sweeps": 1
+        },
+        {
+          "directional_derivative": -0.020351957354114457,
+          "finite": true,
+          "relative_error": 3.713351723504326e-05,
+          "seconds": 0.6,
+          "sweeps": 2
+        },
+        {
+          "directional_derivative": -0.02035119022297452,
+          "finite": true,
+          "relative_error": 5.611188565678525e-07,
+          "seconds": 1.4,
+          "sweeps": 4
+        },
+        {
+          "directional_derivative": -0.020351188539048458,
+          "finite": true,
+          "relative_error": 6.438621800668187e-07,
+          "seconds": 1.6,
+          "sweeps": 8
+        },
+        {
+          "directional_derivative": -0.02035118853904056,
+          "finite": true,
+          "relative_error": 6.438625680764018e-07,
+          "seconds": 3.1,
+          "sweeps": 16
+        }
+      ]
+    },
+    "repelling": {
+      "Ra": 30000.0,
+      "eps": 0.0003,
+      "finite_difference_truth": -0.012590167317583225,
+      "implicit_adjoint": -0.012590006847015578,
+      "implicit_relative_error": 1.274570572404446e-05,
+      "loop_gain": 1.3614601689414365,
+      "picard": {
+        "contraction_ratios": [
+          0.03840764070162085,
+          0.7380608020874562,
+          0.8703928290392438,
+          1.0297975266327628,
+          1.160581860874568,
+          1.2059683043888905,
+          1.174527294064746,
+          1.0789908603696043,
+          0.9310795543829501,
+          0.7688216015298374,
+          0.638798077986167,
+          0.5601473283134731,
+          0.5232837652459662,
+          0.5103054598412812,
+          0.5080691290423692
+        ],
+        "converged": false,
+        "criterion": "the plain iteration converges when its residual reaches 1e-6; the contraction ratios are reported for the sweeps above that floor, where they still carry information",
+        "residuals": [
+          30.293961611098386,
+          1.163519592987762,
+          0.8587482040450182,
+          0.7474482787511131,
+          0.7697203887438121,
+          0.8933235211213892,
+          1.077319852037475,
+          1.265341570655808,
+          1.3652919899833367,
+          1.2711954576362963,
+          0.9773225275973918,
+          0.6243117522017965,
+          0.34970656003053935,
+          0.18299576546399515,
+          0.09338373824411128,
+          0.04744539455640621
+        ],
+        "tolerance": 1e-06
+      },
+      "unrolled": [
+        {
+          "directional_derivative": -0.020362192574578164,
+          "finite": true,
+          "relative_error": 0.6173091318763217,
+          "seconds": 0.3,
+          "sweeps": 1
+        },
+        {
+          "directional_derivative": -0.011981231820335857,
+          "finite": true,
+          "relative_error": 0.048365957487867414,
+          "seconds": 0.5,
+          "sweeps": 2
+        },
+        {
+          "directional_derivative": 0.036385145305550703,
+          "finite": true,
+          "relative_error": 3.8899651917044658,
+          "seconds": 0.9,
+          "sweeps": 4
+        },
+        {
+          "directional_derivative": 0.3789983538787501,
+          "finite": true,
+          "relative_error": 31.102725747690986,
+          "seconds": 1.7,
+          "sweeps": 8
+        },
+        {
+          "directional_derivative": 0.02348125730634705,
+          "finite": true,
+          "relative_error": 2.865047279677809,
+          "seconds": 3.5,
+          "sweeps": 16
+        }
+      ]
+    }
+  },
+  "schema_version": 1,
+  "summary": {
+    "best_unroll_error_contracting": 5.611188565678525e-07,
+    "best_unroll_error_repelling": 0.048365957487867414,
+    "contracting_loop_gain": 0.0555520923669479,
+    "implicit_error_contracting": 6.438621862040529e-07,
+    "implicit_error_repelling": 1.274570572404446e-05,
+    "repelling_loop_gain": 1.3614601689414365
+  },
+  "unroll_steps": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ]
+}
